@@ -9,6 +9,9 @@
 
 #include <fmt/format.h>
 
+#include "Common/Crypto/SHA1.h"
+#include "Common/FileUtil.h"
+#include "Common/IOFile.h"
 #include "Common/TraversalClient.h"
 #include "Core/Boot/Boot.h"
 #include "Core/Config/MainSettings.h"
@@ -16,6 +19,7 @@
 #include "Core/Config/UISettings.h"
 #include "Core/Core.h"
 #include "Core/IOS/FS/FileSystem.h"
+#include "Core/State.h"
 #include "Core/System.h"
 #include "Core/TitleDatabase.h"
 #include "UICommon/GameFile.h"
@@ -67,6 +71,25 @@ std::string_view TraversalErrorString(Common::TraversalClient::FailureReason r)
   }
 }
 
+// Control messages travel as NetPlay chat starting with this marker (ASCII unit separator, which
+// nobody types). Version the payload so a future protocol change can't be misread.
+constexpr std::string_view CONTROL_MARKER = "\x1fSPK1 ";
+
+std::vector<std::string> SplitSpaces(std::string_view s)
+{
+  std::vector<std::string> out;
+  size_t i = 0;
+  while (i < s.size())
+  {
+    const size_t j = s.find(' ', i);
+    const size_t end = j == std::string_view::npos ? s.size() : j;
+    if (end > i)
+      out.emplace_back(s.substr(i, end - i));
+    i = end + 1;
+  }
+  return out;
+}
+
 std::optional<AutoMap> ParseAutoMap(std::string_view s)
 {
   if (s == "wii" || s == "wiimote")
@@ -79,6 +102,33 @@ std::optional<AutoMap> ParseAutoMap(std::string_view s)
 }
 }  // namespace
 
+bool IsSafeStateName(std::string_view name)
+{
+  if (name.empty() || name.size() > 96 || name.front() == '.')
+    return false;
+  if (name.size() < 5 || name.substr(name.size() - 4) != ".sst")
+    return false;
+  for (const char c : name)
+  {
+    const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                    c == '-' || c == '_' || c == '.';
+    if (!ok)
+      return false;
+  }
+  return name.find("..") == std::string_view::npos;
+}
+
+std::optional<std::string> HashFile(const std::string& path)
+{
+  File::IOFile f(path, "rb");
+  if (!f.IsOpen())
+    return std::nullopt;
+  std::vector<u8> data(f.GetSize());
+  if (!data.empty() && !f.ReadBytes(data.data(), data.size()))
+    return std::nullopt;
+  return Common::SHA1::DigestToString(Common::SHA1::CalculateDigest(data));
+}
+
 NetPlaySession::NetPlaySession() = default;
 
 NetPlaySession::~NetPlaySession()
@@ -90,6 +140,7 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
 {
   m_nickname = options.nickname.empty() ? Config::Get(Config::NETPLAY_NICKNAME) : options.nickname;
   m_automap = options.automap;
+  m_state_dir = options.state_dir;
 
   // Build the candidate list used to match whatever game the host picks. We check the paths the
   // frontend passed explicitly first, then Dolphin's configured game folders.
@@ -229,6 +280,9 @@ void NetPlaySession::Pump()
 
   EmitRoom();
 
+  if (m_server && m_rebroadcast_state.exchange(false))
+    BroadcastBattleState();
+
   const auto now = std::chrono::steady_clock::now();
   // Pings change constantly without an Update() callback, so also refresh once a second.
   if (m_players_dirty.exchange(false) || now - m_last_player_emit > std::chrono::seconds(1))
@@ -268,6 +322,12 @@ void NetPlaySession::EmitPlayers()
                        .Add("wii_slot", wii_slot)
                        .Add("mapping", NetPlay::GetPlayerMappingString(p->pid, pad_map, gba, wii_map))
                        .Add("revision", p->revision)
+                       .Add("state_status", [&]() -> std::string {
+                         if (!m_server)
+                           return "";
+                         const auto it = m_state_acks.find(p->pid);
+                         return it == m_state_acks.end() ? "pending" : it->second;
+                       }())
                        .Str());
   }
 
@@ -405,6 +465,11 @@ bool NetPlaySession::HandleCommand(const Command& cmd)
       }
     }
   }
+  else if (cmd.name == "battle_state")
+  {
+    if (host_only())
+      CmdBattleState(cmd.arg);
+  }
   else if (cmd.name == "players")
   {
     EmitPlayers();
@@ -442,6 +507,17 @@ void NetPlaySession::CmdStart(bool force)
     }
   }
 
+  bool has_battle_state;
+  {
+    std::lock_guard lk(m_game_mutex);
+    has_battle_state = m_battle_state.has_value();
+  }
+  if (!force && has_battle_state && !IsBattleStateReady())
+  {
+    Emit("error", Json().Add("code", "battle_state_not_ready"));
+    return;
+  }
+
   if (!m_server->RequestStartGame())
     Emit("error", Json().Add("code", "start_rejected"));
 }
@@ -475,7 +551,20 @@ void NetPlaySession::BootGame(const std::string& filename,
   m_game_running = true;
   m_pending_boot = BootParameters::GenerateFromFile(
       filename, boot_session_data ? std::move(*boot_session_data) : BootSessionData());
-  Emit("game_booting", Json().Add("path", filename));
+
+  std::string state_name;
+  {
+    std::lock_guard lk(m_game_mutex);
+    if (m_battle_state && m_battle_state_local_ok && m_pending_boot)
+    {
+      state_name = m_battle_state->name;
+      m_pending_boot->boot_session_data.SetSavestateData(StatePath(state_name),
+                                                         DeleteSavestateAfterBoot::No);
+      // Every peer verified the same bytes, so this one load cannot desync the session.
+      State::AllowNextNetPlayBootLoad();
+    }
+  }
+  Emit("game_booting", Json().Add("path", filename).Add("battle_state", state_name));
 }
 
 void NetPlaySession::StopGame()
@@ -498,7 +587,25 @@ void NetPlaySession::Update()
 
 void NetPlaySession::AppendChat(const std::string& msg)
 {
-  // NetPlayClient formats remote chat as "name[pid]: text"; pass it through verbatim.
+  // NetPlayClient formats remote chat as "name[pid]: text".
+  const size_t marker = msg.find(CONTROL_MARKER);
+  if (marker != std::string::npos)
+  {
+    const std::string prefix = msg.substr(0, marker);
+    const size_t open = prefix.rfind('[');
+    const size_t close = prefix.rfind(']');
+    if (open != std::string::npos && close != std::string::npos && close > open + 1)
+    {
+      const int pid = std::atoi(prefix.substr(open + 1, close - open - 1).c_str());
+      std::string body = msg.substr(marker + CONTROL_MARKER.size());
+      Core::QueueHostJob(
+          [this, pid, body = std::move(body)](Core::System&) {
+            HandleControlMessage(static_cast<NetPlay::PlayerId>(pid), body);
+          },
+          /*run_during_stop=*/true);
+    }
+    return;  // never show control traffic as chat
+  }
   Emit("chat", Json().Add("text", msg).Add("self", false));
 }
 
@@ -556,6 +663,7 @@ void NetPlaySession::OnMsgPowerButton()
 void NetPlaySession::OnPlayerConnect(const std::string& player)
 {
   m_players_dirty = true;
+  m_rebroadcast_state = true;  // late joiners need the current battle-state selection
   Emit("player_joined", Json().Add("name", player));
 }
 
@@ -618,6 +726,165 @@ void NetPlaySession::OnTtlDetermined(u8)
 bool NetPlaySession::IsRecording()
 {
   return false;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Battle-state sync (host thread)
+
+std::string NetPlaySession::StatePath(const std::string& name) const
+{
+  return m_state_dir + "/" + name;
+}
+
+void NetPlaySession::SendControl(const std::string& body)
+{
+  m_client->SendChatMessage(std::string(CONTROL_MARKER) + body);
+}
+
+void NetPlaySession::CmdBattleState(const std::string& arg)
+{
+  if (m_game_running)
+  {
+    Emit("error", Json().Add("code", "not_allowed_in_game").Add("command", "battle_state"));
+    return;
+  }
+
+  if (arg.empty() || arg == "none")
+  {
+    {
+      std::lock_guard lk(m_game_mutex);
+      m_battle_state.reset();
+      m_battle_state_local_ok = false;
+    }
+    m_state_acks.clear();
+    BroadcastBattleState();
+    EmitBattleState();
+    return;
+  }
+
+  if (!IsSafeStateName(arg) || m_state_dir.empty())
+  {
+    Emit("error", Json().Add("code", m_state_dir.empty() ? "no_state_dir" : "bad_state_name")
+                      .Add("name", arg));
+    return;
+  }
+
+  const std::optional<std::string> sha1 = HashFile(StatePath(arg));
+  if (!sha1)
+  {
+    Emit("error", Json().Add("code", "state_file_missing").Add("name", arg));
+    return;
+  }
+
+  {
+    std::lock_guard lk(m_game_mutex);
+    m_battle_state = BattleState{arg, *sha1};
+    m_battle_state_local_ok = true;
+  }
+  m_state_acks.clear();
+  m_state_acks[m_client->GetLocalPlayerId()] = "ok";
+  BroadcastBattleState();
+  EmitBattleState();
+}
+
+void NetPlaySession::BroadcastBattleState()
+{
+  std::optional<BattleState> state;
+  {
+    std::lock_guard lk(m_game_mutex);
+    state = m_battle_state;
+  }
+  SendControl(state ? fmt::format("state {} {}", state->name, state->sha1) : "state none");
+}
+
+void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::string& body)
+{
+  if (!m_client || from == m_client->GetLocalPlayerId())
+    return;
+
+  const std::vector<std::string> parts = SplitSpaces(body);
+  if (parts.empty())
+    return;
+
+  if (parts[0] == "state" && !m_server)
+  {
+    // Only the host (pid 1) may select the battle state.
+    if (from != 1)
+      return;
+
+    if (parts.size() == 2 && parts[1] == "none")
+    {
+      {
+        std::lock_guard lk(m_game_mutex);
+        m_battle_state.reset();
+        m_battle_state_local_ok = false;
+      }
+      EmitBattleState();
+      return;
+    }
+    if (parts.size() != 3 || !IsSafeStateName(parts[1]))
+      return;
+
+    const BattleState wanted{parts[1], parts[2]};
+    const std::optional<std::string> local =
+        m_state_dir.empty() ? std::nullopt : HashFile(StatePath(wanted.name));
+    const std::string status = !local ? "missing" : (*local == wanted.sha1 ? "ok" : "mismatch");
+    {
+      std::lock_guard lk(m_game_mutex);
+      m_battle_state = wanted;
+      m_battle_state_local_ok = status == "ok";
+    }
+    SendControl(fmt::format("ack {} {}", wanted.sha1, status));
+    EmitBattleState();
+  }
+  else if (parts[0] == "ack" && m_server && parts.size() == 3)
+  {
+    std::lock_guard lk(m_game_mutex);
+    // Ignore acks for a selection that has since changed.
+    if (!m_battle_state || parts[1] != m_battle_state->sha1)
+      return;
+    m_state_acks[from] = parts[2];
+  }
+  else
+  {
+    return;
+  }
+
+  if (m_server)
+  {
+    m_players_dirty = true;
+    EmitBattleState();
+  }
+}
+
+bool NetPlaySession::IsBattleStateReady()
+{
+  for (const NetPlay::Player* p : m_client->GetPlayers())
+  {
+    const auto it = m_state_acks.find(p->pid);
+    if (it == m_state_acks.end() || it->second != "ok")
+      return false;
+  }
+  return true;
+}
+
+void NetPlaySession::EmitBattleState()
+{
+  std::optional<BattleState> state;
+  bool local_ok;
+  {
+    std::lock_guard lk(m_game_mutex);
+    state = m_battle_state;
+    local_ok = m_battle_state_local_ok;
+  }
+
+  Json j;
+  j.Add("active", state.has_value());
+  if (state)
+    j.Add("name", state->name).Add("sha1", state->sha1).Add("local_ok", local_ok);
+  if (m_server && state)
+    j.Add("ready", IsBattleStateReady());
+  Emit("battle_state", j);
 }
 
 std::shared_ptr<const UICommon::GameFile>

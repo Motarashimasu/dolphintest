@@ -32,6 +32,7 @@ namespace
 {
 std::atomic<bool> s_quit_requested{false};
 std::atomic<bool> s_game_started{false};
+std::string s_state_dir;  // set once from --state-dir before any thread starts
 
 std::string_view StateName(Core::State state)
 {
@@ -123,6 +124,40 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
   {
     Core::SetState(system, Core::State::Running);
   }
+  else if (cmd.name == "save_state_file" || cmd.name == "load_state_file")
+  {
+    // Capture/replay battle-entry states by name in --state-dir (see battle_state in netplay).
+    if (s_state_dir.empty() || !IsSafeStateName(cmd.arg))
+    {
+      Emit("error", Json()
+                        .Add("code", s_state_dir.empty() ? "no_state_dir" : "bad_state_name")
+                        .Add("command", cmd.name));
+      return;
+    }
+    const Core::State state = Core::GetState(system);
+    if (state != Core::State::Running && state != Core::State::Paused)
+    {
+      Emit("error", Json().Add("code", "not_running").Add("command", cmd.name));
+      return;
+    }
+    const std::string path = s_state_dir + "/" + cmd.arg;
+    if (cmd.name == "load_state_file")
+    {
+      State::LoadAs(system, path);  // "state_applied" fires once it has actually loaded
+      return;
+    }
+    State::SaveAs(system, path);
+    // Compression + write happen on a worker; wait for it off the host thread, then report the
+    // hash the netplay host will advertise for this file.
+    std::thread([name = cmd.arg, path] {
+      UICommon::FlushUnsavedData();
+      const auto sha1 = HashFile(path);
+      if (sha1)
+        Emit("state_file_saved", Json().Add("name", name).Add("sha1", *sha1));
+      else
+        Emit("error", Json().Add("code", "state_save_failed").Add("name", name));
+    }).detach();
+  }
   else if (cmd.name == "save_state" || cmd.name == "load_state")
   {
     const Core::State state = Core::GetState(system);
@@ -200,6 +235,11 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("append")
       .metavar("PATH")
       .help("Extra game file to match against the host's game (repeatable)");
+  parser.add_option("--state-dir")
+      .dest("state_dir")
+      .action("store")
+      .metavar("DIR")
+      .help("Folder of battle-entry save states for battle_state / save_state_file");
   parser.add_option("--nickname").dest("nickname").action("store").help("NetPlay nickname");
   parser.add_option("--automap")
       .dest("automap")
@@ -218,9 +258,17 @@ void InitFromOptions(const optparse::Values& options)
 {
   const bool netplay = IsNetPlayMode(options);
   SetEnabled(netplay || options.is_set_by_user("sparking"));
+  if (options.is_set("state_dir"))
+    s_state_dir = static_cast<const char*>(options.get("state_dir"));
   if (IsEnabled())
   {
     Common::RegisterMsgAlertHandler(EventMsgAlertHandler);
+    State::SetOnAfterLoadCallback([] {
+      if (State::LastLoadSucceeded())
+        Emit("state_applied");
+      else
+        Emit("error", Json().Add("code", "state_load_failed"));
+    });
     // Deliberately never destroyed: avoids static-destruction-order issues with Core's event.
     static auto* const state_hook =
         new Common::EventHook(Core::AddOnStateChangedCallback(OnCoreStateChanged));
@@ -262,6 +310,7 @@ int RunNetPlay(const optparse::Values& options, const FrontendHooks& hooks)
     for (const std::string& path : options.all("exec"))
       np.game_paths.push_back(path);
   }
+  np.state_dir = s_state_dir;
   const std::string automap = static_cast<const char*>(options.get("automap"));
   np.automap = automap == "gc"   ? AutoMap::GameCube :
                automap == "none" ? AutoMap::None :

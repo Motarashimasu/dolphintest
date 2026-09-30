@@ -7,7 +7,8 @@ game starts it opens a bare render window that closes again when the game ends.
 
 All fork code lives in `Source/Core/DolphinNoGUI/Sparking*.{h,cpp}`. The only upstream files
 touched are `DolphinNoGUI/MainNoGUI.cpp` (hook calls, null-checks for the lobby's missing
-window) and `DolphinNoGUI/CMakeLists.txt`.
+window), `DolphinNoGUI/CMakeLists.txt`, and `Core/State.{h,cpp}` (a single-use permission for the
+netplay boot-state load, plus reporting whether a load succeeded).
 
 ## Launching
 
@@ -17,6 +18,8 @@ window) and `DolphinNoGUI/CMakeLists.txt`.
 | Host netplay | `dolphin-emu-nogui --netplay-host <game> [--nickname N] [--automap wii\|gc\|none]` |
 | Join netplay (room code) | `dolphin-emu-nogui --netplay-join <ROOMCODE> [--netplay-game <path>]...` |
 | Join netplay (direct) | `dolphin-emu-nogui --netplay-join 1.2.3.4:2626 [--netplay-game <path>]...` |
+
+Add `--state-dir <dir>` to any of these to enable battle states (see below).
 
 `-p win32` (Windows), `-p x11` (Linux) or `-p macos` pick the render window type; the default
 is the best one available. `-p headless` renders nothing and is only useful for testing.
@@ -52,7 +55,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `chat` | `text`, `self`, (`from` when self) | |
 | `game_starting` | | Host pressed start; save/code sync may follow |
 | `sync_begin` / `sync_progress` / `sync_end` | `title`, `bytes` / `pid`, `bytes` | Netplay save-data transfer |
-| `game_booting` | `path` | Boot parameters ready, window about to open |
+| `game_booting` | `path`, `battle_state` (file name or empty) | Boot parameters ready, window about to open |
 | `game_started` | | Emulation actually running (first transition to Running) — hide the Godot window, commands are safe now |
 | `emulation_state` | `state` (`starting`/`running`/`paused`/`stopping`/`uninitialized`) | Every core state change |
 | `game_stopping` | | Server ordered a stop |
@@ -64,9 +67,15 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `desync` | `frame`, `player` | |
 | `connection_lost` | | |
 | `state_saved` / `state_loaded` | `slot` | Solo only |
+| `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
+| `state_applied` | | A save state really loaded (solo load, or the netplay battle state at boot) |
+| `battle_state` | `active`, `name`, `sha1`, `local_ok`, host also `ready` | Battle-state selection changed or a player verified it |
 | `alert` | `severity`, `caption`, `text`, `auto_answer` | A Dolphin panic/assert alert. In Sparking mode these never open a Dolphin dialog; they are reported here and answered "yes/ok" so emulation continues. |
 | `error` | `code`, plus context | See below |
 | `exit` | `code` | Last line before the process exits |
+
+Host `players[]` entries also carry `state_status`: `ok`, `missing`, `mismatch`, `pending`, or
+empty when no battle state is selected.
 
 `players[].status` is one of `ok`, `wrong_hash`, `wrong_disc`, `wrong_revision`,
 `wrong_region`, `not_found`, `unknown`. Slots are 1–4, or -1 if unassigned.
@@ -74,7 +83,8 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 Error codes: `invalid_game`, `listen_failed`, `no_session_target`, `bad_address`,
 `connect_failed`, `connection_error`, `traversal_error` (+`reason`), `host_only`,
 `not_all_players_have_game`, `game_not_found`, `start_rejected`, `platform_init_failed`,
-`boot_failed`, `not_running`, `not_allowed_in_netplay`, `bad_argument`, `unknown_command`.
+`boot_failed`, `not_running`, `battle_state_not_ready`, `no_state_dir`, `bad_state_name`,
+`state_file_missing`, `state_save_failed`, `state_load_failed`, `not_allowed_in_game`, `not_allowed_in_netplay`, `bad_argument`, `unknown_command`.
 
 ## Commands (stdin)
 
@@ -89,12 +99,38 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `buffer <n>` | host | Set pad buffer |
 | `kick <pid>` | host | Kick a player |
 | `automap wii\|gc\|none` | host | Auto-assign joiners to Wii Remote / GC slots in join order |
+| `battle_state <file.sst>` / `battle_state none` | host | Select the state everyone boots into |
 | `players` | any | Re-send the `players` event now |
 | `pause` / `resume` | solo | |
 | `save_state <1-10>` / `load_state <1-10>` | solo | Slot save states |
+| `save_state_file <file.sst>` / `load_state_file <file.sst>` | solo | Capture / test a battle state in `--state-dir` |
 | `quit` | any | Stop any game and exit |
 
 Always send `hello` first. If Dolphin is launched without a stdin pipe it keeps running on EOF.
+
+## Battle states (Single Battle / Team Battle)
+
+The host picks a save state and every player boots straight into it, e.g. the BT3 character
+select screen of Single Battle or Team Battle, so nobody navigates menus online.
+
+1. **Capture once** (solo): launch the game with `--sparking --state-dir <dir>`, navigate to the
+   screen, send `save_state_file BT3-SingleBattle.sst`. Wait for `state_file_saved`. Capture with
+   the same per-game settings profile Godot uses for netplay.
+2. **Ship** the `.sst` files with the app so every player has identical bytes in `--state-dir`.
+3. **In the lobby** the host sends `battle_state BT3-SingleBattle.sst`. Dolphin hashes it (SHA-1)
+   and tells every peer the name + hash; each peer checks its own copy and replies `ok`,
+   `missing` or `mismatch` (visible in `players[].state_status` and `battle_state.ready`).
+   Joiners who arrive later are asked automatically.
+4. **`start`** is refused with `battle_state_not_ready` until every player is `ok`
+   (`start force` overrides; a peer without the file would then desync).
+5. At boot each peer injects the state and loads it before the first frame, emitting
+   `state_applied`. Upstream Dolphin blocks all state loads during netplay; the fork allows
+   exactly this one, because identical bytes loaded before any input keep everyone in sync.
+
+Only the name and hash cross the network (sent as hidden control messages on the netplay chat
+channel, so Core's packet protocol is unchanged). Names are restricted to `[A-Za-z0-9._-]`
+ending in `.sst`, so a host can't make peers read outside their state folder. States are tied
+to this Dolphin build; recapture them after updating the fork.
 
 ## Godot side (sketch)
 

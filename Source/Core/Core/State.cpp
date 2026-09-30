@@ -4,6 +4,7 @@
 #include "Core/State.h"
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <locale>
 #include <map>
@@ -201,12 +202,26 @@ static void DoState(Core::System& system, PointerWrap& p)
 #endif  // USE_RETRO_ACHIEVEMENTS
 }
 
+static std::atomic<bool> s_allow_netplay_boot_load{false};
+static std::atomic<bool> s_last_load_succeeded{false};
+
+bool LastLoadSucceeded()
+{
+  return s_last_load_succeeded;
+}
+
+void AllowNextNetPlayBootLoad()
+{
+  s_allow_netplay_boot_load = true;
+}
+
 static bool CheckIfStateLoadIsAllowed(Core::System& system)
 {
   if (!Core::IsRunningOrStarting(system))
     return false;
 
-  if (NetPlay::IsNetPlayRunning())
+  const bool netplay_boot_load_allowed = s_allow_netplay_boot_load.exchange(false);
+  if (NetPlay::IsNetPlayRunning() && !netplay_boot_load_allowed)
   {
     OSD::AddMessage("Loading savestates is disabled in Netplay to prevent desyncs");
     return false;
@@ -865,6 +880,7 @@ static void LoadAsFromCore(Core::System& system, std::string filename)
     }
   }
 
+  s_last_load_succeeded = was_file_read && loaded_successfully;
   if (s_on_after_load_callback)
     s_on_after_load_callback();
 }

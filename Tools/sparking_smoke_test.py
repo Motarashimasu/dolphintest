@@ -94,9 +94,13 @@ def main():
         return d
 
     common = ["-p", "headless", "-v", "Null"]
+    states = {n: os.path.join(work, f"states-{n}") for n in ("solo", "host", "joiner")}
+    for d in states.values():
+        os.makedirs(d)
     try:
         print("solo mode")
-        solo = Instance("solo", [exe, *common, "--sparking", "-u", user_dir("solo"), "-e", dol])
+        solo = Instance("solo", [exe, *common, "--sparking", "-u", user_dir("solo"),
+                                 "--state-dir", states["solo"], "-e", dol])
         check("ready event, mode=solo", solo.wait_for("ready")["mode"] == "solo")
         solo.send("hello")
         check("hello handshake", solo.wait_for("hello")["protocol"] == 1)
@@ -104,12 +108,22 @@ def main():
         check("game_started", True)
         solo.send("save_state 1")
         check("save_state acknowledged", solo.wait_for("state_saved")["slot"] == 1)
+        time.sleep(1)
+        solo.send("save_state_file battle.sst")
+        saved = solo.wait_for("state_file_saved")
+        battle = os.path.join(states["solo"], "battle.sst")
+        check(f"captured battle state (sha1 {saved['sha1'][:12]}...)",
+              os.path.getsize(battle) > 0 and saved["name"] == "battle.sst")
+        solo.send("save_state_file ../escape.sst")
+        check("path traversal in state name rejected",
+              solo.wait_for("error")["code"] == "bad_state_name")
         solo.send("quit")
         check("exit code 0", solo.wait_for("exit")["code"] == 0)
         solo.proc.wait(timeout=20)
 
         print("netplay: host + joiner")
         host = Instance("host", [exe, *common, "-u", user_dir("host"), "--netplay-host", dol,
+                                 "--state-dir", states["host"],
                                  "--nickname", "Goku", "--automap", "gc"])
         host.send("hello")
         check("host lobby_ready", host.wait_for("lobby_ready")["role"] == "host")
@@ -119,7 +133,8 @@ def main():
 
         joiner = Instance("joiner", [exe, *common, "-u", user_dir("joiner"),
                                      "--netplay-join", "127.0.0.1:26262",
-                                     "--netplay-game", dol, "--nickname", "Vegeta"])
+                                     "--netplay-game", dol, "--nickname", "Vegeta",
+                                     "--state-dir", states["joiner"]])
         joiner.send("hello")
         check("joiner lobby_ready", joiner.wait_for("lobby_ready")["role"] == "client")
         gc = joiner.wait_for("game_changed")
@@ -140,10 +155,42 @@ def main():
         check("joiner cannot start (host_only)",
               joiner.wait_for("error")["code"] == "host_only")
 
+        print("netplay: battle state sync")
+        shutil.copy(battle, states["host"])
+        with open(battle, "rb") as f:
+            tampered = bytearray(f.read())
+        tampered[-1] ^= 0xFF
+        with open(os.path.join(states["joiner"], "battle.sst"), "wb") as f:
+            f.write(tampered)
+
+        host.send("battle_state battle.sst")
+        bs = host.wait_for("battle_state", lambda e: e["active"])
+        check("host selects battle state, matching captured sha1", bs["sha1"] == saved["sha1"])
+        jbs = joiner.wait_for("battle_state", lambda e: e["active"])
+        check("joiner detects tampered copy (local_ok=false)", jbs["local_ok"] is False)
+        p = host.wait_for("players", lambda e: any(x["state_status"] == "mismatch"
+                                                   for x in e["players"]))
+        check("host sees joiner state_status=mismatch", bool(p))
         host.send("start")
+        check("start blocked: battle_state_not_ready",
+              host.wait_for("error")["code"] == "battle_state_not_ready")
+
+        shutil.copy(battle, states["joiner"])  # joiner gets the right bytes
+        host.send("battle_state battle.sst")
+        host.wait_for("battle_state", lambda e: e.get("ready") is True)
+        check("after fix, every player verified -> ready", True)
+
+        host.send("start")
+        hb = host.wait_for("game_booting", timeout=40)
+        jb = joiner.wait_for("game_booting", timeout=40)
+        check("both boot with battle state injected",
+              hb["battle_state"] == "battle.sst" and jb["battle_state"] == "battle.sst")
+        host.wait_for("state_applied", timeout=40)
+        joiner.wait_for("state_applied", timeout=40)
+        check("state actually loaded on both peers despite netplay", True)
         host.wait_for("game_started", timeout=40)
         joiner.wait_for("game_started", timeout=40)
-        check("both instances booted the game", True)
+        check("both instances running the match", True)
 
         time.sleep(3)
         joiner.send("stop")  # a client-initiated stop ends the match for everyone

@@ -12,10 +12,12 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Core/NetPlayClient.h"
@@ -48,7 +50,22 @@ struct NetPlayOptions
   std::string nickname;
   std::vector<std::string> game_paths;  // candidate files used to match the host's game
   AutoMap automap = AutoMap::Wiimote;
+  // Folder holding battle-entry save states (e.g. "BT3-SingleBattle.sst"). Every peer must have
+  // byte-identical copies; the host only sends the file name and its SHA-1.
+  std::string state_dir;
 };
+
+// Name + SHA-1 of the battle state everyone should boot into.
+struct BattleState
+{
+  std::string name;
+  std::string sha1;
+};
+
+// Validates a state file name received over the network (no paths, no spaces, ends in .sst).
+bool IsSafeStateName(std::string_view name);
+// SHA-1 of a file as lowercase hex, or nullopt if it can't be read.
+std::optional<std::string> HashFile(const std::string& path);
 
 class NetPlaySession final : public NetPlay::NetPlayUI
 {
@@ -127,6 +144,16 @@ public:
   void SetHostWiiSyncData(std::vector<u64> titles, std::string redirect_folder) override;
 
 private:
+  // Battle-state sync. Control messages ride on NetPlay chat with a marker prefix, so no new
+  // packet types are needed in Core; Sparking peers hide them from the chat log.
+  void CmdBattleState(const std::string& arg);
+  void SendControl(const std::string& body);
+  void BroadcastBattleState();
+  void HandleControlMessage(NetPlay::PlayerId from, const std::string& body);  // host thread
+  void EmitBattleState();
+  bool IsBattleStateReady();  // host: every current player verified the file
+  std::string StatePath(const std::string& name) const;
+
   void EmitPlayers();
   void EmitRoom();
   void ApplyAutoMap();
@@ -152,6 +179,12 @@ private:
   std::atomic<bool> m_game_running{false};
   std::atomic<bool> m_got_stop_request{false};
   bool m_quit = false;
+
+  std::string m_state_dir;
+  std::optional<BattleState> m_battle_state;       // guarded by m_game_mutex
+  bool m_battle_state_local_ok = false;            // guarded by m_game_mutex
+  std::map<NetPlay::PlayerId, std::string> m_state_acks;  // host: pid -> ok|missing|mismatch
+  std::atomic<bool> m_rebroadcast_state{false};
 
   std::string m_last_room_json;
   std::chrono::steady_clock::time_point m_last_player_emit{};

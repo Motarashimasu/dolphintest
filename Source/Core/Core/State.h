@@ -98,6 +98,14 @@ void Load(Core::System& system, u32 slot);
 void SaveAs(Core::System& system, std::string filename);
 void LoadAs(Core::System& system, std::string filename);
 
+// Dolphin-Sparking: permits exactly one state load while NetPlay is running -- the boot-time load
+// of a state file every peer has verified to be byte-identical, so all peers start in sync.
+// The permission is consumed by the next load attempt, whether or not it succeeds.
+void AllowNextNetPlayBootLoad();
+// Dolphin-Sparking: whether the most recent LoadAs/Load actually restored a state. Valid inside
+// the after-load callback, which upstream invokes on failure too.
+bool LastLoadSucceeded();
+
 void LoadLastSaved(Core::System& system, int i = 1);
 void SaveFirstSaved(Core::System& system);
 void UndoSaveState(Core::System& system);
