@@ -22,6 +22,8 @@
 #include "Core/DolphinAnalytics.h"
 #include "Core/Host.h"
 #include "Core/System.h"
+#include "DolphinNoGUI/SparkingFrontend.h"
+#include "DolphinNoGUI/SparkingIO.h"
 
 #include "UICommon/CommandLineParse.h"
 #ifdef USE_DISCORD_PRESENCE
@@ -42,7 +44,10 @@ static void signal_handler(int)
   }
 #endif
 
-  s_platform->RequestShutdown();
+  if (s_platform)
+    s_platform->RequestShutdown();
+  else
+    Sparking::RequestQuit();  // netplay lobby: no window yet
 }
 
 std::vector<std::string> Host_GetPreferredLocales()
@@ -65,13 +70,14 @@ bool Host_UIBlocksControllerState()
 
 void Host_Message(const HostMessageID id)
 {
-  if (id == HostMessageID::WMUserStop)
+  if (id == HostMessageID::WMUserStop && s_platform)
     s_platform->Stop();
 }
 
 void Host_UpdateTitle(const std::string& title)
 {
-  s_platform->SetTitle(title);
+  if (s_platform)
+    s_platform->SetTitle(title);
 }
 
 void Host_UpdateDisasmDialog()
@@ -92,7 +98,7 @@ void Host_RequestRenderWindowSize(int width, int height)
 
 bool Host_RendererHasFocus()
 {
-  return s_platform->IsWindowFocused();
+  return s_platform && s_platform->IsWindowFocused();
 }
 
 bool Host_RendererHasFullFocus()
@@ -103,7 +109,7 @@ bool Host_RendererHasFullFocus()
 
 bool Host_RendererIsFullscreen()
 {
-  return s_platform->IsWindowFullscreen();
+  return s_platform && s_platform->IsWindowFullscreen();
 }
 
 bool Host_TASInputHasFocus()
@@ -180,6 +186,22 @@ static std::unique_ptr<Platform> GetPlatform(const optparse::Values& options)
   return nullptr;
 }
 
+static void InstallSignalHandlers()
+{
+#ifdef _WIN32
+  std::signal(SIGINT, signal_handler);
+  std::signal(SIGTERM, signal_handler);
+#else
+  // Shut down cleanly on SIGINT and SIGTERM
+  struct sigaction sa;
+  sa.sa_handler = signal_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART | SA_RESETHAND;
+  sigaction(SIGINT, &sa, nullptr);
+  sigaction(SIGTERM, &sa, nullptr);
+#endif
+}
+
 #ifdef _WIN32
 #define main app_main
 #endif
@@ -210,8 +232,17 @@ int main(const int argc, char* argv[])
 #endif
       });
 
+  Sparking::AddCommandLineOptions(*parser);
+
   optparse::Values& options = CommandLineParse::ParseArguments(parser.get(), argc, argv);
   std::vector<std::string> args = parser->args();
+
+  Sparking::InitFromOptions(options);
+  if (Sparking::IsNetPlayMode(options))
+  {
+    return Sparking::RunNetPlay(
+        options, {s_platform, [&options] { return GetPlatform(options); }, InstallSignalHandlers});
+  }
 
   std::optional<std::string> save_state_path;
   if (options.is_set("save_state"))
@@ -288,24 +319,15 @@ int main(const int argc, char* argv[])
       s_platform->Stop();
   });
 
-#ifdef _WIN32
-  std::signal(SIGINT, signal_handler);
-  std::signal(SIGTERM, signal_handler);
-#else
-  // Shut down cleanly on SIGINT and SIGTERM
-  struct sigaction sa;
-  sa.sa_handler = signal_handler;
-  sigemptyset(&sa.sa_mask);
-  sa.sa_flags = SA_RESTART | SA_RESETHAND;
-  sigaction(SIGINT, &sa, nullptr);
-  sigaction(SIGTERM, &sa, nullptr);
-#endif
+  InstallSignalHandlers();
 
   DolphinAnalytics::Instance().ReportDolphinStart("nogui");
+  Sparking::StartSoloCommandReader(s_platform);
 
   if (!BootManager::BootCore(Core::System::GetInstance(), std::move(boot), wsi))
   {
     fprintf(stderr, "Could not boot the specified file\n");
+    Sparking::Emit("exit", Sparking::Json().Add("code", 1));
     return 1;
   }
 
@@ -319,6 +341,7 @@ int main(const int argc, char* argv[])
   Core::Shutdown(Core::System::GetInstance());
   s_platform.reset();
 
+  Sparking::Emit("exit", Sparking::Json().Add("code", 0));
   return 0;
 }
 

@@ -3,6 +3,12 @@ add_executable(dolphin-nogui
   Platform.h
   PlatformHeadless.cpp
   MainNoGUI.cpp
+  SparkingFrontend.cpp
+  SparkingFrontend.h
+  SparkingIO.cpp
+  SparkingIO.h
+  SparkingNetPlay.cpp
+  SparkingNetPlay.h
 )
 
 if(X11_FOUND)
