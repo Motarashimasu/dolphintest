@@ -21,6 +21,19 @@ netplay boot-state load, plus reporting whether a load succeeded).
 
 Add `--state-dir <dir>` to any of these to enable battle states (see below).
 
+Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never written to Dolphin.ini):
+
+| Option | Default | Effect |
+|---|---|---|
+| `--nand <dir>` | Dolphin's NAND | Wii NAND folder = where Wii game saves live. Use one folder for solo, another for netplay. |
+| `--pads gc\|keep` | `gc` | GameCube controllers in the first ports, all Wii Remotes off. `keep` uses Dolphin.ini as-is. |
+| `--local-players <1-4>` | `1` | Solo: how many GameCube ports are plugged in. |
+| `--automap gc\|wii\|none` | `gc` | Netplay host: joiners get the next free GameCube port. |
+| `--netplay-saves host-readonly\|keep` | `host-readonly` | Netplay: every player plays on the **host's** save, which is never written back. |
+
+Dolphin's own Discord Rich Presence ("Playing on Dolphin") is always switched off in Sparking
+mode so it can't overwrite the frontend's presence.
+
 `-p win32` (Windows), `-p x11` (Linux) or `-p macos` pick the render window type; the default
 is the best one available. `-p headless` renders nothing and is only useful for testing.
 
@@ -56,6 +69,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `game_starting` | | Host pressed start; save/code sync may follow |
 | `sync_begin` / `sync_progress` / `sync_end` | `title`, `bytes` / `pid`, `bytes` | Netplay save-data transfer |
 | `game_booting` | `path`, `battle_state` (file name or empty) | Boot parameters ready, window about to open |
+| `game_info` | `game_id`, `title`, `revision`, `netplay`, `session` (effective `pads`, `wiimotes`, `nand`, `dolphin_discord`, `netplay_save_load/write`) | Just before `game_started`; feed it to Discord presence |
 | `game_started` | | Emulation actually running (first transition to Running) — hide the Godot window, commands are safe now |
 | `emulation_state` | `state` (`starting`/`running`/`paused`/`stopping`/`uninitialized`) | Every core state change |
 | `game_stopping` | | Server ordered a stop |
@@ -131,6 +145,39 @@ Only the name and hash cross the network (sent as hidden control messages on the
 channel, so Core's packet protocol is unchanged). Names are restricted to `[A-Za-z0-9._-]`
 ending in `.sst`, so a host can't make peers read outside their state folder. States are tied
 to this Dolphin build; recapture them after updating the fork.
+
+## Save data: solo vs netplay
+
+Wii games keep their saves in Dolphin's emulated Wii NAND, so separate saves = separate NAND
+folders:
+
+```
+<app>/saves/solo/      ← --nand for solo play; normal progress, written as you play
+<app>/saves/netplay/   ← --nand for netplay; ships with your 100%-unlocked save
+```
+
+In netplay Dolphin boots every player on a temporary NAND and, with save sync on, copies the
+**host's** save into it. `--netplay-saves host-readonly` (the default) forces save sync on and
+write-back off, so everyone gets the unlocked save and it is never modified. Only the host's copy
+is used, but ship it in every install since anyone can host.
+
+To install the unlocked save into `saves/netplay/`: in regular Dolphin set
+Config → Paths → Wii NAND Root to that folder, then Tools → Import Wii Save (`data.bin`) — or copy
+the save's `title/00010000/<id>/data/` folder into the same place inside it.
+
+## Controllers
+
+With `--pads gc` (default) the game sees GameCube controllers only; Wii Remotes are off. The
+physical controller each player uses is Dolphin's GameCube pad profile for **port 1**
+(`Config/GCPadNew.ini`, `[GCPad1]`) — in netplay too, since each player's local port 1 drives
+their assigned slot. The frontend writes that profile from its controller settings.
+
+## Discord Rich Presence
+
+The frontend owns presence with its own Discord application ID (it runs across menus, the lobby
+and matches; Dolphin only runs during the latter two). Useful inputs: `game_info.title`,
+`room.code` (join secret for "Ask to Join"), `players` count/max, `battle_state.name`
+(Single/Team Battle), `game_started`/`game_stopped` for timestamps.
 
 ## Godot side (sketch)
 

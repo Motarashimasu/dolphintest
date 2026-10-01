@@ -49,7 +49,7 @@ struct NetPlayOptions
 
   std::string nickname;
   std::vector<std::string> game_paths;  // candidate files used to match the host's game
-  AutoMap automap = AutoMap::Wiimote;
+  AutoMap automap = AutoMap::GameCube;
   // Folder holding battle-entry save states (e.g. "BT3-SingleBattle.sst"). Every peer must have
   // byte-identical copies; the host only sends the file name and its SHA-1.
   std::string state_dir;
@@ -163,7 +163,7 @@ private:
   std::unique_ptr<NetPlay::NetPlayClient> m_client;
 
   std::vector<std::shared_ptr<const UICommon::GameFile>> m_games;  // immutable after Start()
-  AutoMap m_automap = AutoMap::Wiimote;
+  AutoMap m_automap = AutoMap::GameCube;
   bool m_use_traversal = false;
   std::string m_nickname;
 

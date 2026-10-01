@@ -4,6 +4,7 @@
 #include "DolphinNoGUI/SparkingFrontend.h"
 
 #include <OptionParser.h>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -11,10 +12,19 @@
 #include <string_view>
 #include <thread>
 
+#include "Common/Config/Config.h"
+#include "Common/FileUtil.h"
 #include "Common/MsgHandler.h"
 #include "Common/ScopeGuard.h"
 #include "Common/WindowSystemInfo.h"
 #include "Core/Boot/Boot.h"
+#include "Core/Config/MainSettings.h"
+#include "Core/Config/NetplaySettings.h"
+#include "Core/Config/UISettings.h"
+#include "Core/Config/WiimoteSettings.h"
+#include "Core/ConfigManager.h"
+#include "Core/HW/SI/SI_Device.h"
+#include "Core/HW/Wiimote.h"
 #include "Core/BootManager.h"
 #include "Core/Core.h"
 #include "Core/DolphinAnalytics.h"
@@ -52,12 +62,48 @@ std::string_view StateName(Core::State state)
   return "unknown";
 }
 
+// Effective settings for this boot (after Dolphin's own netplay overrides), for debugging the
+// frontend's controller / save-profile setup.
+std::string SessionSummary()
+{
+  std::vector<std::string> pads, wiimotes;
+  for (int i = 0; i < 4; ++i)
+  {
+    const auto dev = Config::Get(Config::GetInfoForSIDevice(i));
+    pads.push_back(Json::Escape(dev == SerialInterface::SIDEVICE_GC_CONTROLLER ? "gc" :
+                                dev == SerialInterface::SIDEVICE_NONE          ? "none" :
+                                                                                 "other"));
+    const auto src = Config::Get(Config::GetInfoForWiimoteSource(i));
+    wiimotes.push_back(Json::Escape(src == WiimoteSource::None     ? "none" :
+                                    src == WiimoteSource::Emulated ? "emulated" :
+                                                                     "real"));
+  }
+  return Json()
+      .AddRaw("pads", JsonArray(pads))
+      .AddRaw("wiimotes", JsonArray(wiimotes))
+      .Add("nand", File::GetUserPath(D_WIIROOT_IDX))
+      .Add("dolphin_discord", Config::Get(Config::MAIN_USE_DISCORD_PRESENCE))
+      .Add("netplay_save_load", Config::Get(Config::NETPLAY_SAVEDATA_LOAD))
+      .Add("netplay_save_write", Config::Get(Config::NETPLAY_SAVEDATA_WRITE))
+      .Str();
+}
+
 // "game_started" fires on the first transition to Running (not when BootCore returns, which is
 // before the emulation thread is up), so the frontend can hide itself and send commands safely.
 void OnCoreStateChanged(Core::State state)
 {
   if (state == Core::State::Running && !s_game_started.exchange(true))
+  {
+    // What the frontend needs for Discord Rich Presence / UI without parsing Dolphin's title.
+    const SConfig& sc = SConfig::GetInstance();
+    Emit("game_info", Json()
+                          .Add("game_id", sc.GetGameID())
+                          .Add("title", sc.GetTitleDescription())
+                          .Add("revision", static_cast<int>(sc.GetRevision()))
+                          .Add("netplay", NetPlay::IsNetPlayRunning())
+                          .AddRaw("session", SessionSummary()));
     Emit("game_started");
+  }
   else if (state == Core::State::Uninitialized)
     s_game_started = false;
   Emit("emulation_state", Json().Add("state", StateName(state)));
@@ -214,8 +260,78 @@ void RunNetPlayGame(const FrontendHooks& hooks, std::unique_ptr<BootParameters> 
 }
 }  // namespace
 
+// Session-wide setting overrides. They go into the command-line config layer rather than the
+// "current run" layer because Dolphin clears the latter after every game, and a netplay session
+// boots many games in one process. Nothing here is written to the user's Dolphin.ini.
+static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
+{
+  const auto layer = Config::GetLayer(Config::LayerType::CommandLine);
+  if (!layer)
+    return;
+
+  // The frontend owns Discord Rich Presence (with its own app ID, across menus and matches), so
+  // Dolphin's built-in "Playing on Dolphin" presence must never connect.
+  layer->Set(Config::MAIN_USE_DISCORD_PRESENCE, false);
+
+  // Separate save data: point the Wii NAND (where Wii game saves live) at a profile folder.
+  if (options.is_set("nand"))
+    layer->Set(Config::MAIN_FS_PATH, std::string(static_cast<const char*>(options.get("nand"))));
+
+  // Controllers: GameCube pads in the first N ports, no Wii Remotes. In netplay Dolphin's own
+  // netplay layer assigns ports from the GC slot mapping, which overrides this.
+  const std::string pads = static_cast<const char*>(options.get("pads"));
+  if (pads == "gc")
+  {
+    int local_players = std::atoi(static_cast<const char*>(options.get("local_players")));
+    local_players = std::clamp(local_players, 1, 4);
+    for (int i = 0; i < 4; ++i)
+    {
+      layer->Set(Config::GetInfoForSIDevice(i), i < local_players ?
+                                                    SerialInterface::SIDEVICE_GC_CONTROLLER :
+                                                    SerialInterface::SIDEVICE_NONE);
+    }
+    for (int i = 0; i < 5; ++i)  // 4 Wii Remotes + Balance Board
+      layer->Set(Config::GetInfoForWiimoteSource(i), WiimoteSource::None);
+    layer->Set(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING, false);
+  }
+
+  // Netplay saves: everyone plays on the HOST's save (the supplied all-unlocked one), and nothing
+  // is ever written back, so that save stays pristine forever.
+  if (netplay && std::string_view(static_cast<const char*>(options.get("netplay_saves"))) ==
+                     "host-readonly")
+  {
+    layer->Set(Config::NETPLAY_SAVEDATA_LOAD, true);
+    layer->Set(Config::NETPLAY_SAVEDATA_WRITE, false);
+    layer->Set(Config::NETPLAY_SAVEDATA_SYNC_ALL_WII, false);
+  }
+
+  Config::OnConfigChanged();
+}
+
 void AddCommandLineOptions(optparse::OptionParser& parser)
 {
+  parser.add_option("--nand")
+      .dest("nand")
+      .action("store")
+      .metavar("DIR")
+      .help("Wii NAND folder for this session (separate save data per profile)");
+  parser.add_option("--pads")
+      .dest("pads")
+      .action("store")
+      .choices({"gc", "keep"})
+      .set_default("gc")
+      .help("Sparking mode controllers: gc (GameCube pads, no Wii Remotes; default) or keep");
+  parser.add_option("--local-players")
+      .dest("local_players")
+      .action("store")
+      .set_default("1")
+      .help("Solo: number of local GameCube pads (1-4, default 1)");
+  parser.add_option("--netplay-saves")
+      .dest("netplay_saves")
+      .action("store")
+      .choices({"host-readonly", "keep"})
+      .set_default("host-readonly")
+      .help("Netplay: everyone uses the host's save, never written back (default), or keep");
   parser.add_option("--sparking")
       .dest("sparking")
       .action("store_true")
@@ -245,8 +361,8 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .dest("automap")
       .action("store")
       .choices({"wii", "gc", "none"})
-      .set_default("wii")
-      .help("Host: auto-assign joining players to Wii Remote or GC slots: wii (default), gc, none");
+      .set_default("gc")
+      .help("Host: auto-assign joining players to GC (default) or Wii Remote slots: gc, wii, none");
 }
 
 bool IsNetPlayMode(const optparse::Values& options)
@@ -262,6 +378,7 @@ void InitFromOptions(const optparse::Values& options)
     s_state_dir = static_cast<const char*>(options.get("state_dir"));
   if (IsEnabled())
   {
+    ApplySessionOverrides(options, netplay);
     Common::RegisterMsgAlertHandler(EventMsgAlertHandler);
     State::SetOnAfterLoadCallback([] {
       if (State::LastLoadSucceeded())
@@ -312,9 +429,9 @@ int RunNetPlay(const optparse::Values& options, const FrontendHooks& hooks)
   }
   np.state_dir = s_state_dir;
   const std::string automap = static_cast<const char*>(options.get("automap"));
-  np.automap = automap == "gc"   ? AutoMap::GameCube :
+  np.automap = automap == "wii"  ? AutoMap::Wiimote :
                automap == "none" ? AutoMap::None :
-                                   AutoMap::Wiimote;
+                                   AutoMap::GameCube;
 
   std::string user_directory;
   if (options.is_set("user"))

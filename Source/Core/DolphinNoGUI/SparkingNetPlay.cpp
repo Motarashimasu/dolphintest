@@ -402,12 +402,27 @@ void NetPlaySession::ApplyAutoMap()
     changed = true;
   }
 
-  if (!changed)
-    return;
-  if (m_automap == AutoMap::Wiimote)
-    m_server->SetWiimoteMapping(map);
-  else
-    m_server->SetPadMapping(map);
+  if (changed)
+  {
+    if (m_automap == AutoMap::Wiimote)
+      m_server->SetWiimoteMapping(map);
+    else
+      m_server->SetPadMapping(map);
+  }
+
+  // Upstream gives every joiner BOTH a GC port and a Wii Remote. Clear the other kind so the game
+  // only sees the controller type we chose (e.g. no stray Wii Remotes in GameCube mode).
+  const NetPlay::PadMappingArray other = m_automap == AutoMap::Wiimote ?
+                                             m_server->GetPadMapping() :
+                                             m_server->GetWiimoteMapping();
+  if (std::ranges::any_of(other, [](NetPlay::PlayerId pid) { return pid != 0; }))
+  {
+    const NetPlay::PadMappingArray empty{};
+    if (m_automap == AutoMap::Wiimote)
+      m_server->SetPadMapping(empty);
+    else
+      m_server->SetWiimoteMapping(empty);
+  }
 }
 
 bool NetPlaySession::HandleCommand(const Command& cmd)

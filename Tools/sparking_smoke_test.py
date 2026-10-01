@@ -40,6 +40,7 @@ class Instance:
     def __init__(self, name, argv):
         self.name = name
         self.events = queue.Queue()
+        self.history = []  # every event ever received, for order-independent checks
         self.log = []
         self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -50,12 +51,24 @@ class Instance:
             line = line.rstrip("\n")
             self.log.append(line)
             if line.startswith(PREFIX):
-                self.events.put(json.loads(line[len(PREFIX):]))
+                ev = json.loads(line[len(PREFIX):])
+                self.history.append(ev)
+                self.events.put(ev)
         self.events.put({"event": "__eof__"})
 
     def send(self, cmd):
         self.proc.stdin.write(cmd + "\n")
         self.proc.stdin.flush()
+
+    def seen(self, event, pred=lambda e: True, timeout=20):
+        """Like wait_for, but also matches events that already arrived (any order)."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            for e in list(self.history):
+                if e["event"] == event and pred(e):
+                    return e
+            time.sleep(0.1)
+        raise AssertionError(f"{self.name}: never saw '{event}'")
 
     def wait_for(self, event, pred=lambda e: True, timeout=20):
         deadline = time.time() + timeout
@@ -94,18 +107,25 @@ def main():
         return d
 
     common = ["-p", "headless", "-v", "Null"]
+    nands = {n: os.path.join(work, f"nand-{n}") for n in ("solo", "host", "joiner")}
     states = {n: os.path.join(work, f"states-{n}") for n in ("solo", "host", "joiner")}
     for d in states.values():
         os.makedirs(d)
     try:
         print("solo mode")
         solo = Instance("solo", [exe, *common, "--sparking", "-u", user_dir("solo"),
-                                 "--state-dir", states["solo"], "-e", dol])
+                                 "--state-dir", states["solo"],
+                                 "--nand", nands["solo"], "--local-players", "2", "-e", dol])
         check("ready event, mode=solo", solo.wait_for("ready")["mode"] == "solo")
         solo.send("hello")
         check("hello handshake", solo.wait_for("hello")["protocol"] == 1)
         solo.wait_for("game_started")
         check("game_started", True)
+        info = solo.seen("game_info")["session"]
+        check(f"solo: 2 GameCube pads, no Wii Remotes {info['pads']}",
+              info["pads"] == ["gc", "gc", "none", "none"] and set(info["wiimotes"]) == {"none"})
+        check("solo: own save folder (NAND)", info["nand"].rstrip("/\\").endswith("nand-solo"))
+        check("solo: Dolphin's built-in Discord presence off", info["dolphin_discord"] is False)
         solo.send("save_state 1")
         check("save_state acknowledged", solo.wait_for("state_saved")["slot"] == 1)
         time.sleep(1)
@@ -123,7 +143,7 @@ def main():
 
         print("netplay: host + joiner")
         host = Instance("host", [exe, *common, "-u", user_dir("host"), "--netplay-host", dol,
-                                 "--state-dir", states["host"],
+                                 "--state-dir", states["host"], "--nand", nands["host"],
                                  "--nickname", "Goku", "--automap", "gc"])
         host.send("hello")
         check("host lobby_ready", host.wait_for("lobby_ready")["role"] == "host")
@@ -134,7 +154,7 @@ def main():
         joiner = Instance("joiner", [exe, *common, "-u", user_dir("joiner"),
                                      "--netplay-join", "127.0.0.1:26262",
                                      "--netplay-game", dol, "--nickname", "Vegeta",
-                                     "--state-dir", states["joiner"]])
+                                     "--state-dir", states["joiner"], "--nand", nands["joiner"]])
         joiner.send("hello")
         check("joiner lobby_ready", joiner.wait_for("lobby_ready")["role"] == "client")
         gc = joiner.wait_for("game_changed")
@@ -191,6 +211,14 @@ def main():
         host.wait_for("game_started", timeout=40)
         joiner.wait_for("game_started", timeout=40)
         check("both instances running the match", True)
+        for inst in (host, joiner):
+            si = inst.seen("game_info")["session"]
+            check(f"{inst.name}: netplay mapped 2 GameCube pads, no Wii Remotes {si}",
+                  si["pads"] == ["gc", "gc", "none", "none"] and set(si["wiimotes"]) == {"none"})
+            check(f"{inst.name}: netplay uses host save, read-only",
+                  si["netplay_save_load"] is True and si["netplay_save_write"] is False)
+            check(f"{inst.name}: netplay save folder separate from solo",
+                  "nand-solo" not in si["nand"])
 
         time.sleep(3)
         joiner.send("stop")  # a client-initiated stop ends the match for everyone
@@ -209,11 +237,57 @@ def main():
         check("host exits on stdin EOF", host.wait_for("exit")["code"] == 0)
         for inst in (host, joiner):
             inst.proc.wait(timeout=20)
+        discord_check(exe, dol)
         print("ALL PASSED")
     finally:
         for inst in [v for v in locals().values() if isinstance(v, Instance)]:
             if inst.proc.poll() is None:
                 inst.proc.kill()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def discord_check(exe, dol):
+    """A fake Discord IPC socket: Dolphin's built-in presence must NOT connect in Sparking mode.
+    Plain dolphin-emu-nogui is the control (it should connect if Discord support is compiled in)."""
+    import socket
+    print("discord: built-in presence suppressed")
+    work = tempfile.mkdtemp(prefix="sparking-discord-")
+    sock_path = os.path.join(work, "discord-ipc-0")
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(sock_path)
+    srv.listen(4)
+    srv.settimeout(0.5)
+    env = dict(os.environ, XDG_RUNTIME_DIR=work, TMPDIR=work)
+    user = os.path.join(work, "user", "Config")
+    os.makedirs(user)
+    with open(os.path.join(user, "Dolphin.ini"), "w") as f:
+        f.write("[Analytics]\nPermissionAsked = True\n[General]\nUseDiscordPresence = True\n")
+
+    def connections(extra):
+        p = subprocess.Popen([exe, "-p", "headless", "-v", "Null", "-u", os.path.dirname(user),
+                              *extra, "-e", dol], env=env, stdin=subprocess.PIPE,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        n, deadline = 0, time.time() + 6
+        while time.time() < deadline:
+            try:
+                c, _ = srv.accept()
+                n += 1
+                c.close()
+            except socket.timeout:
+                pass
+        p.kill()
+        p.wait()
+        return n
+
+    try:
+        control = connections([])
+        if control == 0:
+            print("  SKIP  Discord support not compiled into this build")
+            return
+        check(f"control: plain nogui connects to Discord ({control}x)", True)
+        check("sparking mode never connects to Discord", connections(["--sparking"]) == 0)
+    finally:
+        srv.close()
         shutil.rmtree(work, ignore_errors=True)
 
 
