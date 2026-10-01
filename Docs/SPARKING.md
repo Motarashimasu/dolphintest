@@ -183,7 +183,11 @@ the save's `title/00010000/<id>/data/` folder into the same place inside it.
 
 ## Gecko codes
 
-- **Per-game code tab in Godot:** run `dolphin-emu-nogui --list-gecko RBTEA4` once per game. It
+Game IDs: BT3 = `RDSE70` (US) / `RDSPAF` (EU) / `RDSJAF` (Sparking! Meteor); BT2 = `RDBE70` (US) /
+`RDBPAF` (EU) / `RDBJAF` (Sparking! Neo). Dolphin ships no Gecko codes for these games; codes
+come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
+
+- **Per-game code tab in Godot:** run `dolphin-emu-nogui --list-gecko RDSE70` once per game. It
   prints a `gecko_codes` event with every code from Dolphin's bundled and user `GameSettings`
   (`name`, `creator`, `notes`, `default_enabled`, `user_defined`, `lines`). Godot stores the
   player's toggles itself.
