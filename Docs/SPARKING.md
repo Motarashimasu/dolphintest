@@ -28,6 +28,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--nand <dir>` | Dolphin's NAND | Wii NAND folder = where Wii game saves live. Use one folder for solo, another for netplay. |
 | `--pads gc\|keep` | `gc` | GameCube controllers in the first ports, all Wii Remotes off. `keep` uses Dolphin.ini as-is. |
 | `--local-players <1-4>` | `1` | Solo: how many GameCube ports are plugged in. |
+| `--netplay-direct` | off | Host by IP:port instead of a room code. By default hosting uses Dolphin's traversal server (`stun.dolphin-emu.org`, ports 6262/6226) and gets a room code, whatever `Dolphin.ini` says. |
 | `--automap gc\|wii\|none` | `gc` | Netplay host: joiners get the next free GameCube port. |
 | `--gecko <name>` (repeatable) / `--no-gecko` | ini selection | Solo: exactly these Gecko codes on, everything else off, for this run. |
 | `--netplay-gecko <port>=<name>` (repeatable) | none | Netplay: the player on GameCube port `<port>` runs only these codes. Everything else is off for everyone, and Dolphin's "Sync Codes" is forced off. |

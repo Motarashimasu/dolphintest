@@ -199,7 +199,7 @@ def main():
 
         host = Instance("host", [exe, *common, "-u", user_dir("host"), "--netplay-host", dol,
                                  "--state-dir", states["host"], "--nand", nands["host"],
-                                 "--nickname", "Goku", "--automap", "gc",
+                                 "--nickname", "Goku", "--automap", "gc", "--netplay-direct",
                                  "--netplay-gecko", "1=Splitscreen Remover P1",
                                  "--netplay-gecko", "2=Splitscreen Remover P2"])
         host.send("hello")

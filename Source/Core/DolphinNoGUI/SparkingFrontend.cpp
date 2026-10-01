@@ -309,6 +309,14 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
     layer->Set(Config::NETPLAY_SAVEDATA_SYNC_ALL_WII, false);
   }
 
+  // Hosting gets a room code from Dolphin's traversal server (stun.dolphin-emu.org) unless the
+  // frontend explicitly asks for direct IP hosting. Upstream's default is "direct".
+  if (netplay)
+  {
+    layer->Set(Config::NETPLAY_TRAVERSAL_CHOICE,
+               std::string(options.is_set_by_user("netplay_direct") ? "direct" : "traversal"));
+  }
+
   // Each player runs their own per-port Gecko codes (see --netplay-gecko), so the host's codes
   // must not be pushed onto everyone.
   if (netplay)
@@ -384,6 +392,10 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .metavar("DIR")
       .help("Folder of battle-entry save states for battle_state / save_state_file");
+  parser.add_option("--netplay-direct")
+      .dest("netplay_direct")
+      .action("store_true")
+      .help("Host by IP:port instead of a traversal room code (needs port forwarding)");
   parser.add_option("--nickname").dest("nickname").action("store").help("NetPlay nickname");
   parser.add_option("--automap")
       .dest("automap")
