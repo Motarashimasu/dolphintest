@@ -111,7 +111,9 @@ bool IsSafeStateName(std::string_view name)
 {
   if (name.empty() || name.size() > 96 || name.front() == '.')
     return false;
-  if (name.size() < 5 || name.substr(name.size() - 4) != ".sst")
+  // .sst is our naming; .sav is what regular Dolphin's "Save State to File" writes. Same format.
+  if (name.size() < 5 ||
+      (name.substr(name.size() - 4) != ".sst" && name.substr(name.size() - 4) != ".sav"))
     return false;
   for (const char c : name)
   {

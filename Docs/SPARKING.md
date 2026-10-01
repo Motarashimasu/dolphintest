@@ -151,7 +151,7 @@ select screen of Single Battle or Team Battle, so nobody navigates menus online.
 
 Only the name and hash cross the network (sent as hidden control messages on the netplay chat
 channel, so Core's packet protocol is unchanged). Names are restricted to `[A-Za-z0-9._-]`
-ending in `.sst`, so a host can't make peers read outside their state folder. States are tied
+ending in `.sst` or `.sav` (regular Dolphin's "Save State to File" format), so a host can't make peers read outside their state folder. States are tied
 to this Dolphin build; recapture them after updating the fork.
 
 ## Save data: solo vs netplay

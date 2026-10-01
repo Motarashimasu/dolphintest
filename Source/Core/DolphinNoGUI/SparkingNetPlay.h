@@ -65,7 +65,7 @@ struct BattleState
   std::string sha1;
 };
 
-// Validates a state file name received over the network (no paths, no spaces, ends in .sst).
+// Validates a state file name received over the network (no paths, no spaces, .sst or .sav).
 bool IsSafeStateName(std::string_view name);
 // SHA-1 of a file as lowercase hex, or nullopt if it can't be read.
 std::optional<std::string> HashFile(const std::string& path);
