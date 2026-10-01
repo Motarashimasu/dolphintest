@@ -106,7 +106,9 @@ def main():
             # SyncCodes = True on purpose: Sparking must force it off for per-player codes.
             f.write("[NetPlay]\nTraversalChoice = direct\nHostPort = 26262\n"
                     "SyncSaves = False\nSyncCodes = True\n"
-                    "[Core]\nEnableCheats = True\n"
+                    # No EnableCheats here on purpose: Dolphin's default is off, and Sparking
+                    # must still run the chosen codes.
+
                     "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
         return d
 

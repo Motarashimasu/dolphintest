@@ -317,6 +317,11 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
                std::string(options.is_set_by_user("netplay_direct") ? "direct" : "traversal"));
   }
 
+  // Dolphin runs no Gecko code at all unless "Enable Cheats" is on (default off). Sparking decides
+  // exactly which codes run (--gecko / --no-gecko / ini defaults / --netplay-gecko), so the master
+  // switch must be on. In netplay the host's value is pushed to every player.
+  layer->Set(Config::MAIN_ENABLE_CHEATS, true);
+
   // Each player runs their own per-port Gecko codes (see --netplay-gecko), so the host's codes
   // must not be pushed onto everyone.
   if (netplay)
