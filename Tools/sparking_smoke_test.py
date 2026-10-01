@@ -99,12 +99,26 @@ def main():
 
     def user_dir(name):
         d = os.path.join(work, name)
+        if os.path.isdir(d):
+            return d
         os.makedirs(os.path.join(d, "Config"))
         with open(os.path.join(d, "Config", "Dolphin.ini"), "w") as f:
+            # SyncCodes = True on purpose: Sparking must force it off for per-player codes.
             f.write("[NetPlay]\nTraversalChoice = direct\nHostPort = 26262\n"
-                    "SyncSaves = False\nSyncCodes = False\n"
+                    "SyncSaves = False\nSyncCodes = True\n"
+                    "[Core]\nEnableCheats = True\n"
                     "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
         return d
+
+    def write_gecko_ini(name, game_id):
+        d = os.path.join(user_dir(name), "GameSettings")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, f"{game_id}.ini"), "w") as f:
+            f.write("[Gecko]\n"
+                    "$Splitscreen Remover P1 [Sparking]\n04001000 00000001\n"
+                    "$Splitscreen Remover P2 [Sparking]\n04001004 00000002\n"
+                    "$Infinite Health [Sparking]\n04001008 00000003\n"
+                    "[Gecko_Enabled]\n$Infinite Health\n")
 
     common = ["-p", "headless", "-v", "Null"]
     nands = {n: os.path.join(work, f"nand-{n}") for n in ("solo", "host", "joiner")}
@@ -121,6 +135,7 @@ def main():
         check("hello handshake", solo.wait_for("hello")["protocol"] == 1)
         solo.wait_for("game_started")
         check("game_started", True)
+        game_id = solo.seen("game_info")["game_id"]
         info = solo.seen("game_info")["session"]
         check(f"solo: 2 GameCube pads, no Wii Remotes {info['pads']}",
               info["pads"] == ["gc", "gc", "none", "none"] and set(info["wiimotes"]) == {"none"})
@@ -141,6 +156,36 @@ def main():
         check("exit code 0", solo.wait_for("exit")["code"] == 0)
         solo.proc.wait(timeout=20)
 
+        print("gecko codes")
+        for n in ("solo", "host", "joiner"):
+            write_gecko_ini(n, game_id)
+        lister = Instance("list", [exe, "-u", user_dir("solo"), "--list-gecko", game_id])
+        codes = lister.wait_for("gecko_codes")["codes"]
+        check("list-gecko returns the game's 3 codes " + str([c["name"] for c in codes]),
+              [c["name"] for c in codes] == ["Splitscreen Remover P1", "Splitscreen Remover P2",
+                                             "Infinite Health"])
+        lister.proc.wait(timeout=20)
+
+        def solo_gecko(extra):
+            inst = Instance("solo-gecko", [exe, *common, "--sparking", "-u", user_dir("solo"),
+                                           "--nand", nands["solo"], *extra, "-e", dol])
+            inst.send("hello")
+            ga = inst.seen("gecko_active") if extra else None
+            count = inst.seen("game_info")["session"]["gecko_active_count"]
+            inst.send("quit")
+            inst.wait_for("exit")
+            inst.proc.wait(timeout=20)
+            return ga, count
+        _, count = solo_gecko([])
+        check(f"solo default: Dolphin's ini selection used ({count} code: Infinite Health)",
+              count == 1)
+        ga, count = solo_gecko(["--gecko", "Splitscreen Remover P1", "--gecko", "Nope"])
+        check(f"solo --gecko: exactly the chosen code, ini's choice off (active={count})",
+              count == 1 and ga["codes"] == ["Splitscreen Remover P1"])
+        check("solo --gecko: unknown code reported", ga["missing"] == ["Nope"])
+        ga, count = solo_gecko(["--no-gecko"])
+        check("solo --no-gecko: all codes off", count == 0 and ga["codes"] == [])
+
         print("netplay: host + joiner")
         # Netplay saves: host has the "unlocked" save, joiner a different one. A DOL has title ID 0,
         # so its Wii save folder is title/00000000/00000000/data inside each NAND.
@@ -154,7 +199,9 @@ def main():
 
         host = Instance("host", [exe, *common, "-u", user_dir("host"), "--netplay-host", dol,
                                  "--state-dir", states["host"], "--nand", nands["host"],
-                                 "--nickname", "Goku", "--automap", "gc"])
+                                 "--nickname", "Goku", "--automap", "gc",
+                                 "--netplay-gecko", "1=Splitscreen Remover P1",
+                                 "--netplay-gecko", "2=Splitscreen Remover P2"])
         host.send("hello")
         check("host lobby_ready", host.wait_for("lobby_ready")["role"] == "host")
         room = host.wait_for("room", lambda e: e["state"] == "ready")
@@ -164,7 +211,9 @@ def main():
         joiner = Instance("joiner", [exe, *common, "-u", user_dir("joiner"),
                                      "--netplay-join", "127.0.0.1:26262",
                                      "--netplay-game", dol, "--nickname", "Vegeta",
-                                     "--state-dir", states["joiner"], "--nand", nands["joiner"]])
+                                     "--state-dir", states["joiner"], "--nand", nands["joiner"],
+                                     "--netplay-gecko", "1=Splitscreen Remover P1",
+                                     "--netplay-gecko", "2=Splitscreen Remover P2"])
         joiner.send("hello")
         check("joiner lobby_ready", joiner.wait_for("lobby_ready")["role"] == "client")
         gc = joiner.wait_for("game_changed")
@@ -244,6 +293,14 @@ def main():
                   si["netplay_save_load"] is True and si["netplay_save_write"] is False)
             check(f"{inst.name}: netplay save folder separate from solo",
                   "nand-solo" not in si["nand"])
+        hg, jg = host.seen("gecko_active"), joiner.seen("gecko_active")
+        check(f"host on port {hg['port']} runs only {hg['codes']}",
+              hg["port"] == 1 and hg["codes"] == ["Splitscreen Remover P1"])
+        check(f"joiner on port {jg['port']} runs only {jg['codes']}",
+              jg["port"] == 2 and jg["codes"] == ["Splitscreen Remover P2"])
+        for inst in (host, joiner):
+            n = inst.seen("game_info")["session"]["gecko_active_count"]
+            check(f"{inst.name}: exactly 1 code live in the emulator, ini/host codes off", n == 1)
 
         time.sleep(3)
         joiner.send("stop")  # a client-initiated stop ends the match for everyone

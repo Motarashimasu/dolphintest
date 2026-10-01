@@ -238,9 +238,9 @@ int main(const int argc, char* argv[])
   std::vector<std::string> args = parser->args();
 
   Sparking::InitFromOptions(options);
-  if (Sparking::IsNetPlayMode(options))
+  if (Sparking::OwnsMain(options))
   {
-    return Sparking::RunNetPlay(
+    return Sparking::RunMain(
         options, {s_platform, [&options] { return GetPlatform(options); }, InstallSignalHandlers});
   }
 
@@ -322,7 +322,7 @@ int main(const int argc, char* argv[])
   InstallSignalHandlers();
 
   DolphinAnalytics::Instance().ReportDolphinStart("nogui");
-  Sparking::StartSoloCommandReader(s_platform);
+  Sparking::BeforeSoloBoot(options, s_platform);
 
   if (!BootManager::BootCore(Core::System::GetInstance(), std::move(boot), wsi))
   {

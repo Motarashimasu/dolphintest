@@ -3,6 +3,8 @@
 
 #include "DolphinNoGUI/SparkingNetPlay.h"
 
+#include "DolphinNoGUI/SparkingGecko.h"
+
 #include <algorithm>
 #include <charconv>
 #include <filesystem>
@@ -179,6 +181,7 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
   m_nickname = options.nickname.empty() ? Config::Get(Config::NETPLAY_NICKNAME) : options.nickname;
   m_automap = options.automap;
   m_state_dir = options.state_dir;
+  m_port_gecko = options.port_gecko;
 
   // Build the candidate list used to match whatever game the host picks. We check the paths the
   // frontend passed explicitly first, then Dolphin's configured game folders.
@@ -636,6 +639,40 @@ void NetPlaySession::BootGame(const std::string& filename,
       State::AllowNextNetPlayBootLoad();
     }
   }
+  // Gecko: all codes off except the ones assigned to the GameCube port this player landed on.
+  {
+    int port = 0;
+    const auto& pad_map = m_client->GetPadMapping();
+    for (int i = 0; i < 4 && port == 0; ++i)
+    {
+      if (pad_map[i] == m_client->GetLocalPlayerId())
+        port = i + 1;
+    }
+    std::shared_ptr<const UICommon::GameFile> game;
+    {
+      std::lock_guard lk(m_game_mutex);
+      game = FindGameFile(m_current_game);
+    }
+    const auto it = m_port_gecko.find(port);
+    const std::vector<std::string> names = it != m_port_gecko.end() ? it->second :
+                                                                       std::vector<std::string>{};
+    std::vector<std::string> missing;
+    if (game)
+      missing = ActivateExclusiveGeckoCodes(game->GetGameID(), game->GetRevision(), names);
+    std::vector<std::string> active, miss;
+    for (const auto& n : names)
+    {
+      if (std::ranges::find(missing, n) == missing.end())
+        active.push_back(Json::Escape(n));
+    }
+    for (const auto& n : missing)
+      miss.push_back(Json::Escape(n));
+    Emit("gecko_active", Json()
+                             .Add("port", port)
+                             .AddRaw("codes", JsonArray(active))
+                             .AddRaw("missing", JsonArray(miss)));
+  }
+
   Emit("game_booting", Json().Add("path", filename).Add("battle_state", state_name));
 }
 

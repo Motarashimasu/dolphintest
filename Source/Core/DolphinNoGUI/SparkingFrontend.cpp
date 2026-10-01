@@ -32,7 +32,10 @@
 #include "Core/State.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/Platform.h"
+#include "Core/GeckoCode.h"
+#include "DolphinNoGUI/SparkingGecko.h"
 #include "DolphinNoGUI/SparkingIO.h"
+#include "UICommon/GameFile.h"
 #include "DolphinNoGUI/SparkingNetPlay.h"
 #include "UICommon/UICommon.h"
 
@@ -85,6 +88,7 @@ std::string SessionSummary()
       .Add("dolphin_discord", Config::Get(Config::MAIN_USE_DISCORD_PRESENCE))
       .Add("netplay_save_load", Config::Get(Config::NETPLAY_SAVEDATA_LOAD))
       .Add("netplay_save_write", Config::Get(Config::NETPLAY_SAVEDATA_WRITE))
+      .Add("gecko_active_count", static_cast<int64_t>(Gecko::CountEnabledCodes()))
       .Str();
 }
 
@@ -305,11 +309,35 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
     layer->Set(Config::NETPLAY_SAVEDATA_SYNC_ALL_WII, false);
   }
 
+  // Each player runs their own per-port Gecko codes (see --netplay-gecko), so the host's codes
+  // must not be pushed onto everyone.
+  if (netplay)
+    layer->Set(Config::NETPLAY_SYNC_CODES, false);
+
   Config::OnConfigChanged();
 }
 
 void AddCommandLineOptions(optparse::OptionParser& parser)
 {
+  parser.add_option("--gecko")
+      .dest("gecko")
+      .action("append")
+      .metavar("NAME")
+      .help("Solo: enable exactly these Gecko codes (repeatable); all others off for this run");
+  parser.add_option("--no-gecko")
+      .dest("no_gecko")
+      .action("store_true")
+      .help("Solo: all Gecko/Action Replay codes off for this run");
+  parser.add_option("--netplay-gecko")
+      .dest("netplay_gecko")
+      .action("append")
+      .metavar("PORT=NAME")
+      .help("Netplay: enable code NAME only for the player on GameCube port PORT (repeatable)");
+  parser.add_option("--list-gecko")
+      .dest("list_gecko")
+      .action("store")
+      .metavar("GAMEID[:REV]")
+      .help("Print the game's Gecko codes as a [SPARKING] gecko_codes event and exit");
   parser.add_option("--nand")
       .dest("nand")
       .action("store")
@@ -365,15 +393,50 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .help("Host: auto-assign joining players to GC (default) or Wii Remote slots: gc, wii, none");
 }
 
-bool IsNetPlayMode(const optparse::Values& options)
+static bool IsNetPlayMode(const optparse::Values& options)
 {
   return options.is_set("netplay_host") || options.is_set("netplay_join");
+}
+
+bool OwnsMain(const optparse::Values& options)
+{
+  return IsNetPlayMode(options) || options.is_set("list_gecko");
+}
+
+static int RunListGecko(const optparse::Values& options)
+{
+  std::string user_directory;
+  if (options.is_set("user"))
+    user_directory = static_cast<const char*>(options.get("user"));
+  UICommon::SetUserDirectory(user_directory);
+  UICommon::Init();
+  Common::ScopeGuard guard([] { UICommon::Shutdown(); });
+
+  std::string id = static_cast<const char*>(options.get("list_gecko"));
+  std::optional<u16> revision;
+  if (const size_t colon = id.find(':'); colon != std::string::npos)
+  {
+    revision = static_cast<u16>(std::atoi(id.c_str() + colon + 1));
+    id.resize(colon);
+  }
+  Emit("gecko_codes", Json().Add("game_id", id).AddRaw("codes", ListGeckoCodesJson(id, revision)));
+  Emit("exit", Json().Add("code", 0));
+  return 0;
+}
+
+static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hooks);
+
+int RunMain(const optparse::Values& options, const FrontendHooks& hooks)
+{
+  if (options.is_set("list_gecko"))
+    return RunListGecko(options);
+  return RunNetPlay(options, hooks);
 }
 
 void InitFromOptions(const optparse::Values& options)
 {
   const bool netplay = IsNetPlayMode(options);
-  SetEnabled(netplay || options.is_set_by_user("sparking"));
+  SetEnabled(netplay || options.is_set_by_user("sparking") || options.is_set("list_gecko"));
   if (options.is_set("state_dir"))
     s_state_dir = static_cast<const char*>(options.get("state_dir"));
   if (IsEnabled())
@@ -392,7 +455,8 @@ void InitFromOptions(const optparse::Values& options)
     (void)state_hook;
   }
   Emit("ready",
-       Json().Add("protocol", PROTOCOL_VERSION).Add("mode", netplay ? "netplay" : "solo"));
+       Json().Add("protocol", PROTOCOL_VERSION)
+           .Add("mode", netplay ? "netplay" : (options.is_set("list_gecko") ? "list" : "solo")));
 }
 
 void RequestQuit()
@@ -400,14 +464,44 @@ void RequestQuit()
   s_quit_requested = true;
 }
 
-void StartSoloCommandReader(std::unique_ptr<Platform>& platform)
+void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& platform)
 {
   if (!IsEnabled())
     return;
   StartCommandReader([&platform](const Command& cmd) { HandleGameCommand(cmd, platform); });
+
+  const bool no_gecko = options.is_set_by_user("no_gecko");
+  if (!no_gecko && !options.is_set("gecko"))
+    return;  // leave Dolphin's per-game ini selection alone
+  if (!options.is_set("exec"))
+  {
+    Emit("error", Json().Add("code", "gecko_needs_exec"));
+    return;
+  }
+  const UICommon::GameFile game(options.all("exec").front());
+  if (!game.IsValid())
+    return;
+  std::vector<std::string> names;
+  if (!no_gecko)
+  {
+    for (const std::string& n : options.all("gecko"))
+      names.push_back(n);
+  }
+  const std::vector<std::string> missing =
+      ActivateExclusiveGeckoCodes(game.GetGameID(), game.GetRevision(), names);
+  std::vector<std::string> active, miss;
+  for (const auto& n : names)
+  {
+    if (std::ranges::find(missing, n) == missing.end())
+      active.push_back(Json::Escape(n));
+  }
+  for (const auto& n : missing)
+    miss.push_back(Json::Escape(n));
+  Emit("gecko_active",
+       Json().Add("port", 0).AddRaw("codes", JsonArray(active)).AddRaw("missing", JsonArray(miss)));
 }
 
-int RunNetPlay(const optparse::Values& options, const FrontendHooks& hooks)
+static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hooks)
 {
   NetPlayOptions np;
   if (options.is_set("netplay_host"))
@@ -428,6 +522,20 @@ int RunNetPlay(const optparse::Values& options, const FrontendHooks& hooks)
       np.game_paths.push_back(path);
   }
   np.state_dir = s_state_dir;
+  if (options.is_set("netplay_gecko"))
+  {
+    for (const std::string& spec : options.all("netplay_gecko"))
+    {
+      const size_t eq = spec.find('=');
+      const int port = eq == std::string::npos ? 0 : std::atoi(spec.substr(0, eq).c_str());
+      if (port < 1 || port > 4)
+      {
+        Emit("error", Json().Add("code", "bad_argument").Add("netplay_gecko", spec));
+        continue;
+      }
+      np.port_gecko[port].push_back(spec.substr(eq + 1));
+    }
+  }
   const std::string automap = static_cast<const char*>(options.get("automap"));
   np.automap = automap == "wii"  ? AutoMap::Wiimote :
                automap == "none" ? AutoMap::None :

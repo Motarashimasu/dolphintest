@@ -29,6 +29,9 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--pads gc\|keep` | `gc` | GameCube controllers in the first ports, all Wii Remotes off. `keep` uses Dolphin.ini as-is. |
 | `--local-players <1-4>` | `1` | Solo: how many GameCube ports are plugged in. |
 | `--automap gc\|wii\|none` | `gc` | Netplay host: joiners get the next free GameCube port. |
+| `--gecko <name>` (repeatable) / `--no-gecko` | ini selection | Solo: exactly these Gecko codes on, everything else off, for this run. |
+| `--netplay-gecko <port>=<name>` (repeatable) | none | Netplay: the player on GameCube port `<port>` runs only these codes. Everything else is off for everyone, and Dolphin's "Sync Codes" is forced off. |
+| `--list-gecko <GAMEID>[:<rev>]` | | Print every Gecko code Dolphin knows for the game (`gecko_codes` event), then exit. Starts no game. |
 | `--netplay-saves host-readonly\|keep` | `host-readonly` | Netplay: every player plays on the **host's** save, which is never written back. |
 
 Dolphin's own Discord Rich Presence ("Playing on Dolphin") is always switched off in Sparking
@@ -81,6 +84,8 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `desync` | `frame`, `player` | |
 | `connection_lost` | | |
 | `state_saved` / `state_loaded` | `slot` | Solo only |
+| `gecko_codes` | `game_id`, `codes[]` | `--list-gecko` result |
+| `gecko_active` | `port` (0 = solo), `codes[]`, `missing[]` | Codes activated for this boot |
 | `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
 | `state_applied` | | A save state really loaded (solo load, or the netplay battle state at boot) |
 | `save_data` | `host_hash`, host also `ready`, clients `local_status` | Netplay save fingerprint check updated |
@@ -98,7 +103,7 @@ empty when no battle state is selected.
 Error codes: `invalid_game`, `listen_failed`, `no_session_target`, `bad_address`,
 `connect_failed`, `connection_error`, `traversal_error` (+`reason`), `host_only`,
 `not_all_players_have_game`, `game_not_found`, `start_rejected`, `platform_init_failed`,
-`boot_failed`, `not_running`, `save_data_mismatch`, `battle_state_not_ready`, `no_state_dir`, `bad_state_name`,
+`boot_failed`, `not_running`, `gecko_needs_exec`, `save_data_mismatch`, `battle_state_not_ready`, `no_state_dir`, `bad_state_name`,
 `state_file_missing`, `state_save_failed`, `state_load_failed`, `not_allowed_in_game`, `not_allowed_in_netplay`, `bad_argument`, `unknown_command`.
 
 ## Commands (stdin)
@@ -175,6 +180,25 @@ netplay save is never modified by a match.
 To install the unlocked save into `saves/netplay/`: in regular Dolphin set
 Config → Paths → Wii NAND Root to that folder, then Tools → Import Wii Save (`data.bin`) — or copy
 the save's `title/00010000/<id>/data/` folder into the same place inside it.
+
+## Gecko codes
+
+- **Per-game code tab in Godot:** run `dolphin-emu-nogui --list-gecko RBTEA4` once per game. It
+  prints a `gecko_codes` event with every code from Dolphin's bundled and user `GameSettings`
+  (`name`, `creator`, `notes`, `default_enabled`, `user_defined`, `lines`). Godot stores the
+  player's toggles itself.
+- **Solo:** launch with one `--gecko "<name>"` per enabled code (or `--no-gecko`). Dolphin
+  activates exactly those for that run; the game's ini is never edited.
+- **Netplay:** all codes are off for everyone, except the ones mapped to the port each player
+  lands on:
+  `--netplay-gecko "1=Splitscreen Remover P1" --netplay-gecko "2=Splitscreen Remover P2"`.
+  Pass the same list to host and guests; each Dolphin picks its own port at boot (the host is
+  normally port 1, the first guest port 2). Each player's `gecko_active` event confirms which
+  codes it actually loaded, and `game_info.session.gecko_active_count` confirms the emulator's
+  count.
+- Codes that differ per player must only change presentation (camera, viewport, HUD), never
+  game logic, or the match desyncs. Keep each player's code the same length, so Dolphin's code
+  handler costs the same emulated CPU time on every machine.
 
 ## Controllers
 

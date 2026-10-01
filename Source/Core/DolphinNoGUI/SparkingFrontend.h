@@ -32,13 +32,15 @@ void AddCommandLineOptions(optparse::OptionParser& parser);
 // Enables the event channel if requested and emits "ready". Call right after parsing.
 void InitFromOptions(const optparse::Values& options);
 
-bool IsNetPlayMode(const optparse::Values& options);
+// True when Sparking replaces the normal "boot one game" flow: a netplay session, or a
+// non-booting utility mode such as --list-gecko.
+bool OwnsMain(const optparse::Values& options);
 
-// Runs a whole netplay session: lobby -> (boot game -> window -> game ends)* -> exit code.
-int RunNetPlay(const optparse::Values& options, const FrontendHooks& hooks);
+// Netplay: lobby -> (boot game -> window -> game ends)* -> exit code. Or a utility mode.
+int RunMain(const optparse::Values& options, const FrontendHooks& hooks);
 
-// Solo mode: accept in-game commands on stdin (no-op unless --sparking).
-void StartSoloCommandReader(std::unique_ptr<Platform>& platform);
+// Solo mode, just before boot: accept commands on stdin and apply --gecko/--no-gecko.
+void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& platform);
 
 // Set by SIGINT/SIGTERM when there is no platform to forward the request to.
 void RequestQuit();

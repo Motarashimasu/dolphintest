@@ -53,6 +53,9 @@ struct NetPlayOptions
   // Folder holding battle-entry save states (e.g. "BT3-SingleBattle.sst"). Every peer must have
   // byte-identical copies; the host only sends the file name and its SHA-1.
   std::string state_dir;
+  // Gecko codes per GameCube port (1-4). In netplay every other code is off; each player gets
+  // only the codes for the port they end up on (e.g. a per-player splitscreen remover).
+  std::map<int, std::vector<std::string>> port_gecko;
 };
 
 // Name + SHA-1 of the battle state everyone should boot into.
@@ -190,6 +193,7 @@ private:
   bool m_quit = false;
 
   std::string m_state_dir;
+  std::map<int, std::vector<std::string>> m_port_gecko;
   std::optional<BattleState> m_battle_state;       // guarded by m_game_mutex
   bool m_battle_state_local_ok = false;            // guarded by m_game_mutex
   std::map<NetPlay::PlayerId, std::string> m_state_acks;  // host: pid -> ok|missing|mismatch

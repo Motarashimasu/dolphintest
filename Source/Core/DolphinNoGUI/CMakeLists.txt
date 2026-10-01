@@ -5,6 +5,8 @@ add_executable(dolphin-nogui
   MainNoGUI.cpp
   SparkingFrontend.cpp
   SparkingFrontend.h
+  SparkingGecko.cpp
+  SparkingGecko.h
   SparkingIO.cpp
   SparkingIO.h
   SparkingNetPlay.cpp
