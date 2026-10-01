@@ -66,6 +66,9 @@ struct BattleState
 bool IsSafeStateName(std::string_view name);
 // SHA-1 of a file as lowercase hex, or nullopt if it can't be read.
 std::optional<std::string> HashFile(const std::string& path);
+// Fingerprint of a Wii game's save in the configured NAND (every file under title/.../data, with
+// its relative path), or "missing" if there is no save.
+std::string HashWiiSave(u64 title_id);
 
 class NetPlaySession final : public NetPlay::NetPlayUI
 {
@@ -152,6 +155,12 @@ private:
   void HandleControlMessage(NetPlay::PlayerId from, const std::string& body);  // host thread
   void EmitBattleState();
   bool IsBattleStateReady();  // host: every current player verified the file
+
+  // Save-data check: every player's netplay save must be byte-identical or the game desyncs.
+  void BroadcastSaveCheck();  // host
+  void EmitSaveData();
+  bool IsSaveDataReady();  // host: every current player's save matches the host's
+  u64 CurrentTitleID();
   std::string StatePath(const std::string& name) const;
 
   void EmitPlayers();
@@ -185,6 +194,11 @@ private:
   bool m_battle_state_local_ok = false;            // guarded by m_game_mutex
   std::map<NetPlay::PlayerId, std::string> m_state_acks;  // host: pid -> ok|missing|mismatch
   std::atomic<bool> m_rebroadcast_state{false};
+
+  std::string m_host_save_hash;                          // last hash the host announced
+  std::string m_save_local_status;                       // client: ok|mismatch|missing
+  std::map<NetPlay::PlayerId, std::string> m_save_acks;  // host: pid -> ok|mismatch|missing
+  std::atomic<bool> m_rebroadcast_save{false};
 
   std::string m_last_room_json;
   std::chrono::steady_clock::time_point m_last_player_emit{};

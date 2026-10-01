@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <filesystem>
 #include <string_view>
 
 #include <fmt/format.h>
@@ -12,6 +13,8 @@
 #include "Common/Crypto/SHA1.h"
 #include "Common/FileUtil.h"
 #include "Common/IOFile.h"
+#include "Common/NandPaths.h"
+#include "Common/StringUtil.h"
 #include "Common/TraversalClient.h"
 #include "Core/Boot/Boot.h"
 #include "Core/Config/MainSettings.h"
@@ -127,6 +130,41 @@ std::optional<std::string> HashFile(const std::string& path)
   if (!data.empty() && !f.ReadBytes(data.data(), data.size()))
     return std::nullopt;
   return Common::SHA1::DigestToString(Common::SHA1::CalculateDigest(data));
+}
+
+std::string HashWiiSave(u64 title_id)
+{
+  namespace fs = std::filesystem;
+  const fs::path root = StringToPath(
+      Common::GetTitleDataPath(title_id, Common::FromWhichRoot::Configured));
+  std::error_code ec;
+  if (!fs::is_directory(root, ec))
+    return "missing";
+
+  std::vector<fs::path> files;
+  for (const auto& entry : fs::recursive_directory_iterator(root, ec))
+  {
+    if (entry.is_regular_file(ec))
+      files.push_back(entry.path());
+  }
+  if (files.empty())
+    return "missing";
+  std::sort(files.begin(), files.end());
+
+  // Hash relative path + size + contents of every file, in a stable order.
+  auto ctx = Common::SHA1::CreateContext();
+  for (const fs::path& file : files)
+  {
+    const std::string rel = PathToString(file.lexically_relative(root).generic_u8string());
+    File::IOFile f(PathToString(file), "rb");
+    std::vector<u8> data(f.IsOpen() ? f.GetSize() : 0);
+    if (!data.empty() && !f.ReadBytes(data.data(), data.size()))
+      data.clear();
+    ctx->Update(rel);
+    ctx->Update(fmt::format(":{}:", data.size()));
+    ctx->Update(data);
+  }
+  return Common::SHA1::DigestToString(ctx->Finish());
 }
 
 NetPlaySession::NetPlaySession() = default;
@@ -282,6 +320,8 @@ void NetPlaySession::Pump()
 
   if (m_server && m_rebroadcast_state.exchange(false))
     BroadcastBattleState();
+  if (m_server && m_rebroadcast_save.exchange(false))
+    BroadcastSaveCheck();
 
   const auto now = std::chrono::steady_clock::now();
   // Pings change constantly without an Update() callback, so also refresh once a second.
@@ -327,6 +367,12 @@ void NetPlaySession::EmitPlayers()
                            return "";
                          const auto it = m_state_acks.find(p->pid);
                          return it == m_state_acks.end() ? "pending" : it->second;
+                       }())
+                       .Add("save_status", [&]() -> std::string {
+                         if (!m_server)
+                           return "";
+                         const auto it = m_save_acks.find(p->pid);
+                         return it == m_save_acks.end() ? "pending" : it->second;
                        }())
                        .Str());
   }
@@ -480,6 +526,11 @@ bool NetPlaySession::HandleCommand(const Command& cmd)
       }
     }
   }
+  else if (cmd.name == "save_check")
+  {
+    if (host_only())
+      BroadcastSaveCheck();
+  }
   else if (cmd.name == "battle_state")
   {
     if (host_only())
@@ -527,6 +578,12 @@ void NetPlaySession::CmdStart(bool force)
     std::lock_guard lk(m_game_mutex);
     has_battle_state = m_battle_state.has_value();
   }
+  if (!force && !IsSaveDataReady())
+  {
+    Emit("error", Json().Add("code", "save_data_mismatch"));
+    return;
+  }
+
   if (!force && has_battle_state && !IsBattleStateReady())
   {
     Emit("error", Json().Add("code", "battle_state_not_ready"));
@@ -635,6 +692,7 @@ void NetPlaySession::OnMsgChangeGame(const NetPlay::SyncIdentifier& sync_identif
   }
   NetPlay::SyncIdentifierComparison found;
   FindGameFile(sync_identifier, &found);
+  m_rebroadcast_save = true;  // saves are per game
   Emit("game_changed", Json()
                            .Add("name", netplay_name)
                            .Add("game_id", sync_identifier.game_id)
@@ -679,6 +737,7 @@ void NetPlaySession::OnPlayerConnect(const std::string& player)
 {
   m_players_dirty = true;
   m_rebroadcast_state = true;  // late joiners need the current battle-state selection
+  m_rebroadcast_save = true;   // ...and must prove their save matches
   Emit("player_joined", Json().Add("name", player));
 }
 
@@ -741,6 +800,54 @@ void NetPlaySession::OnTtlDetermined(u8)
 bool NetPlaySession::IsRecording()
 {
   return false;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Save-data check (host thread)
+
+u64 NetPlaySession::CurrentTitleID()
+{
+  std::lock_guard lk(m_game_mutex);
+  if (!m_has_current_game)
+    return 0;
+  const auto game = FindGameFile(m_current_game);
+  return game ? game->GetTitleID() : 0;
+}
+
+void NetPlaySession::BroadcastSaveCheck()
+{
+  if (!m_client || m_game_running)
+    return;
+  m_host_save_hash = HashWiiSave(CurrentTitleID());
+  m_save_acks.clear();
+  m_save_acks[m_client->GetLocalPlayerId()] = "ok";
+  SendControl("save " + m_host_save_hash);
+  m_players_dirty = true;
+  EmitSaveData();
+}
+
+bool NetPlaySession::IsSaveDataReady()
+{
+  if (!m_server)
+    return true;
+  for (const NetPlay::Player* p : m_client->GetPlayers())
+  {
+    const auto it = m_save_acks.find(p->pid);
+    if (it == m_save_acks.end() || it->second != "ok")
+      return false;
+  }
+  return true;
+}
+
+void NetPlaySession::EmitSaveData()
+{
+  Json j;
+  j.Add("host_hash", m_host_save_hash);
+  if (m_server)
+    j.Add("ready", IsSaveDataReady());
+  else
+    j.Add("local_status", m_save_local_status);
+  Emit("save_data", j);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -851,6 +958,26 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
     }
     SendControl(fmt::format("ack {} {}", wanted.sha1, status));
     EmitBattleState();
+  }
+  else if (parts[0] == "save" && !m_server && parts.size() == 2)
+  {
+    if (from != 1)
+      return;
+    const std::string local = HashWiiSave(CurrentTitleID());
+    m_host_save_hash = parts[1];
+    m_save_local_status = local == parts[1] ? "ok" : (local == "missing" ? "missing" : "mismatch");
+    SendControl(fmt::format("save_ack {} {}", parts[1], m_save_local_status));
+    EmitSaveData();
+    return;
+  }
+  else if (parts[0] == "save_ack" && m_server && parts.size() == 3)
+  {
+    if (parts[1] != m_host_save_hash)
+      return;  // stale reply to an older check
+    m_save_acks[from] = parts[2];
+    m_players_dirty = true;
+    EmitSaveData();
+    return;
   }
   else if (parts[0] == "ack" && m_server && parts.size() == 3)
   {

@@ -142,6 +142,16 @@ def main():
         solo.proc.wait(timeout=20)
 
         print("netplay: host + joiner")
+        # Netplay saves: host has the "unlocked" save, joiner a different one. A DOL has title ID 0,
+        # so its Wii save folder is title/00000000/00000000/data inside each NAND.
+        def write_save(nand, payload):
+            d = os.path.join(nands[nand], "title", "00000000", "00000000", "data")
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "save.bin"), "wb") as f:
+                f.write(payload)
+        write_save("host", b"ALL-CHARACTERS-UNLOCKED" * 100)
+        write_save("joiner", b"FRESH-SAVE" * 100)
+
         host = Instance("host", [exe, *common, "-u", user_dir("host"), "--netplay-host", dol,
                                  "--state-dir", states["host"], "--nand", nands["host"],
                                  "--nickname", "Goku", "--automap", "gc"])
@@ -174,6 +184,21 @@ def main():
         joiner.send("start")
         check("joiner cannot start (host_only)",
               joiner.wait_for("error")["code"] == "host_only")
+
+        print("netplay: save data must match")
+        p = host.wait_for("players", lambda e: len(e["players"]) == 2 and
+                          any(x["save_status"] == "mismatch" for x in e["players"]))
+        check("host sees joiner's save differs (save_status=mismatch)", bool(p))
+        check("joiner told its save doesn't match",
+              joiner.seen("save_data", lambda e: e.get("local_status") == "mismatch")["host_hash"]
+              != "missing")
+        host.send("start")
+        check("start blocked: save_data_mismatch",
+              host.wait_for("error")["code"] == "save_data_mismatch")
+        write_save("joiner", b"ALL-CHARACTERS-UNLOCKED" * 100)  # joiner installs the same save
+        host.send("save_check")
+        host.wait_for("save_data", lambda e: e.get("ready") is True)
+        check("after identical saves: every player verified -> ready", True)
 
         print("netplay: battle state sync")
         shutil.copy(battle, states["host"])

@@ -83,6 +83,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `state_saved` / `state_loaded` | `slot` | Solo only |
 | `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
 | `state_applied` | | A save state really loaded (solo load, or the netplay battle state at boot) |
+| `save_data` | `host_hash`, host also `ready`, clients `local_status` | Netplay save fingerprint check updated |
 | `battle_state` | `active`, `name`, `sha1`, `local_ok`, host also `ready` | Battle-state selection changed or a player verified it |
 | `alert` | `severity`, `caption`, `text`, `auto_answer` | A Dolphin panic/assert alert. In Sparking mode these never open a Dolphin dialog; they are reported here and answered "yes/ok" so emulation continues. |
 | `error` | `code`, plus context | See below |
@@ -97,7 +98,7 @@ empty when no battle state is selected.
 Error codes: `invalid_game`, `listen_failed`, `no_session_target`, `bad_address`,
 `connect_failed`, `connection_error`, `traversal_error` (+`reason`), `host_only`,
 `not_all_players_have_game`, `game_not_found`, `start_rejected`, `platform_init_failed`,
-`boot_failed`, `not_running`, `battle_state_not_ready`, `no_state_dir`, `bad_state_name`,
+`boot_failed`, `not_running`, `save_data_mismatch`, `battle_state_not_ready`, `no_state_dir`, `bad_state_name`,
 `state_file_missing`, `state_save_failed`, `state_load_failed`, `not_allowed_in_game`, `not_allowed_in_netplay`, `bad_argument`, `unknown_command`.
 
 ## Commands (stdin)
@@ -114,6 +115,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `kick <pid>` | host | Kick a player |
 | `automap wii\|gc\|none` | host | Auto-assign joiners to Wii Remote / GC slots in join order |
 | `battle_state <file.sst>` / `battle_state none` | host | Select the state everyone boots into |
+| `save_check` | host | Re-verify that every player's netplay save matches the host's |
 | `players` | any | Re-send the `players` event now |
 | `pause` / `resume` | solo | |
 | `save_state <1-10>` / `load_state <1-10>` | solo | Slot save states |
@@ -156,10 +158,19 @@ folders:
 <app>/saves/netplay/   ← --nand for netplay; ships with your 100%-unlocked save
 ```
 
-In netplay Dolphin boots every player on a temporary NAND and, with save sync on, copies the
-**host's** save into it. `--netplay-saves host-readonly` (the default) forces save sync on and
-write-back off, so everyone gets the unlocked save and it is never modified. Only the host's copy
-is used, but ship it in every install since anyone can host.
+**Every player must have a byte-identical netplay save, or the match desyncs** (confirmed in
+testing, even with Dolphin's host-save sync on). So the fork verifies it:
+
+- When the host picks a game, and whenever someone joins, the host fingerprints its save
+  (SHA-1 over every file under `title/…/data` in its `--nand`) and sends the fingerprint.
+- Each player fingerprints their own copy and answers `ok`, `mismatch` or `missing`
+  (`players[].save_status` on the host, `save_data` events on everyone).
+- `start` is refused with `save_data_mismatch` until every player is `ok` (`start force`
+  overrides). After a player fixes their files, the host sends `save_check` to re-verify.
+
+Ship the same unlocked save in every install's `saves/netplay/`. On top of that,
+`--netplay-saves host-readonly` (default) keeps Dolphin's save sync on and write-back off, so the
+netplay save is never modified by a match.
 
 To install the unlocked save into `saves/netplay/`: in regular Dolphin set
 Config → Paths → Wii NAND Root to that folder, then Tools → Import Wii Save (`data.bin`) — or copy
