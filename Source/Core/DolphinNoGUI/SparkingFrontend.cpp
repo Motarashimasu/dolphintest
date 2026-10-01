@@ -341,6 +341,12 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("append")
       .metavar("PORT=NAME")
       .help("Netplay: enable code NAME only for the player on GameCube port PORT (repeatable)");
+  parser.add_option("--netplay-gecko-defaults")
+      .dest("netplay_gecko_defaults")
+      .action("store")
+      .choices({"on", "off"})
+      .set_default("on")
+      .help("Netplay: also run the game's default-on codes for everyone (default on)");
   parser.add_option("--list-gecko")
       .dest("list_gecko")
       .action("store")
@@ -534,6 +540,8 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
       np.game_paths.push_back(path);
   }
   np.state_dir = s_state_dir;
+  np.gecko_defaults =
+      std::string_view(static_cast<const char*>(options.get("netplay_gecko_defaults"))) != "off";
   if (options.is_set("netplay_gecko"))
   {
     for (const std::string& spec : options.all("netplay_gecko"))

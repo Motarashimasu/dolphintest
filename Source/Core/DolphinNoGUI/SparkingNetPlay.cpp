@@ -184,6 +184,7 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
   m_automap = options.automap;
   m_state_dir = options.state_dir;
   m_port_gecko = options.port_gecko;
+  m_gecko_defaults = options.gecko_defaults;
 
   // Build the candidate list used to match whatever game the host picks. We check the paths the
   // frontend passed explicitly first, then Dolphin's configured game folders.
@@ -655,9 +656,15 @@ void NetPlaySession::BootGame(const std::string& filename,
       std::lock_guard lk(m_game_mutex);
       game = FindGameFile(m_current_game);
     }
-    const auto it = m_port_gecko.find(port);
-    const std::vector<std::string> names = it != m_port_gecko.end() ? it->second :
-                                                                       std::vector<std::string>{};
+    // Everyone: the game's default-on codes (never any per-port code). This player: + its port's.
+    std::vector<std::string> all_port_names;
+    for (const auto& [p, n] : m_port_gecko)
+      all_port_names.insert(all_port_names.end(), n.begin(), n.end());
+    std::vector<std::string> names;
+    if (game && m_gecko_defaults)
+      names = DefaultEnabledGeckoNames(game->GetGameID(), game->GetRevision(), all_port_names);
+    if (const auto it = m_port_gecko.find(port); it != m_port_gecko.end())
+      names.insert(names.end(), it->second.begin(), it->second.end());
     std::vector<std::string> missing;
     if (game)
       missing = ActivateExclusiveGeckoCodes(game->GetGameID(), game->GetRevision(), names);
@@ -844,20 +851,36 @@ bool NetPlaySession::IsRecording()
 // ---------------------------------------------------------------------------------------------
 // Save-data check (host thread)
 
-u64 NetPlaySession::CurrentTitleID()
+std::shared_ptr<const UICommon::GameFile> NetPlaySession::CurrentGame()
 {
   std::lock_guard lk(m_game_mutex);
   if (!m_has_current_game)
-    return 0;
-  const auto game = FindGameFile(m_current_game);
+    return nullptr;
+  return FindGameFile(m_current_game);
+}
+
+u64 NetPlaySession::CurrentTitleID()
+{
+  const auto game = CurrentGame();
   return game ? game->GetTitleID() : 0;
+}
+
+std::string NetPlaySession::LocalSetupFingerprint()
+{
+  const auto game = CurrentGame();
+  const std::string save = HashWiiSave(game ? game->GetTitleID() : 0);
+  const std::string codes =
+      game ? HashNetplayGeckoSetup(game->GetGameID(), game->GetRevision(), m_gecko_defaults,
+                                   m_port_gecko) :
+             "nogame";
+  return save + "-" + codes;
 }
 
 void NetPlaySession::BroadcastSaveCheck()
 {
   if (!m_client || m_game_running)
     return;
-  m_host_save_hash = HashWiiSave(CurrentTitleID());
+  m_host_save_hash = LocalSetupFingerprint();
   m_save_acks.clear();
   m_save_acks[m_client->GetLocalPlayerId()] = "ok";
   SendControl("save " + m_host_save_hash);
@@ -1002,9 +1025,21 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
   {
     if (from != 1)
       return;
-    const std::string local = HashWiiSave(CurrentTitleID());
+    // Fingerprint = "<save>-<gecko codes>"; report which half differs.
+    const std::string local = LocalSetupFingerprint();
+    const auto split = [](const std::string& f) {
+      const size_t dash = f.rfind('-');
+      return std::pair{f.substr(0, dash), dash == std::string::npos ? "" : f.substr(dash + 1)};
+    };
+    const auto [local_save, local_codes] = split(local);
+    const auto [host_save, host_codes] = split(parts[1]);
     m_host_save_hash = parts[1];
-    m_save_local_status = local == parts[1] ? "ok" : (local == "missing" ? "missing" : "mismatch");
+    if (local == parts[1])
+      m_save_local_status = "ok";
+    else if (local_save != host_save)
+      m_save_local_status = local_save == "missing" ? "missing" : "mismatch";
+    else
+      m_save_local_status = "codes_mismatch";
     SendControl(fmt::format("save_ack {} {}", parts[1], m_save_local_status));
     EmitSaveData();
     return;

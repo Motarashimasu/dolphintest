@@ -56,6 +56,8 @@ struct NetPlayOptions
   // Gecko codes per GameCube port (1-4). In netplay every other code is off; each player gets
   // only the codes for the port they end up on (e.g. a per-player splitscreen remover).
   std::map<int, std::vector<std::string>> port_gecko;
+  // Also run the game's default-on codes (ini [Gecko_Enabled]) for everyone.
+  bool gecko_defaults = true;
 };
 
 // Name + SHA-1 of the battle state everyone should boot into.
@@ -164,6 +166,8 @@ private:
   void EmitSaveData();
   bool IsSaveDataReady();  // host: every current player's save matches the host's
   u64 CurrentTitleID();
+  std::shared_ptr<const UICommon::GameFile> CurrentGame();
+  std::string LocalSetupFingerprint();  // "<save sha1>-<gecko sha1>"
   std::string StatePath(const std::string& name) const;
 
   void EmitPlayers();
@@ -194,6 +198,7 @@ private:
 
   std::string m_state_dir;
   std::map<int, std::vector<std::string>> m_port_gecko;
+  bool m_gecko_defaults = true;
   std::optional<BattleState> m_battle_state;       // guarded by m_game_mutex
   bool m_battle_state_local_ok = false;            // guarded by m_game_mutex
   std::map<NetPlay::PlayerId, std::string> m_state_acks;  // host: pid -> ok|missing|mismatch

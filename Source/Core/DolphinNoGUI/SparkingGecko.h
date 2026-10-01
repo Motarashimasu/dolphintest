@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -25,5 +26,16 @@ std::string ListGeckoCodesJson(const std::string& game_id, std::optional<u16> re
 // Must be called on the host thread before the game boots. Returns the names that weren't found.
 std::vector<std::string> ActivateExclusiveGeckoCodes(const std::string& game_id, u16 revision,
                                                      const std::vector<std::string>& names);
+
+// Names of the codes the game's inis enable by default (Sys + user [Gecko_Enabled]), minus
+// `exclude` (e.g. per-port codes, which must never be on for everyone).
+std::vector<std::string> DefaultEnabledGeckoNames(const std::string& game_id, u16 revision,
+                                                  const std::vector<std::string>& exclude);
+
+// Fingerprint of a netplay Gecko setup: the default-on codes (if use_defaults) plus every per-port
+// code, by name and exact code lines. Peers with different fingerprints would run different code
+// and desync.
+std::string HashNetplayGeckoSetup(const std::string& game_id, u16 revision, bool use_defaults,
+                                  const std::map<int, std::vector<std::string>>& port_gecko);
 
 }  // namespace Sparking

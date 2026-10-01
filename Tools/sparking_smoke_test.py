@@ -249,6 +249,27 @@ def main():
         host.wait_for("save_data", lambda e: e.get("ready") is True)
         check("after identical saves: every player verified -> ready", True)
 
+        print("netplay: default Gecko codes must match")
+        jini = os.path.join(user_dir("joiner"), "GameSettings", f"{game_id}.ini")
+        with open(jini) as f:
+            original_ini = f.read()
+        with open(jini, "w") as f:  # joiner has an extra default-on code -> would desync
+            f.write(original_ini.replace("[Gecko_Enabled]\n$Infinite Health\n",
+                                         "[Gecko_Enabled]\n$Infinite Health\n$Sneaky Code\n")
+                    .replace("[Gecko]\n", "[Gecko]\n$Sneaky Code\n0400100C 00000009\n"))
+        host.send("save_check")
+        p = host.wait_for("players", lambda e: any(x["save_status"] == "codes_mismatch"
+                                                   for x in e["players"]))
+        check("host sees joiner codes_mismatch (different default codes)", bool(p))
+        host.send("start")
+        check("start blocked while codes differ",
+              host.wait_for("error")["code"] == "save_data_mismatch")
+        with open(jini, "w") as f:
+            f.write(original_ini)
+        host.send("save_check")
+        host.wait_for("save_data", lambda e: e.get("ready") is True)
+        check("identical codes again -> ready", True)
+
         print("netplay: battle state sync")
         shutil.copy(battle, states["host"])
         with open(battle, "rb") as f:
@@ -294,13 +315,13 @@ def main():
             check(f"{inst.name}: netplay save folder separate from solo",
                   "nand-solo" not in si["nand"])
         hg, jg = host.seen("gecko_active"), joiner.seen("gecko_active")
-        check(f"host on port {hg['port']} runs only {hg['codes']}",
-              hg["port"] == 1 and hg["codes"] == ["Splitscreen Remover P1"])
-        check(f"joiner on port {jg['port']} runs only {jg['codes']}",
-              jg["port"] == 2 and jg["codes"] == ["Splitscreen Remover P2"])
+        check(f"host on port {hg['port']} runs defaults + own code {hg['codes']}",
+              hg["port"] == 1 and hg["codes"] == ["Infinite Health", "Splitscreen Remover P1"])
+        check(f"joiner on port {jg['port']} runs defaults + own code {jg['codes']}",
+              jg["port"] == 2 and jg["codes"] == ["Infinite Health", "Splitscreen Remover P2"])
         for inst in (host, joiner):
             n = inst.seen("game_info")["session"]["gecko_active_count"]
-            check(f"{inst.name}: exactly 1 code live in the emulator, ini/host codes off", n == 1)
+            check(f"{inst.name}: exactly 2 codes live (default + own port), other port's off", n == 2)
 
         time.sleep(3)
         joiner.send("stop")  # a client-initiated stop ends the match for everyone

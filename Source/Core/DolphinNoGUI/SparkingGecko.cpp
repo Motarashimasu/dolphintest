@@ -4,8 +4,12 @@
 #include "DolphinNoGUI/SparkingGecko.h"
 
 #include <algorithm>
+#include <set>
+
+#include <fmt/format.h>
 
 #include "Common/Config/Config.h"
+#include "Common/Crypto/SHA1.h"
 #include "Common/IniFile.h"
 #include "Core/ActionReplay.h"
 #include "Core/Config/SessionSettings.h"
@@ -74,6 +78,50 @@ std::vector<std::string> ActivateExclusiveGeckoCodes(const std::string& game_id,
   ActionReplay::UpdateSyncedCodes({});
   Config::SetCurrent(Config::SESSION_CODE_SYNC_OVERRIDE, true);
   return missing;
+}
+
+std::vector<std::string> DefaultEnabledGeckoNames(const std::string& game_id, u16 revision,
+                                                  const std::vector<std::string>& exclude)
+{
+  std::vector<std::string> names;
+  for (const Gecko::GeckoCode& code : LoadAllCodes(game_id, revision))
+  {
+    if (code.enabled && std::ranges::find(exclude, code.name) == exclude.end())
+      names.push_back(code.name);
+  }
+  return names;
+}
+
+std::string HashNetplayGeckoSetup(const std::string& game_id, u16 revision, bool use_defaults,
+                                  const std::map<int, std::vector<std::string>>& port_gecko)
+{
+  std::vector<std::string> port_names;
+  for (const auto& [port, names] : port_gecko)
+    port_names.insert(port_names.end(), names.begin(), names.end());
+
+  std::set<std::string> wanted(port_names.begin(), port_names.end());
+  if (use_defaults)
+  {
+    for (std::string& n : DefaultEnabledGeckoNames(game_id, revision, port_names))
+      wanted.insert(std::move(n));
+  }
+
+  const std::vector<Gecko::GeckoCode> all = LoadAllCodes(game_id, revision);
+  auto ctx = Common::SHA1::CreateContext();
+  for (const std::string& name : wanted)  // std::set: stable order
+  {
+    ctx->Update(name);
+    const auto it = std::ranges::find_if(all, [&](const auto& c) { return c.name == name; });
+    if (it == all.end())
+    {
+      ctx->Update(std::string_view("|missing\n"));
+      continue;
+    }
+    for (const Gecko::GeckoCode::Code& c : it->codes)
+      ctx->Update(fmt::format("|{:08X}{:08X}", c.address, c.data));
+    ctx->Update(std::string_view("\n"));
+  }
+  return Common::SHA1::DigestToString(ctx->Finish());
 }
 
 }  // namespace Sparking

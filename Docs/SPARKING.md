@@ -184,6 +184,10 @@ the save's `title/00010000/<id>/data/` folder into the same place inside it.
 
 ## Gecko codes
 
+BT3 PAL (`RDSPAF`) ships with its codes built in: `Data/Sys/GameSettings/RDSPAF.ini` (PS2
+control layout, PAL60, outlines, 16:9, soft reset, World Tournament stages = on by default;
+`Player 1/2 Splitscreen Remover` = per-port netplay codes).
+
 Game IDs: BT3 = `RDSE70` (US) / `RDSPAF` (EU) / `RDSJAF` (Sparking! Meteor); BT2 = `RDBE70` (US) /
 `RDBPAF` (EU) / `RDBJAF` (Sparking! Neo). Dolphin ships no Gecko codes for these games; codes
 come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
@@ -194,8 +198,12 @@ come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
   player's toggles itself.
 - **Solo:** launch with one `--gecko "<name>"` per enabled code (or `--no-gecko`). Dolphin
   activates exactly those for that run; the game's ini is never edited.
-- **Netplay:** all codes are off for everyone, except the ones mapped to the port each player
-  lands on:
+- **Netplay:** everyone runs the game's default-on codes (`[Gecko_Enabled]` in the Sys + user
+  game inis; `--netplay-gecko-defaults off` disables that), plus only the codes mapped to the
+  port each player lands on. Every other code is off. Per-port codes are never part of the
+  defaults, even if an ini enables them. The lobby's save check also fingerprints this code
+  setup (code names + exact lines); a player whose codes differ shows
+  `save_status: codes_mismatch` and `start` is refused. Port mapping example:
   `--netplay-gecko "1=Splitscreen Remover P1" --netplay-gecko "2=Splitscreen Remover P2"`.
   Pass the same list to host and guests; each Dolphin picks its own port at boot (the host is
   normally port 1, the first guest port 2). Each player's `gecko_active` event confirms which
