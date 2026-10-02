@@ -53,29 +53,37 @@ void ToggleWidescreen()
   SetWidescreen(!s_wide);
 }
 
-void StartAspectHotkey()
+void StartHotkeys(std::vector<Hotkey> hotkeys)
 {
 #ifdef _WIN32
   static std::atomic<bool> started{false};
   if (started.exchange(true))
     return;
-  std::thread([] {
-    bool was_down = false;
+  std::thread([hotkeys = std::move(hotkeys)] {
+    std::vector<bool> was_down(hotkeys.size(), false);
     while (true)
     {
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
-      const bool down = (GetAsyncKeyState(VK_F5) & 0x8000) != 0;
-      if (down && !was_down)
+      for (size_t i = 0; i < hotkeys.size(); ++i)
       {
-        // Only when the focused window is ours (the game window), not Godot or anything else.
-        DWORD pid = 0;
-        GetWindowThreadProcessId(GetForegroundWindow(), &pid);
-        if (pid == GetCurrentProcessId())
-          Core::QueueHostJob([](Core::System&) { ToggleWidescreen(); });
+        const int vk = hotkeys[i].key == HotkeyKey::F3 ? VK_F3 :
+                       hotkeys[i].key == HotkeyKey::F4 ? VK_F4 :
+                                                         VK_F5;
+        const bool down = (GetAsyncKeyState(vk) & 0x8000) != 0;
+        if (down && !was_down[i])
+        {
+          // Only when the focused window is ours (the game window), not Godot or anything else.
+          DWORD pid = 0;
+          GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+          if (pid == GetCurrentProcessId())
+            Core::QueueHostJob([action = hotkeys[i].action](Core::System&) { action(); });
+        }
+        was_down[i] = down;
       }
-      was_down = down;
     }
   }).detach();
+#else
+  (void)hotkeys;
 #endif
 }
 

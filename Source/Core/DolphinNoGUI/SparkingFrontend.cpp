@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -184,6 +185,78 @@ bool EventMsgAlertHandler(const char* caption, const char* text, bool yes_no, Co
   return true;
 }
 
+// Host thread. Stores the selection and applies it to the running game.
+void SetTextureSelection(std::map<std::string, std::string> selection)
+{
+  auto& system = Core::System::GetInstance();
+  HiresTexture::SetVariantSelection(std::move(selection));
+  // Applied at the next frame end anyway; also queue it to the video thread right away so it
+  // lands even while the game isn't presenting frames (loading screens, paused). The CPU thread
+  // is paused while queueing, which keeps the video-event queue single-producer.
+  if (Core::IsRunning(system))
+  {
+    Core::RunOnCPUThread(system, [] {
+      AsyncRequests::GetInstance()->PushEvent([] {
+        if (g_texture_cache && HiresTexture::ApplyPendingVariantChange())
+          g_texture_cache->Invalidate();
+      });
+    });
+  }
+  Emit("textures", Json().AddRaw("selection", TextureSelectionJson()));
+}
+
+// Host thread. Selects the next option (alphabetical, wrapping) of the running game's
+// "@<group>" texture folder. False if the game has no such group.
+bool CycleTextureVariant(const std::string& group)
+{
+  std::map<std::string, std::set<std::string>> groups;
+  for (const std::string& id : SConfig::GetInstance().GetGameIDsForTextures())
+  {
+    groups = HiresTexture::ListVariantGroups(id);
+    if (!groups.empty())
+      break;
+  }
+  const auto lower = [](std::string v) {
+    for (char& c : v)
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return v;
+  };
+  const auto it = std::ranges::find_if(groups, [&](const auto& g) {
+    return lower(g.first) == lower(group);
+  });
+  if (it == groups.end() || it->second.empty())
+    return false;
+
+  const std::vector<std::string> options(it->second.begin(), it->second.end());
+  auto selection = HiresTexture::GetVariantSelection();  // keys/values already lowercase
+  const std::string key = lower(it->first);
+  size_t next = 0;
+  if (const auto cur = selection.find(key); cur != selection.end())
+  {
+    const auto pos = std::ranges::find_if(options, [&](const std::string& o) {
+      return lower(o) == cur->second;
+    });
+    if (pos != options.end())
+      next = (static_cast<size_t>(pos - options.begin()) + 1) % options.size();
+  }
+  selection[key] = options[next];
+  SetTextureSelection(std::move(selection));
+  // Custom textures may have been off (no --textures at launch): turn them on for this run.
+  if (!Config::Get(Config::GFX_HIRES_TEXTURES))
+    Config::SetCurrent(Config::GFX_HIRES_TEXTURES, true);
+  return true;
+}
+
+// F3 = next @Graphics option, F4 = next @Buttons option, F5 = 16:9 / 4:3 (game window only).
+void StartSparkingHotkeys()
+{
+  StartHotkeys({
+      {HotkeyKey::F3, [] { CycleTextureVariant("Graphics"); }},
+      {HotkeyKey::F4, [] { CycleTextureVariant("Buttons"); }},
+      {HotkeyKey::F5, [] { ToggleWidescreen(); }},
+  });
+}
+
 // In-game commands shared by solo and netplay mode. Host thread.
 void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
 {
@@ -221,20 +294,13 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
       Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
       return;
     }
-    HiresTexture::SetVariantSelection(std::move(selection));
-    // Applied at the next frame end anyway; also queue it to the video thread right away so it
-    // lands even while the game isn't presenting frames (loading screens, paused). The CPU thread
-    // is paused while queueing, which keeps the video-event queue single-producer.
-    if (Core::IsRunning(system))
-    {
-      Core::RunOnCPUThread(system, [] {
-        AsyncRequests::GetInstance()->PushEvent([] {
-          if (g_texture_cache && HiresTexture::ApplyPendingVariantChange())
-            g_texture_cache->Invalidate();
-        });
-      });
-    }
-    Emit("textures", Json().AddRaw("selection", TextureSelectionJson()));
+    SetTextureSelection(std::move(selection));
+    return;
+  }
+  if (cmd.name == "textures_cycle")  // same as the F3 / F4 hotkeys: next option of a group
+  {
+    if (!CycleTextureVariant(cmd.arg))
+      Emit("error", Json().Add("code", "no_such_group").Add("command", cmd.name).Add("group", cmd.arg));
     return;
   }
   if (cmd.name == "texture_path")  // debug: which file a texture name maps to right now
@@ -692,7 +758,7 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
     return;
   StartCommandReader([&platform](const Command& cmd) { HandleGameCommand(cmd, platform); });
 
-  StartAspectHotkey();
+  StartSparkingHotkeys();
   ApplyAspectForBoot();
   ApplyTexturesDir(options);
 
@@ -804,7 +870,7 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
         /*run_during_stop=*/true);
   });
 
-  StartAspectHotkey();
+  StartSparkingHotkeys();
   StartCommandReader([&session, &platform = hooks.platform](const Command& cmd) {
     if (!session.HandleCommand(cmd))
       HandleGameCommand(cmd, platform);

@@ -314,13 +314,24 @@ def main():
             ("Graphics=Enhanced", [None, None, "base", "hd", "hd"],
              "Enhanced + Vanilla: HD back, buttons still the game's own"),
             ("Buttons=PlayStation", ["ps", "ps", "base", "hd", "hd"], "back to PlayStation"),
+            # F4 / F3 hotkeys = textures_cycle; options cycle alphabetically and wrap.
+            ("cycle Buttons", [None, None, "base", "hd", "hd"], "F4: PlayStation -> Vanilla"),
+            ("cycle buttons", ["xbox", "xbox", "base", "hd", "hd"], "F4: Vanilla -> Xbox"),
+            ("cycle Buttons", ["ps", "ps", "base", "hd", "hd"], "F4: Xbox -> PlayStation (wraps)"),
+            ("cycle Graphics", ["ps", "ps", "base", None, None], "F3: Enhanced -> Legacy"),
+            ("cycle Graphics", ["ps", "ps", "base", "hd", "hd"], "F3: Legacy -> Enhanced (wraps)"),
         ]
         for command, want, label in steps:
-            if command:
+            if command and command.startswith("cycle "):
+                tex.send(f"textures_cycle {command[6:]}")
+                tex.wait_for("textures")
+            elif command:
                 tex.send(f"textures {command}")
                 tex.wait_for("textures")
             got = tex_state(tex, want)
             check(f"{label} {got}", got == want)
+        tex.send("textures_cycle Nope")
+        check("cycling an unknown group rejected", tex.wait_for("error")["code"] == "no_such_group")
         tex.send("textures nonsense")
         check("bad textures argument rejected", tex.wait_for("error")["code"] == "bad_argument")
         tex.send("quit")

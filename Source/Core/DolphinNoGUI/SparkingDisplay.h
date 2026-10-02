@@ -6,6 +6,9 @@
 
 #pragma once
 
+#include <functional>
+#include <vector>
+
 namespace Sparking
 {
 void SetDefaultWidescreen(bool wide);
@@ -17,7 +20,19 @@ void ApplyAspectForBoot();
 void SetWidescreen(bool wide);
 void ToggleWidescreen();
 
-// Watches for F5 while one of this process's windows has focus (Windows only).
-void StartAspectHotkey();
+enum class HotkeyKey
+{
+  F3,
+  F4,
+  F5,
+};
+struct Hotkey
+{
+  HotkeyKey key;
+  std::function<void()> action;  // runs on the host thread
+};
+// Watches the keys while one of this process's windows (the game window) has focus. Windows
+// only; the first call wins, later calls do nothing.
+void StartHotkeys(std::vector<Hotkey> hotkeys);
 
 }  // namespace Sparking

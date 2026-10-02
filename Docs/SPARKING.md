@@ -115,7 +115,7 @@ Error codes: `invalid_game`, `listen_failed`, `no_session_target`, `bad_address`
 `connect_failed`, `connection_error`, `traversal_error` (+`reason`), `host_only`,
 `not_all_players_have_game`, `game_not_found`, `start_rejected`, `platform_init_failed`,
 `boot_failed`, `not_running`, `gecko_needs_exec`, `save_data_mismatch`, `battle_state_not_ready`, `no_state_dir`, `bad_state_name`,
-`state_file_missing`, `state_save_failed`, `state_load_failed`, `not_allowed_in_game`, `not_allowed_in_netplay`, `bad_argument`, `unknown_command`.
+`state_file_missing`, `state_save_failed`, `state_load_failed`, `not_allowed_in_game`, `not_allowed_in_netplay`, `bad_argument`, `no_such_group`, `unknown_command`.
 
 ## Commands (stdin)
 
@@ -138,6 +138,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `save_state_file <file.sst>` / `load_state_file <file.sst>` | solo | Capture / test a battle state in `--state-dir` |
 | `aspect 16:9\|4:3\|toggle` | any, in game (netplay too) | Same as F5. Each player chooses their own. |
 | `textures <Group>=<Option>` | any, in game (netplay too) | Switch a texture variant live; `<Group>=` clears it (no option loaded) |
+| `textures_cycle <Group>` | any, in game | Next option of a group (alphabetical, wraps) — what F3/F4 do |
 | `texture_path <tex1_name>` | any | Debug: which file a texture name is loaded from right now (`texture_path` event) |
 | `peek <hex address>` | solo | Debug: read a 32-bit word of game memory |
 | `quit` | any | Stop any game and exit |
@@ -267,6 +268,9 @@ Rules:
   an `@Group/` folder are never loaded. Group and option names are case-insensitive.
 - In game, `textures Graphics=Legacy` / `textures Buttons=Xbox` switch live; the new textures
   appear within a frame or two.
+- Hotkeys in the game window (Windows): **F3** cycles `@Graphics`, **F4** cycles `@Buttons`
+  (options in alphabetical order, wrapping), **F5** toggles 16:9 / 4:3. Every switch emits a
+  `textures` event with the new selection so the frontend can remember it.
 - Purely visual, so each netplay player can use their own.
 - Godot settings: `--list-textures RDSPAF` gives the groups and choices; launch with one
   `--textures Group=Choice` per group.
