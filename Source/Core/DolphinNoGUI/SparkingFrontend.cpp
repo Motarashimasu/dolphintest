@@ -563,31 +563,25 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
   StartCommandReader([&platform](const Command& cmd) { HandleGameCommand(cmd, platform); });
 
   StartAspectHotkey();
+  ApplyAspectForBoot();
 
   const bool no_gecko = options.is_set_by_user("no_gecko");
-  const bool explicit_gecko = no_gecko || options.is_set("gecko");
+  if (!no_gecko && !options.is_set("gecko"))
+    return;  // leave Dolphin's per-game ini selection alone
   if (!options.is_set("exec"))
   {
-    if (explicit_gecko)
-      Emit("error", Json().Add("code", "gecko_needs_exec"));
+    Emit("error", Json().Add("code", "gecko_needs_exec"));
     return;
   }
   const UICommon::GameFile game(options.all("exec").front());
   if (!game.IsValid())
     return;
   std::vector<std::string> names;
-  if (!explicit_gecko)
-  {
-    // No selection from the frontend: the game ini's enabled codes.
-    names = DefaultEnabledGeckoNames(game.GetGameID(), game.GetRevision(), {});
-  }
-  else if (!no_gecko)
+  if (!no_gecko)
   {
     for (const std::string& n : options.all("gecko"))
       names.push_back(n);
   }
-  names = PrepareAspectForBoot(game.GetFilePath(), game.GetGameID(), game.GetRevision(),
-                               std::move(names));
   const std::vector<std::string> missing =
       ActivateExclusiveGeckoCodes(game.GetGameID(), game.GetRevision(), names);
   std::vector<std::string> active, miss;

@@ -200,15 +200,14 @@ def main():
         ga, count = solo_gecko(["--no-gecko"])
         check("solo --no-gecko: all codes off", count == 0 and ga["codes"] == [])
 
-        print("aspect ratio (16:9 default, F5 / aspect command -> 4:3)")
+        print("aspect ratio (16:9 default, F5 / aspect command -> 4:3 output only)")
         d = os.path.join(user_dir("aspect"), "GameSettings")
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, f"{game_id}.ini"), "w") as f:
             f.write("[Gecko]\n"
                     "$Infinite Health [Sparking]\n04001008 00000003\n"
                     "$Widescreen [Sparking]\n0400310C CAFEBABE\n"
-                    "[Gecko_Enabled]\n$Infinite Health\n$Widescreen\n"
-                    "[Sparking]\nWidescreenCode = Widescreen\n")
+                    "[Gecko_Enabled]\n$Infinite Health\n$Widescreen\n")
 
         def peek(inst, want, timeout=10):
             end = time.time() + timeout
@@ -221,46 +220,27 @@ def main():
                 time.sleep(0.3)
             return value
 
-        asp = Instance("aspect", [exe, *common, "--sparking", "-u", user_dir("aspect"),
-                                  "--nand", nands["solo"], "-e", dol])
-        asp.send("hello")
-        boot = asp.wait_for("aspect")
-        check(f"boots 16:9 by default, widescreen code found + restorable {boot}",
-              boot["mode"] == "16:9" and boot["widescreen_code"] == "Widescreen"
-              and boot["restorable"] == 1 and boot["code_writes"] == 1)
-        asp.wait_for("game_started")
-        check("16:9: both codes live (ini selection kept)",
-              asp.seen("game_info")["session"]["gecko_active_count"] == 2)
-        v = peek(asp, "CAFEBABE")
-        check(f"16:9: widescreen code patched the game ({v})", v == "CAFEBABE")
-        asp.send("aspect")
-        ev = asp.wait_for("aspect", lambda e: e["mode"] == "4:3")
-        check(f"toggle -> 4:3, widescreen code off, other code kept {ev}",
-              ev.get("gecko_active_count") == 1)
-        v = peek(asp, "600DF00D")
-        check(f"4:3: game's original value restored from the disc ({v})", v == "600DF00D")
-        asp.send("aspect 16:9")
-        asp.wait_for("aspect", lambda e: e["mode"] == "16:9")
-        v = peek(asp, "CAFEBABE")
-        check(f"back to 16:9: code re-applied ({v})", v == "CAFEBABE")
-        asp.send("aspect 5:4")
-        check("bad aspect argument rejected", asp.wait_for("error")["code"] == "bad_argument")
-        asp.send("quit")
-        asp.wait_for("exit")
-        asp.proc.wait(timeout=20)
-
-        asp = Instance("aspect43", [exe, *common, "--sparking", "-u", user_dir("aspect"),
-                                    "--nand", nands["solo"], "--aspect", "4:3", "-e", dol])
-        asp.send("hello")
-        check("--aspect 4:3 boots in 4:3", asp.wait_for("aspect")["mode"] == "4:3")
-        asp.wait_for("game_started")
-        check("--aspect 4:3: widescreen code never activated",
-              asp.seen("game_info")["session"]["gecko_active_count"] == 1)
-        v = peek(asp, "600DF00D")
-        check(f"--aspect 4:3: game memory untouched ({v})", v == "600DF00D")
-        asp.send("quit")
-        asp.wait_for("exit")
-        asp.proc.wait(timeout=20)
+        for extra, mode in (([], "16:9"), (["--aspect", "4:3"], "4:3")):
+            asp = Instance("aspect", [exe, *common, "--sparking", "-u", user_dir("aspect"),
+                                      "--nand", nands["solo"], *extra, "-e", dol])
+            asp.send("hello")
+            check(f"boots in {mode} {extra}", asp.wait_for("aspect")["mode"] == mode)
+            asp.wait_for("game_started")
+            check(f"{mode}: game's widescreen code on (both codes live)",
+                  asp.seen("game_info")["session"]["gecko_active_count"] == 2)
+            v = peek(asp, "CAFEBABE")
+            check(f"{mode}: widescreen code really patches the game ({v})", v == "CAFEBABE")
+            asp.send("aspect")
+            other = "4:3" if mode == "16:9" else "16:9"
+            asp.wait_for("aspect", lambda e: e["mode"] == other)
+            time.sleep(1)
+            v = peek(asp, "CAFEBABE")
+            check(f"toggle -> {other}: widescreen code still on ({v})", v == "CAFEBABE")
+            asp.send("aspect 5:4")
+            check("bad aspect argument rejected", asp.wait_for("error")["code"] == "bad_argument")
+            asp.send("quit")
+            asp.wait_for("exit")
+            asp.proc.wait(timeout=20)
 
         print("netplay: host + joiner")
         # Netplay saves: host has the "unlocked" save, joiner a different one. A DOL has title ID 0,

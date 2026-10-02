@@ -668,12 +668,8 @@ void NetPlaySession::BootGame(const std::string& filename,
       names.insert(names.end(), it->second.begin(), it->second.end());
     std::vector<std::string> missing;
     if (game)
-    {
-      // 16:9 / 4:3 is per player (presentation only): drops the widescreen code when in 4:3.
-      names = PrepareAspectForBoot(game->GetFilePath(), game->GetGameID(), game->GetRevision(),
-                                   std::move(names));
       missing = ActivateExclusiveGeckoCodes(game->GetGameID(), game->GetRevision(), names);
-    }
+    ApplyAspectForBoot();  // output stretch only, per player
     std::vector<std::string> active, miss;
     for (const auto& n : names)
     {

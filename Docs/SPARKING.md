@@ -90,7 +90,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `state_saved` / `state_loaded` | `slot` | Solo only |
 | `gecko_codes` | `game_id`, `codes[]` | `--list-gecko` result |
 | `gecko_active` | `port` (0 = solo), `codes[]`, `missing[]` | Codes activated for this boot |
-| `aspect` | `mode` (`16:9`/`4:3`), `widescreen_code`, `restorable`, `code_writes`, after a toggle also `gecko_active_count` | At every boot and after every toggle |
+| `aspect` | `mode` (`16:9`/`4:3`) | At every boot and after every toggle |
 | `peek` | `address`, `value` (hex) | Answer to `peek` |
 | `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
 | `state_applied` | | A save state really loaded (solo load, or the netplay battle state at boot) |
@@ -222,27 +222,11 @@ come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
 
 ## Display
 
-Sparking mode renders at 1080p (`--resolution 3`) in 16:9. 16:9 needs two things: Dolphin's
-output forced to 16:9, and the game's own widescreen Gecko code. A game names that code in its
-game ini:
-
-```ini
-[Sparking]
-WidescreenCode = 16:9 aspect ratio
-```
-
-- **16:9**: that code runs (when it is selected/enabled, like any other code) and the output is 16:9.
-- **4:3**: that code is dropped, and the values it overwrote are put back from the disc's main
-  DOL, so the game really returns to its own 4:3 projection; the output is 4:3.
-- **F5** toggles while the game window has focus (Windows). The choice carries over to the next
-  match in the same netplay session.
-- The `aspect` event's `restorable` should equal `code_writes`. If it is lower, part of the code
-  patches memory outside the main DOL, and switching to 4:3 mid-game may leave that part applied
-  until the next boot (`--aspect 4:3` at launch is always clean).
-- In netplay each player's aspect is their own. Like the splitscreen remover, a widescreen code
-  must only change presentation, or the match desyncs.
-
-Games without a `[Sparking] WidescreenCode` still get Dolphin's 16:9 / 4:3 output switch.
+Sparking mode renders at 1080p (`--resolution 3`) with Dolphin's output forced to 16:9.
+**F5** in the game window (Windows), or the `aspect` command, switches the output between
+16:9 and 4:3. Only Dolphin's output stretch changes: the game's own widescreen Gecko code (e.g.
+BT3's "16:9 aspect ratio") stays on whichever is chosen. The choice carries over to the next
+match in the same netplay session, and each netplay player has their own.
 
 ## Controllers
 
