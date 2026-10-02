@@ -12,6 +12,7 @@
 #include <climits>
 #include <dwmapi.h>
 
+#include "DolphinNoGUI/SparkingIO.h"
 #include "VideoCommon/Present.h"
 #include "resource.h"
 
@@ -79,7 +80,8 @@ bool PlatformWin32::RegisterRenderWindowClass()
 
 bool PlatformWin32::CreateRenderWindow()
 {
-  m_hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, WINDOW_CLASS_NAME, _T("Dolphin"), WS_OVERLAPPEDWINDOW,
+  const std::wstring title = UTF8ToWString(Sparking::APP_NAME);
+  m_hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, WINDOW_CLASS_NAME, title.c_str(), WS_OVERLAPPEDWINDOW,
                           m_window_x < 0 ? CW_USEDEFAULT : m_window_x,
                           m_window_y < 0 ? CW_USEDEFAULT : m_window_y, m_window_width,
                           m_window_height, nullptr, nullptr, GetModuleHandle(nullptr), this);

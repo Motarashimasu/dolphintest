@@ -76,8 +76,9 @@ void Host_Message(const HostMessageID id)
 
 void Host_UpdateTitle(const std::string& title)
 {
+  // Sparking mode: the window always carries the collection's name, not Dolphin's status line.
   if (s_platform)
-    s_platform->SetTitle(title);
+    s_platform->SetTitle(Sparking::IsEnabled() ? std::string(Sparking::APP_NAME) : title);
 }
 
 void Host_UpdateDisasmDialog()

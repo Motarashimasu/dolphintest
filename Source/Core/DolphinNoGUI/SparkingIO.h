@@ -22,6 +22,10 @@ namespace Sparking
 constexpr std::string_view EVENT_PREFIX = "[SPARKING] ";
 constexpr int PROTOCOL_VERSION = 1;
 
+// Name shown on the game window (and in Task Manager via the exe's version info).
+// Keep in sync with DolphinNoGUI.rc.
+constexpr const char* APP_NAME = "DRAGON BALL Sparking! Collection PC v205";
+
 // Tiny JSON object builder. Values are escaped; nested objects/arrays can be added raw.
 class Json
 {

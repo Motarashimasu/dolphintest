@@ -155,6 +155,9 @@ def main():
               info["pads"] == ["gc", "gc", "none", "none"] and set(info["wiimotes"]) == {"none"})
         check("solo: own save folder (NAND)", info["nand"].rstrip("/\\").endswith("nand-solo"))
         check("solo: Dolphin's built-in Discord presence off", info["dolphin_discord"] is False)
+        titles = [l for l in solo.log if "Sparking! Collection" in l or l.startswith("Dolphin ")]
+        check(f"window title is the collection's name {titles[-1:] }",
+              bool(titles) and all(t == "DRAGON BALL Sparking! Collection PC v205" for t in titles))
         solo.send("save_state 1")
         check("save_state acknowledged", solo.wait_for("state_saved")["slot"] == 1)
         time.sleep(1)
