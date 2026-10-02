@@ -103,32 +103,36 @@ std::vector<std::string_view> SplitComponents(std::string_view relative)
   return parts;
 }
 
-enum class VariantMatch
+// Where a texture file sits relative to the @group folders.
+struct VariantPlace
 {
-  Base,      // not inside any @group
-  Selected,  // inside @groups, every one of them on its selected option
-  Excluded,  // inside an @group's unselected option (or directly in the @group folder)
+  std::string group;     // innermost "@Group" folder (lowercase), empty if none
+  bool selected = true;  // every @group on the way is on its selected option
+  bool stray = false;    // directly inside an "@Group" folder, not in an option: never loaded
 };
 
 // `relative`: the file path relative to the texture directory.
-VariantMatch ClassifyVariantPath(std::string_view relative,
+VariantPlace ClassifyVariantPath(std::string_view relative,
                                  const std::map<std::string, std::string>& selection)
 {
   const auto parts = SplitComponents(relative);
-  VariantMatch result = VariantMatch::Base;
+  VariantPlace place;
   // The last component is the file name itself, so only directories are checked.
   for (size_t i = 0; i + 1 < parts.size(); ++i)
   {
     if (parts[i].empty() || parts[i][0] != '@')
       continue;
+    place.group = Lower(parts[i].substr(1));
     if (i + 2 >= parts.size())
-      return VariantMatch::Excluded;  // a file directly inside "@Group"
-    const auto it = selection.find(Lower(parts[i].substr(1)));
+    {
+      place.stray = true;
+      return place;
+    }
+    const auto it = selection.find(place.group);
     if (it == selection.end() || it->second != Lower(parts[i + 1]))
-      return VariantMatch::Excluded;
-    result = VariantMatch::Selected;
+      place.selected = false;
   }
-  return result;
+  return place;
 }
 
 struct FoundTexture
@@ -137,37 +141,80 @@ struct FoundTexture
   bool has_arbitrary_mipmaps = false;
 };
 
-// Texture name -> file, for the current game and variant selection. Selected variant files are
-// collected first so they win over same-named base textures.
+// Texture name -> file, for the current game and variant selection.
+//
+// A texture name that appears anywhere inside a group's options is OWNED by that group: it is
+// only ever loaded from that group's selected option, never from the base pack or another group.
+// If the selected option doesn't have it, the game's original is used. So e.g. switching
+// @Graphics between Enhanced/Legacy can never change a texture that @Buttons owns.
+// A name owned by several groups belongs to the smallest group (fewest textures; ties by name),
+// i.e. the more specific one: @Buttons beats @Graphics even if the HD pack also has buttons.
 std::map<std::string, FoundTexture>
 ScanTextures(const std::set<std::string>& texture_directories,
              const std::map<std::string, std::string>& selection)
 {
   constexpr auto extensions = std::to_array<std::string_view>({".png", ".dds"});
-  std::map<std::string, FoundTexture> found;
-  for (const VariantMatch pass : {VariantMatch::Selected, VariantMatch::Base})
+
+  struct Candidate
   {
-    for (const auto& texture_directory : texture_directories)
+    FoundTexture texture;
+    VariantPlace place;
+  };
+  std::map<std::string, std::vector<Candidate>> candidates;  // name -> files, in search order
+  std::map<std::string, std::set<std::string>> group_names;  // group -> names it owns
+
+  for (const auto& texture_directory : texture_directories)
+  {
+    for (const auto& path : Common::DoFileSearch(texture_directory, extensions, /*recursive*/ true))
     {
-      for (const auto& path :
-           Common::DoFileSearch(texture_directory, extensions, /*recursive*/ true))
+      std::string filename;
+      SplitPath(path, nullptr, &filename, nullptr);
+      if (filename.substr(0, s_format_prefix.length()) != s_format_prefix)
+        continue;
+      const size_t arb_index = filename.rfind("_arb");
+      const bool has_arbitrary_mipmaps = arb_index != std::string::npos;
+      if (has_arbitrary_mipmaps)
+        filename.erase(arb_index, 4);
+
+      const std::string_view relative =
+          std::string_view(path).substr(std::min(path.size(), texture_directory.size()));
+      VariantPlace place = ClassifyVariantPath(relative, selection);
+      if (place.stray)
+        continue;
+      if (!place.group.empty())
+        group_names[place.group].insert(filename);
+      candidates[filename].push_back({{path, has_arbitrary_mipmaps}, std::move(place)});
+    }
+  }
+
+  std::map<std::string, FoundTexture> found;
+  for (auto& [name, files] : candidates)
+  {
+    // Owner: the smallest group that has this name in any of its options.
+    const std::string* owner = nullptr;
+    for (const Candidate& c : files)
+    {
+      if (c.place.group.empty())
+        continue;
+      if (!owner)
       {
-        const std::string_view relative =
-            std::string_view(path).substr(std::min(path.size(), texture_directory.size()));
-        if (ClassifyVariantPath(relative, selection) != pass)
-          continue;
+        owner = &c.place.group;
+        continue;
+      }
+      const size_t size = group_names[c.place.group].size();
+      const size_t owner_size = group_names[*owner].size();
+      if (size < owner_size || (size == owner_size && c.place.group < *owner))
+        owner = &c.place.group;
+    }
 
-        std::string filename;
-        SplitPath(path, nullptr, &filename, nullptr);
-        if (filename.substr(0, s_format_prefix.length()) != s_format_prefix)
-          continue;
-        const size_t arb_index = filename.rfind("_arb");
-        const bool has_arbitrary_mipmaps = arb_index != std::string::npos;
-        if (has_arbitrary_mipmaps)
-          filename.erase(arb_index, 4);
-
-        // First one wins: a selected variant beats a same-named base texture.
-        found.try_emplace(std::move(filename), FoundTexture{path, has_arbitrary_mipmaps});
+    for (Candidate& c : files)
+    {
+      const bool eligible = owner ? (c.place.group == *owner && c.place.selected) :
+                                    c.place.group.empty();
+      if (eligible)
+      {
+        found.emplace(name, std::move(c.texture));  // first one in search order wins
+        break;
       }
     }
   }

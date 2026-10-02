@@ -246,16 +246,19 @@ def main():
         # Shared texture library outside any user folder (--textures-dir).
         tex_lib = os.path.join(work, "texture-library")
         tex_root = os.path.join(tex_lib, game_id)
-        A, B, C = "tex1_8x8_aaaaaaaaaaaaaaaa_5", "tex1_8x8_bbbbbbbbbbbbbbbb_5", "tex1_8x8_cccccccccccccccc_5"
+        A, B, C, D, E = (f"tex1_8x8_{c * 16}_5" for c in "abcde")
         layout = {
-            f"{A}.png": "base",                         # base pack's own version of a button
-            f"{C}.png": "base",                         # unrelated base texture
+            f"{C}.png": "base",                          # loose texture outside any group
+            f"@Graphics/Enhanced/{A}.png": "hd",         # HD pack also ships a button texture
+            f"@Graphics/Enhanced/world/{D}.png": "hd",
+            f"@Graphics/Enhanced/world/{E}.png": "hd",
+            f"@Graphics/Legacy/readme.txt": "",
             f"@Buttons/PlayStation/{A}.png": "ps",
-            f"@Buttons/PlayStation/sub/{B}.png": "ps",  # nested folders inside an option are fine
+            f"@Buttons/PlayStation/sub/{B}.png": "ps",   # nested folders inside an option are fine
             f"@Buttons/Xbox/{A}.png": "xbox",
             f"@Buttons/Xbox/{B}.png": "xbox",
             f"@Buttons/Vanilla/readme.txt": "",
-            f"@Buttons/{C}.png": "stray",               # directly in the group: never loaded
+            f"@Buttons/{C}.png": "stray",                # directly in the group: never loaded
         }
         for rel, tag in layout.items():
             full = os.path.join(tex_root, *rel.split("/"))
@@ -266,8 +269,9 @@ def main():
         lister = Instance("list-tex", [exe, "-u", user_dir("tex"), "--textures-dir", tex_lib,
                                        "--list-textures", game_id])
         groups = lister.wait_for("texture_groups")["groups"]
-        check(f"list-textures finds @Buttons with its 3 options {groups}",
-              groups == [{"name": "Buttons", "options": ["PlayStation", "Vanilla", "Xbox"]}])
+        check(f"list-textures finds both groups {groups}",
+              groups == [{"name": "Buttons", "options": ["PlayStation", "Vanilla", "Xbox"]},
+                         {"name": "Graphics", "options": ["Enhanced", "Legacy"]}])
         lister.proc.wait(timeout=20)
 
         def tex_owner(inst, name):
@@ -278,11 +282,11 @@ def main():
             with open(path) as f:
                 return f.read()
 
-        def tex_wait(inst, name, want, timeout=10):
+        def tex_state(inst, want, timeout=10):
             end = time.time() + timeout
             got = None
             while time.time() < end:
-                got = tex_owner(inst, name)
+                got = [tex_owner(inst, n) for n in (A, B, C, D, E)]
                 if got == want:
                     break
                 time.sleep(0.3)
@@ -291,24 +295,32 @@ def main():
         tex = Instance("tex", [exe, *common, "--sparking", "-u", user_dir("tex"),
                                "--nand", nands["solo"], "--textures-dir", tex_lib,
                                "--textures", "buttons=playstation",
-                               "-e", dol])
+                               "--textures", "Graphics=Enhanced", "-e", dol])
         tex.send("hello")
         tex.wait_for("game_started")
         session = tex.seen("game_info")["session"]
         check(f"--textures turns custom textures on {session['textures']}",
-              session["custom_textures"] is True and session["textures"] == {"buttons": "playstation"})
-        got = [tex_owner(tex, n) for n in (A, B, C)]
-        check(f"PlayStation selected: PS overrides base, stray file ignored {got}",
-              got == ["ps", "ps", "base"])
-        tex.send("textures Buttons=Xbox")
-        tex.wait_for("textures")
-        got = [tex_wait(tex, A, "xbox"), tex_wait(tex, B, "xbox"), tex_owner(tex, C)]
-        check(f"switch in game -> Xbox {got}", got == ["xbox", "xbox", "base"])
-        tex.send("textures Buttons=Vanilla")
-        tex.wait_for("textures")
-        got = [tex_wait(tex, A, "base"), tex_wait(tex, B, None), tex_owner(tex, C)]
-        check(f"switch -> Vanilla: base pack only, Xbox-only texture dropped {got}",
-              got == ["base", None, "base"])
+              session["custom_textures"] is True
+              and session["textures"] == {"buttons": "playstation", "graphics": "enhanced"})
+        #        A (button)  B (button)  C (loose)  D, E (HD world)
+        steps = [
+            (None, ["ps", "ps", "base", "hd", "hd"],
+             "PlayStation + Enhanced: buttons from PS (not the HD pack), stray ignored"),
+            ("Buttons=Xbox", ["xbox", "xbox", "base", "hd", "hd"], "switch in game -> Xbox"),
+            ("Graphics=Legacy", ["xbox", "xbox", "base", None, None],
+             "Legacy: HD textures off, Xbox buttons untouched"),
+            ("Buttons=Vanilla", [None, None, "base", None, None],
+             "Vanilla: game's own buttons (HD pack's button copy never used)"),
+            ("Graphics=Enhanced", [None, None, "base", "hd", "hd"],
+             "Enhanced + Vanilla: HD back, buttons still the game's own"),
+            ("Buttons=PlayStation", ["ps", "ps", "base", "hd", "hd"], "back to PlayStation"),
+        ]
+        for command, want, label in steps:
+            if command:
+                tex.send(f"textures {command}")
+                tex.wait_for("textures")
+            got = tex_state(tex, want)
+            check(f"{label} {got}", got == want)
         tex.send("textures nonsense")
         check("bad textures argument rejected", tex.wait_for("error")["code"] == "bad_argument")
         tex.send("quit")

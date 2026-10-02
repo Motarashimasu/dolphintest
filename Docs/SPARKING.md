@@ -235,7 +235,7 @@ Sparking mode renders at 1080p (`--resolution 3`) with Dolphin's output forced t
 BT3's "16:9 aspect ratio") stays on whichever is chosen. The choice carries over to the next
 match in the same netplay session, and each netplay player has their own.
 
-## Texture variants (button layouts etc.)
+## Texture variants (graphics pack, button layouts, ...)
 
 Normal Dolphin loads every texture under `Load/Textures/<GAMEID>/`, and when two files have the
 same name an arbitrary one wins, so alternative versions of the same texture can't live side by
@@ -244,24 +244,32 @@ group, and each subfolder of it is one option.
 
 ```
 <textures-dir>/RDSPAF/
-  ...the normal HD pack...           always loaded
+  @Graphics/
+    Enhanced/     the HD texture pack (everything)        --textures Graphics=Enhanced
+    Legacy/       empty: the game's original textures      --textures Graphics=Legacy
   @Buttons/
-    Vanilla/                         (may be empty or missing: "use the pack's own / the game's")
-    PlayStation/  tex1_....png ...   loaded only with --textures Buttons=PlayStation
-    Xbox/         tex1_....png ...   loaded only with --textures Buttons=Xbox
+    Vanilla/      GameCube buttons (HD ones, or empty = the game's own)
+    PlayStation/  PlayStation button textures              --textures Buttons=PlayStation
+    Xbox/         Xbox button textures                     --textures Buttons=Xbox
+  (anything outside @ folders is always loaded)
 ```
 
-- Only the selected option of a group is loaded; the other options are ignored completely.
-- The selected option's textures **win** over same-named textures anywhere else in the pack.
-- A texture that only exists in the deselected option goes back to the pack's version, or the
-  game's original if the pack has none.
-- Folders inside an option are fine (`@Buttons/Xbox/menus/...`). Files placed directly in
-  `@Buttons/` are never loaded. Names are case-insensitive. Any number of groups can exist
-  (`@Buttons`, `@HUD`, ...), each with its own selection.
-- In game, `textures Buttons=Xbox` switches live; the new textures appear within a frame or two.
+Rules:
+- Only the selected option of each group is loaded; the other options are ignored completely.
+  A group with no selection, or an option with no folder, loads nothing from that group.
+- **Ownership:** a texture name that appears anywhere in a group's options belongs to that
+  group, and is only ever loaded from that group's selected option. If that option doesn't have
+  it, the game's original is shown, never a copy from the base pack or from another group.
+- A name that two groups both have belongs to the **smaller** group (fewer textures; ties by
+  name), i.e. the more specific one. So if the HD pack also contains button textures, `@Buttons`
+  still decides every button, and Enhanced/Legacy never changes the button prompts.
+- Folders inside an option are fine (`@Graphics/Enhanced/menus/...`). Files placed directly in
+  an `@Group/` folder are never loaded. Group and option names are case-insensitive.
+- In game, `textures Graphics=Legacy` / `textures Buttons=Xbox` switch live; the new textures
+  appear within a frame or two.
 - Purely visual, so each netplay player can use their own.
-- The Godot "button layout" setting: `--list-textures RDSPAF` gives the choices; launch with
-  `--textures Buttons=<choice>`.
+- Godot settings: `--list-textures RDSPAF` gives the groups and choices; launch with one
+  `--textures Group=Choice` per group.
 
 ## Controllers
 
