@@ -23,17 +23,29 @@ PREFIX = "[SPARKING] "
 
 
 def make_test_dol(path):
-    """GameCube DOL whose entry point is an infinite loop at 0x80003100."""
-    code = struct.pack(">I", 0x48000000).ljust(0x20, b"\0")  # b .
+    """GameCube DOL that sets up a plausible stack (Dolphin only runs Gecko codes when the stack
+    looks valid) and then spins at 0x80003108. 0x8000310C holds a marker word the aspect test's
+    fake widescreen code overwrites."""
+    code = struct.pack(">IIII",
+                       0x3C208000,   # lis r1, 0x8000
+                       0x60214000,   # ori r1, r1, 0x4000   -> r1 = 0x80004000
+                       0x48000000,   # b .
+                       0x600DF00D,   # marker (never executed)
+                       ).ljust(0x20, b"\0")
+    # Stack: [sp] -> next frame at sp+0x10, whose saved LR points back into the code.
+    data = struct.pack(">IIIIII", 0x80004010, 0, 0, 0, 0, 0x80003100).ljust(0x20, b"\0")
     header = bytearray(0x100)
-    struct.pack_into(">I", header, 0x00, 0x100)          # text0 file offset
-    struct.pack_into(">I", header, 0x48, 0x80003100)     # text0 load address
-    struct.pack_into(">I", header, 0x90, len(code))      # text0 size
-    struct.pack_into(">I", header, 0xD8, 0x80003200)     # bss address
-    struct.pack_into(">I", header, 0xDC, 0)              # bss size
-    struct.pack_into(">I", header, 0xE0, 0x80003100)     # entry point
+    struct.pack_into(">I", header, 0x00, 0x100)                  # text0 file offset
+    struct.pack_into(">I", header, 0x48, 0x80003100)             # text0 load address
+    struct.pack_into(">I", header, 0x90, len(code))              # text0 size
+    struct.pack_into(">I", header, 0x1C, 0x100 + len(code))      # data0 file offset
+    struct.pack_into(">I", header, 0x64, 0x80004000)             # data0 load address
+    struct.pack_into(">I", header, 0xAC, len(data))              # data0 size
+    struct.pack_into(">I", header, 0xD8, 0x80005000)             # bss address
+    struct.pack_into(">I", header, 0xDC, 0)                      # bss size
+    struct.pack_into(">I", header, 0xE0, 0x80003100)             # entry point
     with open(path, "wb") as f:
-        f.write(header + code)
+        f.write(header + code + data)
 
 
 class Instance:
@@ -187,6 +199,68 @@ def main():
         check("solo --gecko: unknown code reported", ga["missing"] == ["Nope"])
         ga, count = solo_gecko(["--no-gecko"])
         check("solo --no-gecko: all codes off", count == 0 and ga["codes"] == [])
+
+        print("aspect ratio (16:9 default, F5 / aspect command -> 4:3)")
+        d = os.path.join(user_dir("aspect"), "GameSettings")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, f"{game_id}.ini"), "w") as f:
+            f.write("[Gecko]\n"
+                    "$Infinite Health [Sparking]\n04001008 00000003\n"
+                    "$Widescreen [Sparking]\n0400310C CAFEBABE\n"
+                    "[Gecko_Enabled]\n$Infinite Health\n$Widescreen\n"
+                    "[Sparking]\nWidescreenCode = Widescreen\n")
+
+        def peek(inst, want, timeout=10):
+            end = time.time() + timeout
+            value = None
+            while time.time() < end:
+                inst.send("peek 8000310C")
+                value = inst.wait_for("peek")["value"]
+                if value == want:
+                    break
+                time.sleep(0.3)
+            return value
+
+        asp = Instance("aspect", [exe, *common, "--sparking", "-u", user_dir("aspect"),
+                                  "--nand", nands["solo"], "-e", dol])
+        asp.send("hello")
+        boot = asp.wait_for("aspect")
+        check(f"boots 16:9 by default, widescreen code found + restorable {boot}",
+              boot["mode"] == "16:9" and boot["widescreen_code"] == "Widescreen"
+              and boot["restorable"] == 1 and boot["code_writes"] == 1)
+        asp.wait_for("game_started")
+        check("16:9: both codes live (ini selection kept)",
+              asp.seen("game_info")["session"]["gecko_active_count"] == 2)
+        v = peek(asp, "CAFEBABE")
+        check(f"16:9: widescreen code patched the game ({v})", v == "CAFEBABE")
+        asp.send("aspect")
+        ev = asp.wait_for("aspect", lambda e: e["mode"] == "4:3")
+        check(f"toggle -> 4:3, widescreen code off, other code kept {ev}",
+              ev.get("gecko_active_count") == 1)
+        v = peek(asp, "600DF00D")
+        check(f"4:3: game's original value restored from the disc ({v})", v == "600DF00D")
+        asp.send("aspect 16:9")
+        asp.wait_for("aspect", lambda e: e["mode"] == "16:9")
+        v = peek(asp, "CAFEBABE")
+        check(f"back to 16:9: code re-applied ({v})", v == "CAFEBABE")
+        asp.send("aspect 5:4")
+        check("bad aspect argument rejected", asp.wait_for("error")["code"] == "bad_argument")
+        asp.send("quit")
+        asp.wait_for("exit")
+        asp.proc.wait(timeout=20)
+
+        asp = Instance("aspect43", [exe, *common, "--sparking", "-u", user_dir("aspect"),
+                                    "--nand", nands["solo"], "--aspect", "4:3", "-e", dol])
+        asp.send("hello")
+        check("--aspect 4:3 boots in 4:3", asp.wait_for("aspect")["mode"] == "4:3")
+        asp.wait_for("game_started")
+        check("--aspect 4:3: widescreen code never activated",
+              asp.seen("game_info")["session"]["gecko_active_count"] == 1)
+        v = peek(asp, "600DF00D")
+        check(f"--aspect 4:3: game memory untouched ({v})", v == "600DF00D")
+        asp.send("quit")
+        asp.wait_for("exit")
+        asp.proc.wait(timeout=20)
 
         print("netplay: host + joiner")
         # Netplay saves: host has the "unlocked" save, joiner a different one. A DOL has title ID 0,

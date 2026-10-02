@@ -4,9 +4,12 @@
 #include "DolphinNoGUI/SparkingFrontend.h"
 
 #include <OptionParser.h>
+#include <fmt/format.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <charconv>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <string_view>
@@ -20,6 +23,7 @@
 #include "Core/Boot/Boot.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Config/NetplaySettings.h"
+#include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/UISettings.h"
 #include "Core/Config/WiimoteSettings.h"
 #include "Core/ConfigManager.h"
@@ -27,12 +31,14 @@
 #include "Core/HW/Wiimote.h"
 #include "Core/BootManager.h"
 #include "Core/Core.h"
+#include "Core/PowerPC/MMU.h"
 #include "Core/DolphinAnalytics.h"
 #include "Core/NetPlayProto.h"
 #include "Core/State.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/Platform.h"
 #include "Core/GeckoCode.h"
+#include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingGecko.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "UICommon/GameFile.h"
@@ -159,6 +165,20 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     return;
   }
 
+  // Presentation only, so allowed in netplay too (each player picks their own).
+  if (cmd.name == "aspect")
+  {
+    if (cmd.arg == "16:9" || cmd.arg == "wide")
+      SetWidescreen(true);
+    else if (cmd.arg == "4:3" || cmd.arg == "standard")
+      SetWidescreen(false);
+    else if (cmd.arg.empty() || cmd.arg == "toggle")
+      ToggleWidescreen();
+    else
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+    return;
+  }
+
   // Everything below would desync a netplay session.
   if (NetPlay::IsNetPlayRunning())
   {
@@ -173,6 +193,23 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
   else if (cmd.name == "resume")
   {
     Core::SetState(system, Core::State::Running);
+  }
+  else if (cmd.name == "peek")
+  {
+    // Debug: read a 32-bit word of game memory, e.g. "peek 8062BA44" (hex).
+    u32 address = 0;
+    const auto [ptr, ec] = std::from_chars(cmd.arg.data(), cmd.arg.data() + cmd.arg.size(),
+                                           address, 16);
+    if (ec != std::errc() || !Core::IsRunning(system))
+    {
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      return;
+    }
+    Core::CPUThreadGuard guard(system);
+    const u32 value = PowerPC::MMU::HostRead<u32>(guard, address);
+    Emit("peek", Json()
+                     .Add("address", fmt::format("{:08X}", address))
+                     .Add("value", fmt::format("{:08X}", value)));
   }
   else if (cmd.name == "save_state_file" || cmd.name == "load_state_file")
   {
@@ -317,6 +354,22 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
                std::string(options.is_set_by_user("netplay_direct") ? "direct" : "traversal"));
   }
 
+  // Display: 1080p internal resolution (3x native) and 16:9 output; F5 / "aspect" flip to 4:3.
+  {
+    const int scale = std::clamp(std::atoi(static_cast<const char*>(options.get("resolution"))), 1, 8);
+    layer->Set(Config::GFX_EFB_SCALE, scale);
+    const bool wide = std::string_view(static_cast<const char*>(options.get("aspect"))) != "4:3";
+    layer->Set(Config::GFX_ASPECT_RATIO, wide ? AspectMode::ForceWide : AspectMode::ForceStandard);
+    SetDefaultWidescreen(wide);
+    const std::string window = static_cast<const char*>(options.get("window"));
+    int w = 0, h = 0;
+    if (std::sscanf(window.c_str(), "%dx%d", &w, &h) == 2 && w > 0 && h > 0)
+    {
+      layer->Set(Config::MAIN_RENDER_WINDOW_WIDTH, w);
+      layer->Set(Config::MAIN_RENDER_WINDOW_HEIGHT, h);
+    }
+  }
+
   // Dolphin runs no Gecko code at all unless "Enable Cheats" is on (default off). Sparking decides
   // exactly which codes run (--gecko / --no-gecko / ini defaults / --netplay-gecko), so the master
   // switch must be on. In netplay the host's value is pushed to every player.
@@ -407,6 +460,22 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .dest("netplay_direct")
       .action("store_true")
       .help("Host by IP:port instead of a traversal room code (needs port forwarding)");
+  parser.add_option("--aspect")
+      .dest("aspect")
+      .action("store")
+      .choices({"16:9", "4:3"})
+      .set_default("16:9")
+      .help("Sparking mode starting aspect ratio (F5 toggles in game): 16:9 (default) or 4:3");
+  parser.add_option("--resolution")
+      .dest("resolution")
+      .action("store")
+      .set_default("3")
+      .help("Sparking mode internal resolution as a multiple of native (3 = 1080p, default)");
+  parser.add_option("--window")
+      .dest("window")
+      .action("store")
+      .set_default("1280x720")
+      .help("Sparking mode render window size WxH (default 1280x720; rendering stays 1080p)");
   parser.add_option("--nickname").dest("nickname").action("store").help("NetPlay nickname");
   parser.add_option("--automap")
       .dest("automap")
@@ -493,23 +562,32 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
     return;
   StartCommandReader([&platform](const Command& cmd) { HandleGameCommand(cmd, platform); });
 
+  StartAspectHotkey();
+
   const bool no_gecko = options.is_set_by_user("no_gecko");
-  if (!no_gecko && !options.is_set("gecko"))
-    return;  // leave Dolphin's per-game ini selection alone
+  const bool explicit_gecko = no_gecko || options.is_set("gecko");
   if (!options.is_set("exec"))
   {
-    Emit("error", Json().Add("code", "gecko_needs_exec"));
+    if (explicit_gecko)
+      Emit("error", Json().Add("code", "gecko_needs_exec"));
     return;
   }
   const UICommon::GameFile game(options.all("exec").front());
   if (!game.IsValid())
     return;
   std::vector<std::string> names;
-  if (!no_gecko)
+  if (!explicit_gecko)
+  {
+    // No selection from the frontend: the game ini's enabled codes.
+    names = DefaultEnabledGeckoNames(game.GetGameID(), game.GetRevision(), {});
+  }
+  else if (!no_gecko)
   {
     for (const std::string& n : options.all("gecko"))
       names.push_back(n);
   }
+  names = PrepareAspectForBoot(game.GetFilePath(), game.GetGameID(), game.GetRevision(),
+                               std::move(names));
   const std::vector<std::string> missing =
       ActivateExclusiveGeckoCodes(game.GetGameID(), game.GetRevision(), names);
   std::vector<std::string> active, miss;
@@ -600,6 +678,7 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
         /*run_during_stop=*/true);
   });
 
+  StartAspectHotkey();
   StartCommandReader([&session, &platform = hooks.platform](const Command& cmd) {
     if (!session.HandleCommand(cmd))
       HandleGameCommand(cmd, platform);

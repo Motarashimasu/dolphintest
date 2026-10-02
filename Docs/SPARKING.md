@@ -33,6 +33,9 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--gecko <name>` (repeatable) / `--no-gecko` | ini selection | Solo: exactly these Gecko codes on, everything else off, for this run. |
 | `--netplay-gecko <port>=<name>` (repeatable) | none | Netplay: the player on GameCube port `<port>` runs only these codes. Everything else is off for everyone, and Dolphin's "Sync Codes" is forced off. |
 | `--list-gecko <GAMEID>[:<rev>]` | | Print every Gecko code Dolphin knows for the game (`gecko_codes` event), then exit. Starts no game. |
+| `--aspect 16:9\|4:3` | `16:9` | Starting aspect ratio. **F5** in the game window (or the `aspect` command) flips it. See *Display*. |
+| `--resolution <n>` | `3` | Internal resolution as a multiple of native: `3` = 1080p, `2` = 720p, `4` = 1440p, `6` = 4K. |
+| `--window <W>x<H>` | `1280x720` | Size of the game window. Rendering stays at `--resolution` regardless. |
 | `--netplay-saves host-readonly\|keep` | `host-readonly` | Netplay: every player plays on the **host's** save, which is never written back. |
 
 Dolphin's own Discord Rich Presence ("Playing on Dolphin") is always switched off in Sparking
@@ -87,6 +90,8 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `state_saved` / `state_loaded` | `slot` | Solo only |
 | `gecko_codes` | `game_id`, `codes[]` | `--list-gecko` result |
 | `gecko_active` | `port` (0 = solo), `codes[]`, `missing[]` | Codes activated for this boot |
+| `aspect` | `mode` (`16:9`/`4:3`), `widescreen_code`, `restorable`, `code_writes`, after a toggle also `gecko_active_count` | At every boot and after every toggle |
+| `peek` | `address`, `value` (hex) | Answer to `peek` |
 | `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
 | `state_applied` | | A save state really loaded (solo load, or the netplay battle state at boot) |
 | `save_data` | `host_hash`, host also `ready`, clients `local_status` | Netplay save fingerprint check updated |
@@ -126,6 +131,8 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `pause` / `resume` | solo | |
 | `save_state <1-10>` / `load_state <1-10>` | solo | Slot save states |
 | `save_state_file <file.sst>` / `load_state_file <file.sst>` | solo | Capture / test a battle state in `--state-dir` |
+| `aspect 16:9\|4:3\|toggle` | any, in game (netplay too) | Same as F5. Each player chooses their own. |
+| `peek <hex address>` | solo | Debug: read a 32-bit word of game memory |
 | `quit` | any | Stop any game and exit |
 
 Always send `hello` first. If Dolphin is launched without a stdin pipe it keeps running on EOF.
@@ -212,6 +219,30 @@ come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
 - Codes that differ per player must only change presentation (camera, viewport, HUD), never
   game logic, or the match desyncs. Keep each player's code the same length, so Dolphin's code
   handler costs the same emulated CPU time on every machine.
+
+## Display
+
+Sparking mode renders at 1080p (`--resolution 3`) in 16:9. 16:9 needs two things: Dolphin's
+output forced to 16:9, and the game's own widescreen Gecko code. A game names that code in its
+game ini:
+
+```ini
+[Sparking]
+WidescreenCode = 16:9 aspect ratio
+```
+
+- **16:9**: that code runs (when it is selected/enabled, like any other code) and the output is 16:9.
+- **4:3**: that code is dropped, and the values it overwrote are put back from the disc's main
+  DOL, so the game really returns to its own 4:3 projection; the output is 4:3.
+- **F5** toggles while the game window has focus (Windows). The choice carries over to the next
+  match in the same netplay session.
+- The `aspect` event's `restorable` should equal `code_writes`. If it is lower, part of the code
+  patches memory outside the main DOL, and switching to 4:3 mid-game may leave that part applied
+  until the next boot (`--aspect 4:3` at launch is always clean).
+- In netplay each player's aspect is their own. Like the splitscreen remover, a widescreen code
+  must only change presentation, or the match desyncs.
+
+Games without a `[Sparking] WidescreenCode` still get Dolphin's 16:9 / 4:3 output switch.
 
 ## Controllers
 
