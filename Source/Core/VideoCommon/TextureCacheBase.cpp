@@ -170,6 +170,11 @@ void TextureCacheBase::OnConfigChanged(const VideoConfig& config)
     Invalidate();
     TexDecoder_SetTexFmtOverlayOptions(config.bTexFmtOverlayEnable, config.bTexFmtOverlayCenter);
   }
+  else if (HiresTexture::ApplyPendingVariantChange())
+  {
+    // Texture variant switched in game (Dolphin-Sparking): re-look-up every texture.
+    Invalidate();
+  }
 
   SetBackupConfig(config);
 }

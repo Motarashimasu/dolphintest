@@ -4,7 +4,11 @@
 #include "VideoCommon/HiresTextures.h"
 
 #include <fmt/format.h>
+#include <algorithm>
+#include <atomic>
+#include <cctype>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -19,6 +23,7 @@
 #include "Core/ConfigManager.h"
 #include "Core/System.h"
 #include "VideoCommon/Assets/DirectFilesystemAssetLibrary.h"
+#include "VideoCommon/Assets/CustomAssetLibrary.h"
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/Resources/CustomResourceManager.h"
 #include "VideoCommon/VideoConfig.h"
@@ -27,6 +32,12 @@ constexpr std::string_view s_format_prefix{"tex1_"};
 
 static std::unordered_map<std::string, std::shared_ptr<HiresTexture>> s_hires_texture_cache;
 static std::unordered_map<std::string, bool> s_hires_texture_id_to_arbmipmap;
+// Texture name -> file currently mapped for it (needed to re-map on a variant switch).
+static std::unordered_map<std::string, std::string> s_hires_texture_id_to_path;
+
+static std::mutex s_variant_mutex;
+static std::map<std::string, std::string> s_variant_selection;  // lowercase group -> lowercase option
+static std::atomic<bool> s_variant_change_pending{false};
 
 static auto s_file_library = std::make_shared<VideoCommon::DirectFilesystemAssetLibrary>();
 
@@ -68,7 +79,227 @@ std::pair<std::string, bool> GetNameArbPair(const TextureInfo& texture_info)
 
   return {"", false};
 }
+std::string Lower(std::string_view s)
+{
+  std::string out(s);
+  for (char& c : out)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  return out;
+}
+
+std::vector<std::string_view> SplitComponents(std::string_view relative)
+{
+  std::vector<std::string_view> parts;
+  size_t start = 0;
+  for (size_t i = 0; i <= relative.size(); ++i)
+  {
+    if (i == relative.size() || relative[i] == '/' || relative[i] == '\\')
+    {
+      if (i > start)
+        parts.push_back(relative.substr(start, i - start));
+      start = i + 1;
+    }
+  }
+  return parts;
+}
+
+enum class VariantMatch
+{
+  Base,      // not inside any @group
+  Selected,  // inside @groups, every one of them on its selected option
+  Excluded,  // inside an @group's unselected option (or directly in the @group folder)
+};
+
+// `relative`: the file path relative to the texture directory.
+VariantMatch ClassifyVariantPath(std::string_view relative,
+                                 const std::map<std::string, std::string>& selection)
+{
+  const auto parts = SplitComponents(relative);
+  VariantMatch result = VariantMatch::Base;
+  // The last component is the file name itself, so only directories are checked.
+  for (size_t i = 0; i + 1 < parts.size(); ++i)
+  {
+    if (parts[i].empty() || parts[i][0] != '@')
+      continue;
+    if (i + 2 >= parts.size())
+      return VariantMatch::Excluded;  // a file directly inside "@Group"
+    const auto it = selection.find(Lower(parts[i].substr(1)));
+    if (it == selection.end() || it->second != Lower(parts[i + 1]))
+      return VariantMatch::Excluded;
+    result = VariantMatch::Selected;
+  }
+  return result;
+}
+
+struct FoundTexture
+{
+  std::string path;
+  bool has_arbitrary_mipmaps = false;
+};
+
+// Texture name -> file, for the current game and variant selection. Selected variant files are
+// collected first so they win over same-named base textures.
+std::map<std::string, FoundTexture>
+ScanTextures(const std::set<std::string>& texture_directories,
+             const std::map<std::string, std::string>& selection)
+{
+  constexpr auto extensions = std::to_array<std::string_view>({".png", ".dds"});
+  std::map<std::string, FoundTexture> found;
+  for (const VariantMatch pass : {VariantMatch::Selected, VariantMatch::Base})
+  {
+    for (const auto& texture_directory : texture_directories)
+    {
+      for (const auto& path :
+           Common::DoFileSearch(texture_directory, extensions, /*recursive*/ true))
+      {
+        const std::string_view relative =
+            std::string_view(path).substr(std::min(path.size(), texture_directory.size()));
+        if (ClassifyVariantPath(relative, selection) != pass)
+          continue;
+
+        std::string filename;
+        SplitPath(path, nullptr, &filename, nullptr);
+        if (filename.substr(0, s_format_prefix.length()) != s_format_prefix)
+          continue;
+        const size_t arb_index = filename.rfind("_arb");
+        const bool has_arbitrary_mipmaps = arb_index != std::string::npos;
+        if (has_arbitrary_mipmaps)
+          filename.erase(arb_index, 4);
+
+        // First one wins: a selected variant beats a same-named base texture.
+        found.try_emplace(std::move(filename), FoundTexture{path, has_arbitrary_mipmaps});
+      }
+    }
+  }
+  return found;
+}
+
+std::set<std::string> CurrentTextureDirectories()
+{
+  return GetTextureDirectoriesForFirstMatchingGameId(
+      File::GetUserPath(D_HIRESTEXTURES_IDX), SConfig::GetInstance().GetGameIDsForTextures());
+}
+
+std::map<std::string, std::string> CurrentSelection()
+{
+  std::lock_guard lk(s_variant_mutex);
+  return s_variant_selection;
+}
+
+void MapTexture(const std::string& name, const FoundTexture& texture)
+{
+  s_hires_texture_id_to_arbmipmap[name] = texture.has_arbitrary_mipmaps;
+  s_hires_texture_id_to_path[name] = texture.path;
+  // Since this is just a texture (single file) the mapper doesn't really matter
+  // just provide a string
+  s_file_library->SetAssetIDMapData(
+      name, std::map<std::string, std::filesystem::path>{{"texture", StringToPath(texture.path)}});
+}
 }  // namespace
+
+void HiresTexture::SetVariantSelection(std::map<std::string, std::string> group_to_option)
+{
+  std::map<std::string, std::string> normalized;
+  for (const auto& [group, option] : group_to_option)
+    normalized[Lower(group)] = Lower(option);
+  {
+    std::lock_guard lk(s_variant_mutex);
+    if (normalized == s_variant_selection)
+      return;
+    s_variant_selection = std::move(normalized);
+  }
+  s_variant_change_pending = true;
+}
+
+std::map<std::string, std::string> HiresTexture::GetVariantSelection()
+{
+  return CurrentSelection();
+}
+
+bool HiresTexture::ApplyPendingVariantChange()
+{
+  if (!s_variant_change_pending.exchange(false))
+    return false;
+  if (!g_ActiveConfig.bHiresTextures)
+    return false;  // picked up by the next Update()
+
+  const auto found = ScanTextures(CurrentTextureDirectories(), CurrentSelection());
+  auto& resource_manager = Core::System::GetInstance().GetCustomResourceManager();
+
+  // Textures that no longer have a replacement fall back to the game's own.
+  std::vector<std::string> removed;
+  for (const auto& [name, path] : s_hires_texture_id_to_path)
+  {
+    if (!found.contains(name))
+      removed.push_back(name);
+  }
+  for (const std::string& name : removed)
+  {
+    s_hires_texture_id_to_arbmipmap.erase(name);
+    s_hires_texture_id_to_path.erase(name);
+    s_hires_texture_cache.erase(name);
+    s_file_library->SetAssetIDMapData(name, {});
+  }
+
+  // New or re-pointed textures: remap, and make any already-loaded copy reload from the new file.
+  for (const auto& [name, texture] : found)
+  {
+    const auto it = s_hires_texture_id_to_path.find(name);
+    if (it != s_hires_texture_id_to_path.end() && it->second == texture.path)
+      continue;
+    MapTexture(name, texture);
+    resource_manager.MarkAssetDirty(name);
+    s_hires_texture_cache.erase(name);
+    if (g_ActiveConfig.bCacheHiresTextures)
+    {
+      auto hires_texture = std::make_shared<HiresTexture>(texture.has_arbitrary_mipmaps, name);
+      static_cast<void>(hires_texture->LoadTexture());
+      s_hires_texture_cache.try_emplace(name, std::move(hires_texture));
+    }
+  }
+  return true;
+}
+
+std::string HiresTexture::GetMappedPath(const std::string& texture_name)
+{
+  const auto it = s_hires_texture_id_to_path.find(texture_name);
+  return it == s_hires_texture_id_to_path.end() ? std::string() : it->second;
+}
+
+std::map<std::string, std::set<std::string>>
+HiresTexture::ListVariantGroups(const std::string& game_id)
+{
+  std::map<std::string, std::set<std::string>> groups;
+  const std::set<std::string> directories =
+      GetTextureDirectoriesWithGameId(File::GetUserPath(D_HIRESTEXTURES_IDX), game_id);
+  for (const auto& directory : directories)
+  {
+    const File::FSTEntry tree = File::ScanDirectoryTree(directory, /*recursive*/ true);
+    // Depth-first over directories; "@Group" folders' child folders are its options.
+    std::vector<const File::FSTEntry*> stack{&tree};
+    while (!stack.empty())
+    {
+      const File::FSTEntry* entry = stack.back();
+      stack.pop_back();
+      for (const File::FSTEntry& child : entry->children)
+      {
+        if (!child.isDirectory)
+          continue;
+        if (!child.virtualName.empty() && child.virtualName[0] == '@')
+        {
+          auto& options = groups[child.virtualName.substr(1)];
+          for (const File::FSTEntry& option : child.children)
+          {
+            if (option.isDirectory)
+              options.insert(option.virtualName);
+          }
+        }
+        stack.push_back(&child);
+      }
+    }
+  }
+  return groups;
+}
 
 void HiresTexture::Shutdown()
 {
@@ -83,60 +314,24 @@ void HiresTexture::Update()
     return;
   }
 
-  const std::set<std::string> texture_directories = GetTextureDirectoriesForFirstMatchingGameId(
-      File::GetUserPath(D_HIRESTEXTURES_IDX), SConfig::GetInstance().GetGameIDsForTextures());
+  const std::set<std::string> texture_directories = CurrentTextureDirectories();
 
-  constexpr auto extensions = std::to_array<std::string_view>({".png", ".dds"});
-
+  // Watch these directories for any texture reloads
   for (const auto& texture_directory : texture_directories)
-  {
-    // Watch this directory for any texture reloads
     s_file_library->Watch(texture_directory);
 
-    const auto texture_paths =
-        Common::DoFileSearch(texture_directory, extensions, /*recursive*/ true);
+  s_variant_change_pending = false;  // this scan already uses the current selection
+  for (const auto& [name, texture] : ScanTextures(texture_directories, CurrentSelection()))
+  {
+    if (s_hires_texture_id_to_arbmipmap.contains(name))
+      continue;
+    MapTexture(name, texture);
 
-    bool failed_insert = false;
-    for (auto& path : texture_paths)
+    if (g_ActiveConfig.bCacheHiresTextures)
     {
-      std::string filename;
-      SplitPath(path, nullptr, &filename, nullptr);
-
-      if (filename.substr(0, s_format_prefix.length()) == s_format_prefix)
-      {
-        const size_t arb_index = filename.rfind("_arb");
-        const bool has_arbitrary_mipmaps = arb_index != std::string::npos;
-        if (has_arbitrary_mipmaps)
-          filename.erase(arb_index, 4);
-
-        const auto [it, inserted] =
-            s_hires_texture_id_to_arbmipmap.try_emplace(filename, has_arbitrary_mipmaps);
-        if (!inserted)
-        {
-          failed_insert = true;
-        }
-        else
-        {
-          // Since this is just a texture (single file) the mapper doesn't really matter
-          // just provide a string
-          s_file_library->SetAssetIDMapData(filename, std::map<std::string, std::filesystem::path>{
-                                                          {"texture", StringToPath(path)}});
-
-          if (g_ActiveConfig.bCacheHiresTextures)
-          {
-            auto hires_texture =
-                std::make_shared<HiresTexture>(has_arbitrary_mipmaps, std::move(filename));
-            static_cast<void>(hires_texture->LoadTexture());
-            s_hires_texture_cache.try_emplace(hires_texture->GetId(), hires_texture);
-          }
-        }
-      }
-    }
-
-    if (failed_insert)
-    {
-      ERROR_LOG_FMT(VIDEO, "One or more textures at path '{}' were already inserted",
-                    texture_directory);
+      auto hires_texture = std::make_shared<HiresTexture>(texture.has_arbitrary_mipmaps, name);
+      static_cast<void>(hires_texture->LoadTexture());
+      s_hires_texture_cache.try_emplace(hires_texture->GetId(), hires_texture);
     }
   }
 
@@ -162,6 +357,7 @@ void HiresTexture::Clear()
 {
   s_hires_texture_cache.clear();
   s_hires_texture_id_to_arbmipmap.clear();
+  s_hires_texture_id_to_path.clear();
   s_file_library = std::make_shared<VideoCommon::DirectFilesystemAssetLibrary>();
 }
 

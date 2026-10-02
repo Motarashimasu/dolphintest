@@ -8,9 +8,11 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <charconv>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -42,6 +44,9 @@
 #include "DolphinNoGUI/SparkingGecko.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "UICommon/GameFile.h"
+#include "VideoCommon/AsyncRequests.h"
+#include "VideoCommon/HiresTextures.h"
+#include "VideoCommon/TextureCacheBase.h"
 #include "DolphinNoGUI/SparkingNetPlay.h"
 #include "UICommon/UICommon.h"
 
@@ -71,6 +76,32 @@ std::string_view StateName(Core::State state)
   return "unknown";
 }
 
+// "Group=Option" -> merged into the current texture variant selection. Empty option clears it.
+bool ApplyTextureSpec(std::string_view spec, std::map<std::string, std::string>* selection)
+{
+  const size_t eq = spec.find('=');
+  if (eq == std::string_view::npos || eq == 0)
+    return false;
+  // Same case-folding HiresTexture applies, so "Buttons" replaces an earlier "buttons".
+  std::string group(spec.substr(0, eq));
+  for (char& c : group)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  const std::string option(spec.substr(eq + 1));
+  if (option.empty())
+    selection->erase(group);
+  else
+    (*selection)[group] = option;
+  return true;
+}
+
+std::string TextureSelectionJson()
+{
+  Json json;
+  for (const auto& [group, option] : HiresTexture::GetVariantSelection())
+    json.Add(group, option);
+  return json.Str();
+}
+
 // Effective settings for this boot (after Dolphin's own netplay overrides), for debugging the
 // frontend's controller / save-profile setup.
 std::string SessionSummary()
@@ -95,6 +126,8 @@ std::string SessionSummary()
       .Add("netplay_save_load", Config::Get(Config::NETPLAY_SAVEDATA_LOAD))
       .Add("netplay_save_write", Config::Get(Config::NETPLAY_SAVEDATA_WRITE))
       .Add("gecko_active_count", static_cast<int64_t>(Gecko::CountEnabledCodes()))
+      .Add("custom_textures", Config::Get(Config::GFX_HIRES_TEXTURES))
+      .AddRaw("textures", TextureSelectionJson())
       .Str();
 }
 
@@ -176,6 +209,38 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
       ToggleWidescreen();
     else
       Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+    return;
+  }
+
+  // Texture variants are presentation only too: "textures Buttons=Xbox" ("Buttons=" = none).
+  if (cmd.name == "textures")
+  {
+    auto selection = HiresTexture::GetVariantSelection();
+    if (!ApplyTextureSpec(cmd.arg, &selection))
+    {
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      return;
+    }
+    HiresTexture::SetVariantSelection(std::move(selection));
+    // Applied at the next frame end anyway; also queue it to the video thread right away so it
+    // lands even while the game isn't presenting frames (loading screens, paused). The CPU thread
+    // is paused while queueing, which keeps the video-event queue single-producer.
+    if (Core::IsRunning(system))
+    {
+      Core::RunOnCPUThread(system, [] {
+        AsyncRequests::GetInstance()->PushEvent([] {
+          if (g_texture_cache && HiresTexture::ApplyPendingVariantChange())
+            g_texture_cache->Invalidate();
+        });
+      });
+    }
+    Emit("textures", Json().AddRaw("selection", TextureSelectionJson()));
+    return;
+  }
+  if (cmd.name == "texture_path")  // debug: which file a texture name maps to right now
+  {
+    Emit("texture_path",
+         Json().Add("name", cmd.arg).Add("path", HiresTexture::GetMappedPath(cmd.arg)));
     return;
   }
 
@@ -370,6 +435,19 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
     }
   }
 
+  // Texture variants (@Group/Option folders in the custom texture pack).
+  if (options.is_set("textures"))
+  {
+    std::map<std::string, std::string> selection;
+    for (const std::string& spec : options.all("textures"))
+    {
+      if (!ApplyTextureSpec(spec, &selection))
+        Emit("error", Json().Add("code", "bad_argument").Add("textures", spec));
+    }
+    HiresTexture::SetVariantSelection(std::move(selection));
+    layer->Set(Config::GFX_HIRES_TEXTURES, true);
+  }
+
   // Dolphin runs no Gecko code at all unless "Enable Cheats" is on (default off). Sparking decides
   // exactly which codes run (--gecko / --no-gecko / ini defaults / --netplay-gecko), so the master
   // switch must be on. In netplay the host's value is pushed to every player.
@@ -460,6 +538,21 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .dest("netplay_direct")
       .action("store_true")
       .help("Host by IP:port instead of a traversal room code (needs port forwarding)");
+  parser.add_option("--textures")
+      .dest("textures")
+      .action("append")
+      .help("Sparking mode: texture variant GROUP=OPTION, i.e. folder @GROUP/OPTION in the game's "
+            "texture pack (repeatable). Turns custom textures on.");
+  parser.add_option("--textures-dir")
+      .dest("textures_dir")
+      .action("store")
+      .help("Sparking mode: custom texture folder (holds <GAMEID>/ folders) instead of "
+            "<user>/Load/Textures, so several profiles can share one texture library");
+  parser.add_option("--list-textures")
+      .dest("list_textures")
+      .action("store")
+      .metavar("GAMEID")
+      .help("Print the texture variant groups (@folders) for a game as JSON, then exit");
   parser.add_option("--aspect")
       .dest("aspect")
       .action("store")
@@ -492,7 +585,7 @@ static bool IsNetPlayMode(const optparse::Values& options)
 
 bool OwnsMain(const optparse::Values& options)
 {
-  return IsNetPlayMode(options) || options.is_set("list_gecko");
+  return IsNetPlayMode(options) || options.is_set("list_gecko") || options.is_set("list_textures");
 }
 
 static int RunListGecko(const optparse::Values& options)
@@ -516,19 +609,56 @@ static int RunListGecko(const optparse::Values& options)
   return 0;
 }
 
+// After UICommon::Init (which derives the texture path from the user folder).
+static void ApplyTexturesDir(const optparse::Values& options)
+{
+  if (options.is_set("textures_dir"))
+  {
+    File::SetUserPath(D_HIRESTEXTURES_IDX,
+                      std::string(static_cast<const char*>(options.get("textures_dir"))));
+  }
+}
+
+static int RunListTextures(const optparse::Values& options)
+{
+  std::string user_directory;
+  if (options.is_set("user"))
+    user_directory = static_cast<const char*>(options.get("user"));
+  UICommon::SetUserDirectory(user_directory);
+  UICommon::Init();
+  Common::ScopeGuard guard([] { UICommon::Shutdown(); });
+  ApplyTexturesDir(options);
+
+  const std::string id = static_cast<const char*>(options.get("list_textures"));
+  std::vector<std::string> groups;
+  for (const auto& [group, options_found] : HiresTexture::ListVariantGroups(id))
+  {
+    std::vector<std::string> names;
+    for (const std::string& option : options_found)
+      names.push_back(Json::Escape(option));
+    groups.push_back(Json().Add("name", group).AddRaw("options", JsonArray(names)).Str());
+  }
+  Emit("texture_groups", Json().Add("game_id", id).AddRaw("groups", JsonArray(groups)));
+  Emit("exit", Json().Add("code", 0));
+  return 0;
+}
+
 static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hooks);
 
 int RunMain(const optparse::Values& options, const FrontendHooks& hooks)
 {
   if (options.is_set("list_gecko"))
     return RunListGecko(options);
+  if (options.is_set("list_textures"))
+    return RunListTextures(options);
   return RunNetPlay(options, hooks);
 }
 
 void InitFromOptions(const optparse::Values& options)
 {
   const bool netplay = IsNetPlayMode(options);
-  SetEnabled(netplay || options.is_set_by_user("sparking") || options.is_set("list_gecko"));
+  const bool listing = options.is_set("list_gecko") || options.is_set("list_textures");
+  SetEnabled(netplay || options.is_set_by_user("sparking") || listing);
   if (options.is_set("state_dir"))
     s_state_dir = static_cast<const char*>(options.get("state_dir"));
   if (IsEnabled())
@@ -548,7 +678,7 @@ void InitFromOptions(const optparse::Values& options)
   }
   Emit("ready",
        Json().Add("protocol", PROTOCOL_VERSION)
-           .Add("mode", netplay ? "netplay" : (options.is_set("list_gecko") ? "list" : "solo")));
+           .Add("mode", netplay ? "netplay" : (listing ? "list" : "solo")));
 }
 
 void RequestQuit()
@@ -564,6 +694,7 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
 
   StartAspectHotkey();
   ApplyAspectForBoot();
+  ApplyTexturesDir(options);
 
   const bool no_gecko = options.is_set_by_user("no_gecko");
   if (!no_gecko && !options.is_set("gecko"))
@@ -644,6 +775,7 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
 
   UICommon::SetUserDirectory(user_directory);
   UICommon::Init();
+  ApplyTexturesDir(options);
   UICommon::InitControllers(HeadlessWSI());
   Common::ScopeGuard ui_common_guard([] {
     UICommon::ShutdownControllers();

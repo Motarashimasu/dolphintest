@@ -33,6 +33,9 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--gecko <name>` (repeatable) / `--no-gecko` | ini selection | Solo: exactly these Gecko codes on, everything else off, for this run. |
 | `--netplay-gecko <port>=<name>` (repeatable) | none | Netplay: the player on GameCube port `<port>` runs only these codes. Everything else is off for everyone, and Dolphin's "Sync Codes" is forced off. |
 | `--list-gecko <GAMEID>[:<rev>]` | | Print every Gecko code Dolphin knows for the game (`gecko_codes` event), then exit. Starts no game. |
+| `--textures <Group>=<Option>` (repeatable) | none | Texture variant to load, i.e. folder `@<Group>/<Option>` in the game's texture pack. Turns custom textures on. See *Texture variants*. |
+| `--textures-dir <dir>` | `<user>/Load/Textures` | Texture library folder (holds `<GAMEID>/` folders), shared by every profile. |
+| `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
 | `--aspect 16:9\|4:3` | `16:9` | Starting aspect ratio. **F5** in the game window (or the `aspect` command) flips it. See *Display*. |
 | `--resolution <n>` | `3` | Internal resolution as a multiple of native: `3` = 1080p, `2` = 720p, `4` = 1440p, `6` = 4K. |
 | `--window <W>x<H>` | `1280x720` | Size of the game window. Rendering stays at `--resolution` regardless. |
@@ -92,6 +95,8 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `gecko_active` | `port` (0 = solo), `codes[]`, `missing[]` | Codes activated for this boot |
 | `aspect` | `mode` (`16:9`/`4:3`) | At every boot and after every toggle |
 | `peek` | `address`, `value` (hex) | Answer to `peek` |
+| `texture_groups` | `game_id`, `groups[]` of `{name, options[]}` | `--list-textures` result |
+| `textures` | `selection` (`{group: option}`, lowercase) | After a `textures` command |
 | `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
 | `state_applied` | | A save state really loaded (solo load, or the netplay battle state at boot) |
 | `save_data` | `host_hash`, host also `ready`, clients `local_status` | Netplay save fingerprint check updated |
@@ -132,6 +137,8 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `save_state <1-10>` / `load_state <1-10>` | solo | Slot save states |
 | `save_state_file <file.sst>` / `load_state_file <file.sst>` | solo | Capture / test a battle state in `--state-dir` |
 | `aspect 16:9\|4:3\|toggle` | any, in game (netplay too) | Same as F5. Each player chooses their own. |
+| `textures <Group>=<Option>` | any, in game (netplay too) | Switch a texture variant live; `<Group>=` clears it (no option loaded) |
+| `texture_path <tex1_name>` | any | Debug: which file a texture name is loaded from right now (`texture_path` event) |
 | `peek <hex address>` | solo | Debug: read a 32-bit word of game memory |
 | `quit` | any | Stop any game and exit |
 
@@ -227,6 +234,34 @@ Sparking mode renders at 1080p (`--resolution 3`) with Dolphin's output forced t
 16:9 and 4:3. Only Dolphin's output stretch changes: the game's own widescreen Gecko code (e.g.
 BT3's "16:9 aspect ratio") stays on whichever is chosen. The choice carries over to the next
 match in the same netplay session, and each netplay player has their own.
+
+## Texture variants (button layouts etc.)
+
+Normal Dolphin loads every texture under `Load/Textures/<GAMEID>/`, and when two files have the
+same name an arbitrary one wins, so alternative versions of the same texture can't live side by
+side. Sparking adds switchable **variant groups**: any folder whose name starts with `@` is a
+group, and each subfolder of it is one option.
+
+```
+<textures-dir>/RDSPAF/
+  ...the normal HD pack...           always loaded
+  @Buttons/
+    Vanilla/                         (may be empty or missing: "use the pack's own / the game's")
+    PlayStation/  tex1_....png ...   loaded only with --textures Buttons=PlayStation
+    Xbox/         tex1_....png ...   loaded only with --textures Buttons=Xbox
+```
+
+- Only the selected option of a group is loaded; the other options are ignored completely.
+- The selected option's textures **win** over same-named textures anywhere else in the pack.
+- A texture that only exists in the deselected option goes back to the pack's version, or the
+  game's original if the pack has none.
+- Folders inside an option are fine (`@Buttons/Xbox/menus/...`). Files placed directly in
+  `@Buttons/` are never loaded. Names are case-insensitive. Any number of groups can exist
+  (`@Buttons`, `@HUD`, ...), each with its own selection.
+- In game, `textures Buttons=Xbox` switches live; the new textures appear within a frame or two.
+- Purely visual, so each netplay player can use their own.
+- The Godot "button layout" setting: `--list-textures RDSPAF` gives the choices; launch with
+  `--textures Buttons=<choice>`.
 
 ## Controllers
 

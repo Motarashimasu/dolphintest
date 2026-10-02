@@ -242,6 +242,79 @@ def main():
             asp.wait_for("exit")
             asp.proc.wait(timeout=20)
 
+        print("texture variants (@Group/Option folders)")
+        # Shared texture library outside any user folder (--textures-dir).
+        tex_lib = os.path.join(work, "texture-library")
+        tex_root = os.path.join(tex_lib, game_id)
+        A, B, C = "tex1_8x8_aaaaaaaaaaaaaaaa_5", "tex1_8x8_bbbbbbbbbbbbbbbb_5", "tex1_8x8_cccccccccccccccc_5"
+        layout = {
+            f"{A}.png": "base",                         # base pack's own version of a button
+            f"{C}.png": "base",                         # unrelated base texture
+            f"@Buttons/PlayStation/{A}.png": "ps",
+            f"@Buttons/PlayStation/sub/{B}.png": "ps",  # nested folders inside an option are fine
+            f"@Buttons/Xbox/{A}.png": "xbox",
+            f"@Buttons/Xbox/{B}.png": "xbox",
+            f"@Buttons/Vanilla/readme.txt": "",
+            f"@Buttons/{C}.png": "stray",               # directly in the group: never loaded
+        }
+        for rel, tag in layout.items():
+            full = os.path.join(tex_root, *rel.split("/"))
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w") as f:
+                f.write(tag)
+
+        lister = Instance("list-tex", [exe, "-u", user_dir("tex"), "--textures-dir", tex_lib,
+                                       "--list-textures", game_id])
+        groups = lister.wait_for("texture_groups")["groups"]
+        check(f"list-textures finds @Buttons with its 3 options {groups}",
+              groups == [{"name": "Buttons", "options": ["PlayStation", "Vanilla", "Xbox"]}])
+        lister.proc.wait(timeout=20)
+
+        def tex_owner(inst, name):
+            inst.send(f"texture_path {name}")
+            path = inst.wait_for("texture_path", lambda e: e["name"] == name)["path"]
+            if not path:
+                return None
+            with open(path) as f:
+                return f.read()
+
+        def tex_wait(inst, name, want, timeout=10):
+            end = time.time() + timeout
+            got = None
+            while time.time() < end:
+                got = tex_owner(inst, name)
+                if got == want:
+                    break
+                time.sleep(0.3)
+            return got
+
+        tex = Instance("tex", [exe, *common, "--sparking", "-u", user_dir("tex"),
+                               "--nand", nands["solo"], "--textures-dir", tex_lib,
+                               "--textures", "buttons=playstation",
+                               "-e", dol])
+        tex.send("hello")
+        tex.wait_for("game_started")
+        session = tex.seen("game_info")["session"]
+        check(f"--textures turns custom textures on {session['textures']}",
+              session["custom_textures"] is True and session["textures"] == {"buttons": "playstation"})
+        got = [tex_owner(tex, n) for n in (A, B, C)]
+        check(f"PlayStation selected: PS overrides base, stray file ignored {got}",
+              got == ["ps", "ps", "base"])
+        tex.send("textures Buttons=Xbox")
+        tex.wait_for("textures")
+        got = [tex_wait(tex, A, "xbox"), tex_wait(tex, B, "xbox"), tex_owner(tex, C)]
+        check(f"switch in game -> Xbox {got}", got == ["xbox", "xbox", "base"])
+        tex.send("textures Buttons=Vanilla")
+        tex.wait_for("textures")
+        got = [tex_wait(tex, A, "base"), tex_wait(tex, B, None), tex_owner(tex, C)]
+        check(f"switch -> Vanilla: base pack only, Xbox-only texture dropped {got}",
+              got == ["base", None, "base"])
+        tex.send("textures nonsense")
+        check("bad textures argument rejected", tex.wait_for("error")["code"] == "bad_argument")
+        tex.send("quit")
+        tex.wait_for("exit")
+        tex.proc.wait(timeout=20)
+
         print("netplay: host + joiner")
         # Netplay saves: host has the "unlocked" save, joiner a different one. A DOL has title ID 0,
         # so its Wii save folder is title/00000000/00000000/data inside each NAND.
