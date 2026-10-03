@@ -46,6 +46,12 @@ void AddTypedMessage(MessageType type, std::string message, u32 ms = Duration::S
                      u32 argb = Color::YELLOW,
                      const VideoCommon::CustomTextureData::ArraySlice::Level* icon = nullptr);
 
+// Dolphin-Sparking: called (on whatever thread posted it) for every message added, so a frontend
+// can show it in its own overlay.
+using MessageObserver =
+    std::function<void(MessageType type, const std::string& message, u32 ms, u32 argb)>;
+void SetMessageObserver(MessageObserver observer);
+
 // Draw the current messages on the screen. Only call once per frame.
 void DrawMessages();
 void ClearMessages();

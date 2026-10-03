@@ -36,6 +36,9 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--textures <Group>=<Option>` (repeatable) | none | Texture variant to load, i.e. folder `@<Group>/<Option>` in the game's texture pack. Turns custom textures on. See *Texture variants*. |
 | `--textures-dir <dir>` | `<user>/Load/Textures` | Texture library folder (holds `<GAMEID>/` folders), shared by every profile. |
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
+| `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
+| `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
+| `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
 | `--aspect 16:9\|4:3` | `16:9` | Starting aspect ratio. **F5** in the game window (or the `aspect` command) flips it. See *Display*. |
 | `--resolution <n>` | `3` | Internal resolution as a multiple of native: `3` = 1080p, `2` = 720p, `4` = 1440p, `6` = 4K. |
 | `--window <W>x<H>` | `1280x720` | Size of the game window. Rendering stays at `--resolution` regardless. |
@@ -95,6 +98,9 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `gecko_active` | `port` (0 = solo), `codes[]`, `missing[]` | Codes activated for this boot |
 | `aspect` | `mode` (`16:9`/`4:3`) | At every boot and after every toggle |
 | `peek` | `address`, `value` (hex) | Answer to `peek` |
+| `window` | `open`, `x`, `y`, `width`, `height`, `focused`, `minimized`, `handle` | Game window changed (Windows). `x/y/width/height` = the picture area in screen pixels; `open:false` when the window closes. See *Overlay*. |
+| `osd` | `kind` (`message`, `netplay_ping`, `netplay_buffer`), `text`, `ms`, `color` (`#RRGGBB`) | A Dolphin on-screen message, for the overlay to show its own way |
+| `stats` | `fps`, `vps`, `speed` (% of full speed) | Every `stats` interval while the game runs |
 | `texture_groups` | `game_id`, `groups[]` of `{name, options[]}` | `--list-textures` result |
 | `textures` | `selection` (`{group: option}`, lowercase) | After a `textures` command |
 | `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
@@ -137,6 +143,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `save_state <1-10>` / `load_state <1-10>` | solo | Slot save states |
 | `save_state_file <file.sst>` / `load_state_file <file.sst>` | solo | Capture / test a battle state in `--state-dir` |
 | `aspect 16:9\|4:3\|toggle` | any, in game (netplay too) | Same as F5. Each player chooses their own. |
+| `stats <ms>` | any | Start (`stats 500`) or stop (`stats 0`) the periodic `stats` event |
 | `textures <Group>=<Option>` | any, in game (netplay too) | Switch a texture variant live; `<Group>=` clears it (no option loaded) |
 | `textures_cycle <Group>` | any, in game | Next option of a group (alphabetical, wraps) — what F3/F4 do |
 | `texture_path <tex1_name>` | any | Debug: which file a texture name is loaded from right now (`texture_path` event) |
@@ -274,6 +281,35 @@ Rules:
 - Purely visual, so each netplay player can use their own.
 - Godot settings: `--list-textures RDSPAF` gives the groups and choices; launch with one
   `--textures Group=Choice` per group.
+
+## Overlay
+
+**Plan (decided):** Godot draws all in-game UI on its **own transparent, borderless,
+click-through, always-on-top window** placed exactly over the game window ("Option 1").
+Dolphin draws no UI of its own and feeds the overlay:
+
+- `window` events: where the picture is (client area, screen pixels), focus, minimized. Move and
+  resize the overlay window to match; hide it when `minimized` or `open:false`.
+- `osd` events: Dolphin's on-screen messages (netplay ping/buffer changes, "custom textures
+  loaded", ...), since Dolphin no longer draws them (`--osd-messages on` brings them back).
+- `stats` events: FPS / VPS / speed for a HUD. Netplay pings are in the `players` event.
+- Controllers keep working while the overlay has focus (`--background-input`, default on).
+
+Notes for the Godot side:
+- Make the overlay window non-activating/click-through except when it shows something
+  interactive (pause menu). While the overlay has focus, the F3/F4/F5 hotkeys (which only fire
+  when the game window is focused) don't trigger, so the overlay should offer the same actions
+  via the `textures_cycle`, `textures` and `aspect` commands.
+- Use the game in a borderless/maximized window, not exclusive fullscreen (nothing can be drawn
+  over exclusive fullscreen; this build has none anyway).
+
+**Kept in mind for later:**
+- *Option 3*: overlay drawn inside Dolphin (its ImGui layer) with custom fonts/images, content
+  sent by Godot over stdin. Frame-exact and works in any window mode; good for a few simple
+  elements (toasts, round timer) if the Godot window ever proves unsuitable.
+- *Option 2* (rejected for now): Dolphin rendering into Godot's window/scene. Embedding the game
+  as a child window still can't be drawn over; sharing frames as a GPU texture is a large,
+  backend-specific job; copying frames through RAM adds input lag.
 
 ## Controllers
 

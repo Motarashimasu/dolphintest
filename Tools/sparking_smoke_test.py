@@ -158,6 +158,13 @@ def main():
         titles = [l for l in solo.log if "Sparking! Collection" in l or l.startswith("Dolphin ")]
         check(f"window title is the collection's name {titles[-1:] }",
               bool(titles) and all(t == "DRAGON BALL Sparking! Collection PC v205" for t in titles))
+        check("overlay: Dolphin's own OSD text off, pads work in background",
+              info["dolphin_osd_messages"] is False and info["background_input"] is True)
+        solo.send("stats 200")
+        st = solo.wait_for("stats")
+        check(f"stats event for the overlay HUD {st}",
+              all(isinstance(st[k], (int, float)) for k in ("fps", "vps", "speed")))
+        solo.send("stats 0")
         solo.send("save_state 1")
         check("save_state acknowledged", solo.wait_for("state_saved")["slot"] == 1)
         time.sleep(1)
@@ -302,6 +309,9 @@ def main():
         tex.send("hello")
         tex.wait_for("game_started")
         session = tex.seen("game_info")["session"]
+        osd = tex.seen("osd", lambda e: "custom textures" in e["text"])
+        check(f"Dolphin's OSD messages are forwarded to the frontend {osd}",
+              osd["kind"] == "message" and osd["ms"] > 0 and osd["color"].startswith("#"))
         check(f"--textures turns custom textures on {session['textures']}",
               session["custom_textures"] is True
               and session["textures"] == {"buttons": "playstation", "graphics": "enhanced"})

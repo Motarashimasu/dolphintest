@@ -10,8 +10,10 @@
 
 #include <windows.h>
 #include <climits>
+#include <cstdint>
 #include <dwmapi.h>
 
+#include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "VideoCommon/Present.h"
 #include "resource.h"
@@ -38,6 +40,7 @@ private:
   bool CreateRenderWindow();
   void UpdateWindowPosition();
   void ProcessEvents();
+  void ReportWindowState() const;
 
   HWND m_hwnd{};
 
@@ -51,6 +54,29 @@ PlatformWin32::~PlatformWin32()
 {
   if (m_hwnd)
     DestroyWindow(m_hwnd);
+  if (Sparking::IsEnabled())
+    Sparking::ReportWindow({});  // open = false: the frontend can hide its overlay
+}
+
+// Sparking: tell the frontend where the picture is, so its overlay window can follow it.
+void PlatformWin32::ReportWindowState() const
+{
+  if (!Sparking::IsEnabled() || !m_hwnd)
+    return;
+  Sparking::WindowReport report;
+  report.open = true;
+  RECT rc = {};
+  GetClientRect(m_hwnd, &rc);
+  POINT top_left = {rc.left, rc.top};
+  ClientToScreen(m_hwnd, &top_left);
+  report.x = top_left.x;
+  report.y = top_left.y;
+  report.width = rc.right - rc.left;
+  report.height = rc.bottom - rc.top;
+  report.focused = GetForegroundWindow() == m_hwnd;
+  report.minimized = IsIconic(m_hwnd) != 0;
+  report.handle = static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(m_hwnd));
+  Sparking::ReportWindow(report);
 }
 
 bool PlatformWin32::RegisterRenderWindowClass()
@@ -129,6 +155,7 @@ void PlatformWin32::MainLoop()
     Core::HostDispatchJobs(Core::System::GetInstance());
     ProcessEvents();
     UpdateWindowPosition();
+    ReportWindowState();
 
     // TODO: Is this sleep appropriate?
     std::this_thread::sleep_for(std::chrono::milliseconds(1));

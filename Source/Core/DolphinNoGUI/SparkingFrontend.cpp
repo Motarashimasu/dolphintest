@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <mutex>
 #include <set>
 #include <string>
 #include <string_view>
@@ -47,6 +48,7 @@
 #include "UICommon/GameFile.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/HiresTextures.h"
+#include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/TextureCacheBase.h"
 #include "DolphinNoGUI/SparkingNetPlay.h"
 #include "UICommon/UICommon.h"
@@ -128,6 +130,8 @@ std::string SessionSummary()
       .Add("netplay_save_write", Config::Get(Config::NETPLAY_SAVEDATA_WRITE))
       .Add("gecko_active_count", static_cast<int64_t>(Gecko::CountEnabledCodes()))
       .Add("custom_textures", Config::Get(Config::GFX_HIRES_TEXTURES))
+      .Add("dolphin_osd_messages", Config::Get(Config::MAIN_OSD_MESSAGES))
+      .Add("background_input", Config::Get(Config::MAIN_INPUT_BACKGROUND_INPUT))
       .AddRaw("textures", TextureSelectionJson())
       .Str();
 }
@@ -183,6 +187,29 @@ bool EventMsgAlertHandler(const char* caption, const char* text, bool yes_no, Co
                     .Add("text", text ? text : "")
                     .Add("auto_answer", yes_no ? "yes" : "ok"));
   return true;
+}
+
+// Every Dolphin on-screen message, as an "osd" event for the frontend's overlay. Repeated
+// identical typed messages (netplay ping/buffer refreshes) are only sent when they change.
+void ForwardOsdMessage(OSD::MessageType type, const std::string& message, u32 ms, u32 argb)
+{
+  const char* kind = type == OSD::MessageType::NetPlayPing   ? "netplay_ping" :
+                     type == OSD::MessageType::NetPlayBuffer ? "netplay_buffer" :
+                                                               "message";
+  if (type != OSD::MessageType::Typeless)
+  {
+    static std::mutex mutex;
+    static std::map<OSD::MessageType, std::string> last;
+    std::lock_guard lk(mutex);
+    if (last[type] == message)
+      return;
+    last[type] = message;
+  }
+  Emit("osd", Json()
+                  .Add("kind", kind)
+                  .Add("text", message)
+                  .Add("ms", static_cast<int64_t>(ms))
+                  .Add("color", fmt::format("#{:06X}", argb & 0xFFFFFF)));
 }
 
 // Host thread. Stores the selection and applies it to the running game.
@@ -282,6 +309,19 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
       ToggleWidescreen();
     else
       Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+    return;
+  }
+
+  if (cmd.name == "stats")  // "stats 500" = a stats event every 500 ms in game, "stats 0" = off
+  {
+    int ms = 0;
+    const auto [ptr, ec] = std::from_chars(cmd.arg.data(), cmd.arg.data() + cmd.arg.size(), ms);
+    if (ec != std::errc() || ms < 0)
+    {
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      return;
+    }
+    SetStatsInterval(ms);
     return;
   }
 
@@ -501,6 +541,14 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
     }
   }
 
+  // Overlay (the frontend draws the UI on its own window over the game window): Dolphin's own
+  // on-screen messages off unless asked for, and pads keep working while the overlay has focus.
+  layer->Set(Config::MAIN_OSD_MESSAGES,
+             std::string_view(static_cast<const char*>(options.get("osd_messages"))) == "on");
+  layer->Set(Config::MAIN_INPUT_BACKGROUND_INPUT,
+             std::string_view(static_cast<const char*>(options.get("background_input"))) != "off");
+  SetStatsInterval(std::atoi(static_cast<const char*>(options.get("stats_interval"))));
+
   // Texture variants (@Group/Option folders in the custom texture pack).
   if (options.is_set("textures"))
   {
@@ -619,6 +667,25 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .metavar("GAMEID")
       .help("Print the texture variant groups (@folders) for a game as JSON, then exit");
+  parser.add_option("--osd-messages")
+      .dest("osd_messages")
+      .action("store")
+      .choices({"on", "off"})
+      .set_default("off")
+      .help("Sparking mode: draw Dolphin's own on-screen messages (default off: they are sent to "
+            "the frontend as \"osd\" events for its overlay)");
+  parser.add_option("--background-input")
+      .dest("background_input")
+      .action("store")
+      .choices({"on", "off"})
+      .set_default("on")
+      .help("Sparking mode: controllers keep working while another window (the frontend's "
+            "overlay) has focus (default on)");
+  parser.add_option("--stats-interval")
+      .dest("stats_interval")
+      .action("store")
+      .set_default("0")
+      .help("Sparking mode: emit a \"stats\" event (fps, vps, speed) every N ms in game; 0 = off");
   parser.add_option("--aspect")
       .dest("aspect")
       .action("store")
@@ -731,6 +798,7 @@ void InitFromOptions(const optparse::Values& options)
   {
     ApplySessionOverrides(options, netplay);
     Common::RegisterMsgAlertHandler(EventMsgAlertHandler);
+    OSD::SetMessageObserver(ForwardOsdMessage);
     State::SetOnAfterLoadCallback([] {
       if (State::LastLoadSucceeded())
         Emit("state_applied");

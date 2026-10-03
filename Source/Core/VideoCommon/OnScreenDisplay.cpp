@@ -55,6 +55,7 @@ struct Message
 };
 static std::multimap<MessageType, Message> s_messages;
 static std::mutex s_messages_mutex;
+static MessageObserver s_message_observer;  // set once at startup, before any message
 
 static ImVec4 ARGBToImVec4(const u32 argb)
 {
@@ -130,9 +131,16 @@ static float DrawMessage(int index, Message& msg, const ImVec2& position, int ti
   return window_height;
 }
 
+void SetMessageObserver(MessageObserver observer)
+{
+  s_message_observer = std::move(observer);
+}
+
 void AddTypedMessage(MessageType type, std::string message, u32 ms, u32 argb,
                      const VideoCommon::CustomTextureData::ArraySlice::Level* icon)
 {
+  if (s_message_observer)
+    s_message_observer(type, message, ms, argb);
   std::lock_guard lock{s_messages_mutex};
 
   // A message may hold a reference to a texture that can only be destroyed on the video thread, so
@@ -148,6 +156,8 @@ void AddTypedMessage(MessageType type, std::string message, u32 ms, u32 argb,
 void AddMessage(std::string message, u32 ms, u32 argb,
                 const VideoCommon::CustomTextureData::ArraySlice::Level* icon)
 {
+  if (s_message_observer)
+    s_message_observer(MessageType::Typeless, message, ms, argb);
   std::lock_guard lock{s_messages_mutex};
   s_messages.emplace(MessageType::Typeless, Message(std::move(message), ms, argb, icon));
 }

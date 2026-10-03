@@ -35,4 +35,20 @@ struct Hotkey
 // only; the first call wins, later calls do nothing.
 void StartHotkeys(std::vector<Hotkey> hotkeys);
 
+// Game window geometry for the frontend's overlay window (Option 1: a transparent, click-through
+// Godot window kept on top of the game window). Coordinates are the CLIENT area (the picture,
+// without title bar/borders) in screen pixels. Emits a "window" event when anything changes.
+struct WindowReport
+{
+  bool open = false;
+  int x = 0, y = 0, width = 0, height = 0;
+  bool focused = false;
+  bool minimized = false;
+  unsigned long long handle = 0;  // native window handle (HWND on Windows)
+};
+void ReportWindow(const WindowReport& report);
+
+// Periodic "stats" event (fps, vps, speed) for the overlay HUD; 0 turns it off. Any thread.
+void SetStatsInterval(int milliseconds);
+
 }  // namespace Sparking
