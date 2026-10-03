@@ -69,7 +69,9 @@ bool PlatformWin32::RegisterRenderWindowClass()
   wc.lpszClassName = WINDOW_CLASS_NAME;
   wc.hIconSm = LoadIcon(nullptr, IDI_ICON1);
 
-  if (!RegisterClassEx(&wc))
+  // Sparking netplay creates a new window for every match in one process; the class from the
+  // first match is still registered, which is fine.
+  if (!RegisterClassEx(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
   {
     MessageBox(nullptr, _T("Window registration failed."), _T("Error"), MB_ICONERROR | MB_OK);
     return false;
