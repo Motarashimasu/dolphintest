@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Temporary in-game HUD (drawn by Dolphin itself, until the Godot overlay exists):
-//  - top corners: each side's name + health %;
-//  - top center: a Fightcade-style score bar "Name1  W1  W2  Name2".
+//  - round score in the centre of the game's top HUD, player names under each health bar
+//    (P1 left, P2 right, shrunk/cut so they never run into the HUD), health % in the window's top
+//    corners, and (netplay) ping + buffer at the bottom centre.
 // Driven by the memory watcher's "p1_health_pct" / "p2_health_pct" watches (see SparkingWatch.h).
 //
 // Round counting (for now, from health alone):
@@ -26,6 +27,9 @@ void InitHud(bool enabled);
 void SetHudEnabled(bool enabled);
 // GameCube port of the local player (1-4; 0 = spectator / unknown); reported in round_result.
 void SetHudLocalPort(int port);
+// Netplay connection info for the bottom bar (any thread). Pass -1 to clear a value, -2 to leave
+// it unchanged. The bar is only drawn while a ping is set (netplay).
+void SetHudNetplayStats(int ping_ms, int buffer);
 // When a game starts/ends: forget health values and scores.
 void ResetHud();
 // Scores back to 0-0.

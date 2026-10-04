@@ -184,6 +184,7 @@ NetPlaySession::~NetPlaySession()
 bool NetPlaySession::Start(const NetPlayOptions& options)
 {
   m_nickname = options.nickname.empty() ? Config::Get(Config::NETPLAY_NICKNAME) : options.nickname;
+  SetHudNetplayStats(-2, static_cast<int>(Config::Get(Config::NETPLAY_BUFFER_SIZE)));
   m_automap = options.automap;
   m_state_dir = options.state_dir;
   m_port_gecko = options.port_gecko;
@@ -720,6 +721,14 @@ bool NetPlaySession::IsHosting() const
 void NetPlaySession::Update()
 {
   m_players_dirty = true;
+  // Netplay thread, right after a ping update: same thread that writes the player list.
+  if (m_client)
+  {
+    u32 ping = 0;  // the same figure Dolphin shows as "Ping": the highest player ping
+    for (const NetPlay::Player* p : m_client->GetPlayers())
+      ping = std::max(ping, p->ping);
+    SetHudNetplayStats(static_cast<int>(ping), -2);
+  }
 }
 
 void NetPlaySession::AppendChat(const std::string& msg)
@@ -814,6 +823,7 @@ void NetPlaySession::OnPlayerDisconnect(const std::string& player)
 
 void NetPlaySession::OnPadBufferChanged(u32 buffer)
 {
+  SetHudNetplayStats(-2, static_cast<int>(buffer));
   Emit("buffer_changed", Json().Add("buffer", buffer));
 }
 

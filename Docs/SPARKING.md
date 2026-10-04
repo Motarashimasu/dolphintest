@@ -36,7 +36,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--textures <Group>=<Option>` (repeatable) | none | Texture variant to load, i.e. folder `@<Group>/<Option>` in the game's texture pack. Turns custom textures on. See *Texture variants*. |
 | `--textures-dir <dir>` | `<user>/Load/Textures` | Texture library folder (holds `<GAMEID>/` folders), shared by every profile. |
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
-| `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: a Fightcade-style score bar at the top center (`Name1  W1  W2  Name2`) and each side's health % in the top corners. Needs the game's `p1/p2_health_pct` watches. |
+| `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: round score in the centre of BT3's top HUD, player names under each health bar (P1 left, P2 right; long names shrink, then get cut with "..."), health % in the window's top corners, and in netplay the ping + pad buffer at the bottom centre. Needs the game's `p1/p2_health_pct` watches. **For the Godot overlay this whole HUD is netplay-only.** |
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
