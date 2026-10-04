@@ -13,6 +13,8 @@ add_executable(dolphin-nogui
   SparkingIO.h
   SparkingNetPlay.cpp
   SparkingNetPlay.h
+  SparkingHud.cpp
+  SparkingHud.h
   SparkingWatch.cpp
   SparkingWatch.h
 )
@@ -51,6 +53,8 @@ PRIVATE
   core
   uicommon
   cpp-optparse
+  imgui
+  fmt::fmt
 )
 
 if(APPLE)

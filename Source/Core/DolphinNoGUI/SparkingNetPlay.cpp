@@ -5,6 +5,7 @@
 
 #include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingGecko.h"
+#include "DolphinNoGUI/SparkingHud.h"
 #include "DolphinNoGUI/SparkingWatch.h"
 
 #include <algorithm>
@@ -667,6 +668,7 @@ void NetPlaySession::BootGame(const std::string& filename,
       if (pad_map[i] == m_client->GetLocalPlayerId())
         port = i + 1;
     }
+    SetHudLocalPort(port);  // "YOU WIN"/"YOU LOSE" from this player's side (0 = spectator)
     std::shared_ptr<const UICommon::GameFile> game;
     {
       std::lock_guard lk(m_game_mutex);

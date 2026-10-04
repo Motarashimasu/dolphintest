@@ -22,6 +22,7 @@
 #include "Core/ConfigManager.h"
 #include "Core/HW/Memmap.h"
 #include "Core/System.h"
+#include "DolphinNoGUI/SparkingHud.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "VideoCommon/VideoEvents.h"
 
@@ -348,6 +349,8 @@ void OnField()
     Json json;
     json.Add("name", w.name).AddRaw("value", FormatValue(value));
     Emit("watch", AddPlayer(json, w.name));
+    if (const int port = PortOf(w.name))
+      HudOnWatch(w.name, port, s_port_names[port - 1], value.value_or(0), value.has_value());
   }
   for (Trigger& t : s_triggers)
   {
@@ -359,6 +362,8 @@ void OnField()
       Json json;
       json.Add("name", t.name);
       Emit("game_event", AddPlayer(json, t.name));
+      if (const int port = PortOf(t.name))
+        HudOnTrigger(t.name, port, s_port_names[port - 1]);
     }
     t.was_true = now;
   }

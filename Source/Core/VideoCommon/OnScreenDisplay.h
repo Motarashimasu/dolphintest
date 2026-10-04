@@ -52,6 +52,10 @@ using MessageObserver =
     std::function<void(MessageType type, const std::string& message, u32 ms, u32 argb)>;
 void SetMessageObserver(MessageObserver observer);
 
+// Dolphin-Sparking: extra ImGui drawing done every frame right after the messages (video thread,
+// inside the ImGui frame). Set once at startup.
+void SetCustomDrawCallback(std::function<void()> callback);
+
 // Draw the current messages on the screen. Only call once per frame.
 void DrawMessages();
 void ClearMessages();

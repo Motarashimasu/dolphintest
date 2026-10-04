@@ -51,6 +51,7 @@
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/TextureCacheBase.h"
 #include "DolphinNoGUI/SparkingNetPlay.h"
+#include "DolphinNoGUI/SparkingHud.h"
 #include "DolphinNoGUI/SparkingWatch.h"
 #include "UICommon/UICommon.h"
 
@@ -151,6 +152,7 @@ void OnCoreStateChanged(Core::State state)
                           .Add("revision", static_cast<int>(sc.GetRevision()))
                           .Add("netplay", NetPlay::IsNetPlayRunning())
                           .AddRaw("session", SessionSummary()));
+    ResetHud();
     LoadWatches(sc.GetGameID(), sc.GetRevision());
     Emit("game_started");
   }
@@ -158,6 +160,7 @@ void OnCoreStateChanged(Core::State state)
   {
     s_game_started = false;
     ClearWatches();
+    ResetHud();
   }
   Emit("emulation_state", Json().Add("state", StateName(state)));
 }
@@ -317,6 +320,16 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     return;
   }
 
+  if (cmd.name == "hud")  // "hud on" / "hud off"
+  {
+    if (cmd.arg != "on" && cmd.arg != "off")
+    {
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      return;
+    }
+    SetHudEnabled(cmd.arg == "on");
+    return;
+  }
   if (cmd.name == "watch_values")  // every memory-watch value right now
   {
     EmitWatchValues();
@@ -391,6 +404,25 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     Emit("peek", Json()
                      .Add("address", fmt::format("{:08X}", address))
                      .Add("value", fmt::format("{:08X}", value)));
+  }
+  else if (cmd.name == "poke")
+  {
+    // Debug (solo only): write a 32-bit word, e.g. "poke 803D1028 00000000" (hex).
+    const size_t space = cmd.arg.find(' ');
+    u32 address = 0, value = 0;
+    const std::string a = cmd.arg.substr(0, space);
+    const std::string v = space == std::string::npos ? "" : cmd.arg.substr(space + 1);
+    const auto ra = std::from_chars(a.data(), a.data() + a.size(), address, 16);
+    const auto rv = std::from_chars(v.data(), v.data() + v.size(), value, 16);
+    if (ra.ec != std::errc() || rv.ec != std::errc() || v.empty() || !Core::IsRunning(system))
+    {
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      return;
+    }
+    Core::CPUThreadGuard guard(system);
+    PowerPC::MMU::HostWrite<u32>(guard, value, address);
+    Emit("poked", Json().Add("address", fmt::format("{:08X}", address))
+                      .Add("value", fmt::format("{:08X}", value)));
   }
   else if (cmd.name == "save_state_file" || cmd.name == "load_state_file")
   {
@@ -677,6 +709,12 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .metavar("GAMEID")
       .help("Print the texture variant groups (@folders) for a game as JSON, then exit");
+  parser.add_option("--hud")
+      .dest("hud")
+      .action("store")
+      .choices({"on", "off"})
+      .set_default("on")
+      .help("Sparking mode: temporary in-game HUD (health %, win/lose message) drawn by Dolphin");
   parser.add_option("--osd-messages")
       .dest("osd_messages")
       .action("store")
@@ -810,6 +848,7 @@ void InitFromOptions(const optparse::Values& options)
     Common::RegisterMsgAlertHandler(EventMsgAlertHandler);
     OSD::SetMessageObserver(ForwardOsdMessage);
     InitWatcher();
+    InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off");
     State::SetOnAfterLoadCallback([] {
       if (State::LastLoadSucceeded())
         Emit("state_applied");
