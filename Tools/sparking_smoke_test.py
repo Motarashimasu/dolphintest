@@ -132,7 +132,8 @@ def main():
                     "$Splitscreen Remover P1 [Sparking]\n04001000 00000001\n"
                     "$Splitscreen Remover P2 [Sparking]\n04001004 00000002\n"
                     "$Infinite Health [Sparking]\n04001008 00000003\n"
-                    "[Gecko_Enabled]\n$Infinite Health\n")
+                    "[Gecko_Enabled]\n$Infinite Health\n"
+                    "[Sparking.Watch]\np1_marker = u32 0x8000310C\np2_marker = u32 0x8000310C\n")
 
     common = ["-p", "headless", "-v", "Null"]
     nands = {n: os.path.join(work, f"nand-{n}") for n in ("solo", "host", "joiner")}
@@ -267,16 +268,16 @@ def main():
                     "mem2 = u32 0x94000000\n"                   # just past MEM2 (64 MiB) -> null
                     "broken = f64 0x80000000\n"
                     "[Sparking.Trigger]\n"
-                    "patched = marker == 3405691582 && p1_health_pct > 50\n"
+                    "p1_patched = marker == 3405691582 && p1_health_pct > 50\n"
                     "never = p1_health_pct < 0\n"
                     "bad = nosuchwatch == 1\n")
         w = Instance("watch", [exe, *common, "--sparking", "-u", user_dir("watch"),
-                               "--nand", nands["solo"], "-e", dol])
+                               "--nand", nands["solo"], "--nickname", "Trunks", "-e", dol])
         w.send("hello")
         loaded = w.wait_for("watches_loaded")
         check(f"watches loaded from the game ini {loaded}",
               sorted(loaded["watches"]) == ["marker", "mem2", "p1_health_pct", "via_pointer"]
-              and sorted(loaded["triggers"]) == ["never", "patched"])
+              and sorted(loaded["triggers"]) == ["never", "p1_patched"])
         errors = {e.get("name") for e in w.history if e["event"] == "error"}
         check(f"bad watch / trigger lines reported {errors}", {"broken", "bad"} <= errors)
 
@@ -297,11 +298,14 @@ def main():
         markers = [e["value"] for e in w.history if e["event"] == "watch" and e["name"] == "marker"]
         check(f"marker seen unpatched first, then patched {markers}",
               markers[:1] == [0x600DF00D] and markers[-1] == 0xCAFEBABE)
-        ev = w.wait_for("game_event", lambda e: e["name"] == "patched")
+        ev = w.wait_for("game_event", lambda e: e["name"] == "p1_patched")
         time.sleep(1)
         fired = [e["name"] for e in w.history if e["event"] == "game_event"]
         check(f"trigger fires once on its rising edge, false trigger never {fired}",
-              fired == ["patched"])
+              fired == ["p1_patched"])
+        check(f"p1_ trigger carries the player's name (solo --nickname) {ev}",
+              ev.get("port") == 1 and ev.get("player") == "Trunks"
+              and ev.get("label") == "Trunks_patched")
         w.send("watch_values")
         vals = w.wait_for("watch_values")["values"]
         check(f"watch_values snapshot {vals}",
@@ -529,6 +533,12 @@ def main():
         host.wait_for("game_started", timeout=40)
         joiner.wait_for("game_started", timeout=40)
         check("both instances running the match", True)
+        for inst in (host, joiner):
+            names = {e["name"]: (e.get("player"), e.get("label")) for e in
+                     (inst.seen("watch", lambda e, n=n: e["name"] == n) for n in ("p1_marker", "p2_marker"))}
+            check(f"{inst.name}: watch events name netplay players by port {names}",
+                  names == {"p1_marker": ("Goku", "Goku_marker"),
+                            "p2_marker": ("Vegeta", "Vegeta_marker")})
         for inst in (host, joiner):
             si = inst.seen("game_info")["session"]
             check(f"{inst.name}: netplay mapped 2 GameCube pads, no Wii Remotes {si}",

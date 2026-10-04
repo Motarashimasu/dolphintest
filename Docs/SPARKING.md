@@ -102,9 +102,9 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `osd` | `kind` (`message`, `netplay_ping`, `netplay_buffer`), `text`, `ms`, `color` (`#RRGGBB`) | A Dolphin on-screen message, for the overlay to show its own way |
 | `stats` | `fps`, `vps`, `speed` (% of full speed) | Every `stats` interval while the game runs |
 | `watches_loaded` | `watches[]`, `triggers[]` | Game started; the memory watches/triggers from its game ini |
-| `watch` | `name`, `value` (number, or `null` if unreadable) | A watched memory value changed (every watch is sent once at game start) |
+| `watch` | `name`, `value` (number, or `null` if unreadable); for `p1_`..`p4_` names also `port`, `player`, `label` | A watched memory value changed (every watch is sent once at game start) |
 | `watch_values` | `values` (`{name: value}`) | Answer to `watch_values` |
-| `game_event` | `name` | A trigger's condition just became true (e.g. `p1_ko`) |
+| `game_event` | `name`; for `p1_`..`p4_` names also `port`, `player`, `label` | A trigger's condition just became true (e.g. `p1_defeated` → `player: "Goku"`, `label: "Goku_defeated"`) |
 | `texture_groups` | `game_id`, `groups[]` of `{name, options[]}` | `--list-textures` result |
 | `textures` | `selection` (`{group: option}`, lowercase) | After a `textures` command |
 | `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
@@ -338,6 +338,10 @@ p1_ko = p1_health_pct <= 0
 - `watch` is sent for every watch at game start and then on every change (floats rounded to 3
   decimals). `game_event` fires when a trigger goes from false to true; a condition that is
   already true when the game starts doesn't fire.
+- Names starting with `p1_`..`p4_` belong to the player on that GameCube port. Their events also
+  carry `port`, `player` (in netplay: that player's username; in solo: `--nickname` for port 1,
+  else `P1`..`P4`) and `label` (the name with `p1` replaced by the username, e.g.
+  `Goku_defeated`). Ports are read from the netplay pad mapping at every match start.
 - Netplay keeps both games identical, so every player sees the same values and events — the
   basis for ranked results (both clients report, the server accepts matching reports).
 

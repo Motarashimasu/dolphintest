@@ -5,6 +5,7 @@
 
 #include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingGecko.h"
+#include "DolphinNoGUI/SparkingWatch.h"
 
 #include <algorithm>
 #include <charconv>
@@ -642,6 +643,20 @@ void NetPlaySession::BootGame(const std::string& filename,
       // Every peer verified the same bytes, so this one load cannot desync the session.
       State::AllowNextNetPlayBootLoad();
     }
+  }
+  // Memory-watch events name players by their netplay username ("Goku_defeated").
+  {
+    std::array<std::string, 4> names;
+    const auto& pad_map = m_client->GetPadMapping();
+    for (const NetPlay::Player* p : m_client->GetPlayers())
+    {
+      for (int i = 0; i < 4; ++i)
+      {
+        if (pad_map[i] == p->pid)
+          names[i] = p->name;
+      }
+    }
+    SetPortNames(names);
   }
   // Gecko: all codes off except the ones assigned to the GameCube port this player landed on.
   {

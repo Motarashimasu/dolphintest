@@ -4,6 +4,7 @@
 #include "DolphinNoGUI/SparkingWatch.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <charconv>
 #include <cmath>
@@ -74,6 +75,7 @@ struct Trigger
 };
 
 std::mutex s_mutex;
+std::array<std::string, 4> s_port_names = {"P1", "P2", "P3", "P4"};
 std::vector<Watch> s_watches;
 std::vector<Trigger> s_triggers;
 
@@ -308,6 +310,27 @@ bool Holds(const Condition& c, const std::optional<double>& v)
   return false;
 }
 
+// "p2_defeated" -> port 2. 0 if the name has no "pN_" prefix.
+int PortOf(const std::string& name)
+{
+  if (name.size() >= 3 && (name[0] == 'p' || name[0] == 'P') && name[1] >= '1' && name[1] <= '4' &&
+      name[2] == '_')
+  {
+    return name[1] - '0';
+  }
+  return 0;
+}
+
+// Adds port/player/label for "pN_..." names (caller holds s_mutex).
+Json& AddPlayer(Json& json, const std::string& name)
+{
+  const int port = PortOf(name);
+  if (port == 0)
+    return json;
+  const std::string& player = s_port_names[port - 1];
+  return json.Add("port", port).Add("player", player).Add("label", player + name.substr(2));
+}
+
 // CPU thread, once per video field.
 void OnField()
 {
@@ -322,7 +345,9 @@ void OnField()
       continue;
     w.last = value;
     w.reported = true;
-    Emit("watch", Json().Add("name", w.name).AddRaw("value", FormatValue(value)));
+    Json json;
+    json.Add("name", w.name).AddRaw("value", FormatValue(value));
+    Emit("watch", AddPlayer(json, w.name));
   }
   for (Trigger& t : s_triggers)
   {
@@ -330,7 +355,11 @@ void OnField()
     for (const Condition& c : t.all)
       now = now && Holds(c, s_watches[c.watch].last);
     if (now && !t.was_true)
-      Emit("game_event", Json().Add("name", t.name));
+    {
+      Json json;
+      json.Add("name", t.name);
+      Emit("game_event", AddPlayer(json, t.name));
+    }
     t.was_true = now;
   }
 }
@@ -392,6 +421,13 @@ void LoadWatches(const std::string& game_id, u16 revision)
   Emit("watches_loaded", Json()
                              .AddRaw("watches", JsonArray(watch_names))
                              .AddRaw("triggers", JsonArray(trigger_names)));
+}
+
+void SetPortNames(const std::array<std::string, 4>& names)
+{
+  std::lock_guard lk(s_mutex);
+  for (size_t i = 0; i < names.size(); ++i)
+    s_port_names[i] = names[i].empty() ? fmt::format("P{}", i + 1) : names[i];
 }
 
 void ClearWatches()

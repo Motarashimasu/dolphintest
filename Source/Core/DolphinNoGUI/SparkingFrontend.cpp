@@ -839,6 +839,9 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
 
   StartSparkingHotkeys();
   ApplyAspectForBoot();
+  // Solo: --nickname names port 1 in memory-watch events (others stay P2..P4).
+  if (options.is_set("nickname"))
+    SetPortNames({std::string(static_cast<const char*>(options.get("nickname"))), "", "", ""});
   ApplyTexturesDir(options);
 
   const bool no_gecko = options.is_set_by_user("no_gecko");

@@ -15,10 +15,13 @@
 //   p1_ko = p1_health_pct <= 0
 //
 // Events: "watch" {name, value} when a value changes (all values once at game start), and
-// "game_event" {name} when a trigger's condition goes from false to true.
+// "game_event" {name} when a trigger's condition goes from false to true. Names starting with
+// "p1_".."p4_" also carry "port", "player" (that port's username, see SetPortNames) and "label"
+// (the name with "p1" replaced by the username, e.g. "Goku_defeated").
 
 #pragma once
 
+#include <array>
 #include <string>
 
 #include "Common/CommonTypes.h"
@@ -31,6 +34,9 @@ void InitWatcher();
 void LoadWatches(const std::string& game_id, u16 revision);
 // When a game ends.
 void ClearWatches();
+// Who is on each GameCube port (index 0 = port 1): netplay usernames, or solo names. Watch and
+// trigger names that start with "p1_".."p4_" are reported with that player's name. Any thread.
+void SetPortNames(const std::array<std::string, 4>& names);
 // Re-sends every current value as one "watch_values" event.
 void EmitWatchValues();
 }  // namespace Sparking
