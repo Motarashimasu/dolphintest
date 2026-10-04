@@ -148,7 +148,7 @@ void Draw()
     return Box{screen.x * fx0, screen.y * fy0, screen.x * fx1, screen.y * fy1};
   };
   const ImU32 white = IM_COL32(240, 240, 245, 255);
-  const ImU32 panel = IM_COL32(12, 12, 22, 200);
+  const ImU32 panel = IM_COL32(12, 12, 22, 120);  // score panel: see-through
 
   // Score (blue box): "W1  W2" on a small dark panel in the centre of the top HUD.
   {
@@ -197,7 +197,7 @@ void Draw()
     OutlinedText(dl, font, size, ImVec2(x, box.y0 + (box.h() - size) / 2), color, pct);
   }
 
-  // Ping + buffer (purple box): bottom centre of the window, netplay only.
+  // Ping + buffer (purple box): bottom centre of the window, netplay only. No panel, outlined text.
   const int ping = s_ping, buffer = s_buffer;
   if (ping >= 0)
   {
@@ -206,13 +206,12 @@ void Draw()
                                            fmt::format("{} ms", ping);
     const float size = FitSize(font, text, box.w() * 0.88f, box.h() * 0.62f);
     const ImVec2 dim = TextSize(font, size, text);
-    dl->AddRectFilled(ImVec2(box.x0, box.y0), ImVec2(box.x1, box.y1), panel, box.h() * 0.25f);
     const ImU32 ping_color = ping < 60   ? IM_COL32(90, 225, 150, 255) :
                              ping < 120  ? IM_COL32(245, 205, 50, 255) :
                                            IM_COL32(240, 90, 70, 255);
-    dl->AddText(font, size,
-                ImVec2(box.x0 + (box.w() - dim.x) / 2, box.y0 + (box.h() - dim.y) / 2),
-                ping_color, text.c_str());
+    OutlinedText(dl, font, size,
+                 ImVec2(box.x0 + (box.w() - dim.x) / 2, box.y0 + (box.h() - dim.y) / 2),
+                 ping_color, text);
   }
 }
 
