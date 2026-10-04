@@ -13,6 +13,8 @@ add_executable(dolphin-nogui
   SparkingIO.h
   SparkingNetPlay.cpp
   SparkingNetPlay.h
+  SparkingWatch.cpp
+  SparkingWatch.h
 )
 
 if(X11_FOUND)

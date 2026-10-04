@@ -101,6 +101,10 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `window` | `open`, `x`, `y`, `width`, `height`, `focused`, `minimized`, `handle` | Game window changed (Windows). `x/y/width/height` = the picture area in screen pixels; `open:false` when the window closes. See *Overlay*. |
 | `osd` | `kind` (`message`, `netplay_ping`, `netplay_buffer`), `text`, `ms`, `color` (`#RRGGBB`) | A Dolphin on-screen message, for the overlay to show its own way |
 | `stats` | `fps`, `vps`, `speed` (% of full speed) | Every `stats` interval while the game runs |
+| `watches_loaded` | `watches[]`, `triggers[]` | Game started; the memory watches/triggers from its game ini |
+| `watch` | `name`, `value` (number, or `null` if unreadable) | A watched memory value changed (every watch is sent once at game start) |
+| `watch_values` | `values` (`{name: value}`) | Answer to `watch_values` |
+| `game_event` | `name` | A trigger's condition just became true (e.g. `p1_ko`) |
 | `texture_groups` | `game_id`, `groups[]` of `{name, options[]}` | `--list-textures` result |
 | `textures` | `selection` (`{group: option}`, lowercase) | After a `textures` command |
 | `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
@@ -121,7 +125,7 @@ Error codes: `invalid_game`, `listen_failed`, `no_session_target`, `bad_address`
 `connect_failed`, `connection_error`, `traversal_error` (+`reason`), `host_only`,
 `not_all_players_have_game`, `game_not_found`, `start_rejected`, `platform_init_failed`,
 `boot_failed`, `not_running`, `gecko_needs_exec`, `save_data_mismatch`, `battle_state_not_ready`, `no_state_dir`, `bad_state_name`,
-`state_file_missing`, `state_save_failed`, `state_load_failed`, `not_allowed_in_game`, `not_allowed_in_netplay`, `bad_argument`, `no_such_group`, `unknown_command`.
+`state_file_missing`, `state_save_failed`, `state_load_failed`, `not_allowed_in_game`, `not_allowed_in_netplay`, `bad_argument`, `no_such_group`, `bad_watch`, `bad_trigger`, `unknown_command`.
 
 ## Commands (stdin)
 
@@ -143,6 +147,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `save_state <1-10>` / `load_state <1-10>` | solo | Slot save states |
 | `save_state_file <file.sst>` / `load_state_file <file.sst>` | solo | Capture / test a battle state in `--state-dir` |
 | `aspect 16:9\|4:3\|toggle` | any, in game (netplay too) | Same as F5. Each player chooses their own. |
+| `watch_values` | any | Send every memory-watch value now |
 | `stats <ms>` | any | Start (`stats 500`) or stop (`stats 0`) the periodic `stats` event |
 | `textures <Group>=<Option>` | any, in game (netplay too) | Switch a texture variant live; `<Group>=` clears it (no option loaded) |
 | `textures_cycle <Group>` | any, in game | Next option of a group (alphabetical, wraps) — what F3/F4 do |
@@ -310,6 +315,40 @@ Notes for the Godot side:
 - *Option 2* (rejected for now): Dolphin rendering into Godot's window/scene. Embedding the game
   as a child window still can't be drawn over; sharing frames as a GPU texture is a large,
   backend-specific job; copying frames through RAM adds input lag.
+
+## Memory watcher (match results, HUD data)
+
+Each game can name values in its memory; Dolphin reads them every frame (without slowing the
+game) and reports changes. Defined in the game ini (bundled `Sys/GameSettings/<ID>.ini`, or the
+user's `GameSettings/<ID>.ini`, which overrides entries with the same name):
+
+```ini
+[Sparking.Watch]
+# name = type address [> offset > offset ...]     types: u8 u16 u32 s8 s16 s32 f32
+p1_health_pct = f32 0x803D1024
+p1_hp         = u32 0x80400000 > 0x1C       # pointer: read the u32 at 0x80400000, add 0x1C,
+                                            # read the value there (chain as many as needed)
+[Sparking.Trigger]
+# name = watch op number [&& watch op number ...]  ops: == != < <= > >=
+p1_ko = p1_health_pct <= 0
+```
+
+- Addresses are game addresses as Dolphin's memory tools show them: `0x80000000`– (MEM1) and
+  `0x90000000`– (Wii MEM2). Anything else, or a broken pointer, reads as `null`.
+- `watch` is sent for every watch at game start and then on every change (floats rounded to 3
+  decimals). `game_event` fires when a trigger goes from false to true; a condition that is
+  already true when the game starts doesn't fire.
+- Netplay keeps both games identical, so every player sees the same values and events — the
+  basis for ranked results (both clients report, the server accepts matching reports).
+
+**BT3 PAL (RDSPAF)** — known so far: `p1_health_pct` (`0x803D1024`), `p2_health_pct`
+(`0x803D1028`), triggers `p1_ko` / `p2_ko`. Still to verify/find:
+- that both addresses stay the same in every new battle (they are in MEM1, so likely);
+- what they hold outside battles (menus/results may reset them to 0 and fire a KO trigger), so
+  for now take the **first** KO after `game_started`/battle start; an "in battle" value (scene
+  ID) would make the triggers exact;
+- team battles: whether the percentage is the current character or the whole team, and time-out
+  wins (no KO).
 
 ## Controllers
 

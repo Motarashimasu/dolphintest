@@ -252,6 +252,64 @@ def main():
             asp.wait_for("exit")
             asp.proc.wait(timeout=20)
 
+        print("memory watcher")
+        d = os.path.join(user_dir("watch"), "GameSettings")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, f"{game_id}.ini"), "w") as f:
+            f.write("[Gecko]\n"
+                    "$Health [Sparking]\n04001010 42BC0000\n"   # f32 94.0
+                    "$Patch [Sparking]\n0400310C CAFEBABE\n"    # overwrites the DOL's marker
+                    "[Gecko_Enabled]\n$Health\n$Patch\n"
+                    "[Sparking.Watch]\n"
+                    "p1_health_pct = f32 0x80001010\n"
+                    "marker = u32 0x8000310C\n"
+                    "via_pointer = u32 0x80004000 > 0x4\n"       # [0x80004000]=0x80004010, +0x4
+                    "mem2 = u32 0x94000000\n"                   # just past MEM2 (64 MiB) -> null
+                    "broken = f64 0x80000000\n"
+                    "[Sparking.Trigger]\n"
+                    "patched = marker == 3405691582 && p1_health_pct > 50\n"
+                    "never = p1_health_pct < 0\n"
+                    "bad = nosuchwatch == 1\n")
+        w = Instance("watch", [exe, *common, "--sparking", "-u", user_dir("watch"),
+                               "--nand", nands["solo"], "-e", dol])
+        w.send("hello")
+        loaded = w.wait_for("watches_loaded")
+        check(f"watches loaded from the game ini {loaded}",
+              sorted(loaded["watches"]) == ["marker", "mem2", "p1_health_pct", "via_pointer"]
+              and sorted(loaded["triggers"]) == ["never", "patched"])
+        errors = {e.get("name") for e in w.history if e["event"] == "error"}
+        check(f"bad watch / trigger lines reported {errors}", {"broken", "bad"} <= errors)
+
+        def latest(name, want, timeout=10):
+            end = time.time() + timeout
+            while time.time() < end:
+                vals = [e["value"] for e in w.history if e["event"] == "watch" and e["name"] == name]
+                if vals and vals[-1] == want:
+                    return want
+                time.sleep(0.2)
+            return vals[-1] if vals else "missing"
+        check("f32 watch reads the float (94.0)", latest("p1_health_pct", 94) == 94)
+        check("u32 watch follows the change (DOL marker -> Gecko patch)",
+              latest("marker", 0xCAFEBABE) == 0xCAFEBABE)
+        check("pointer chain resolved (0x80004000 > 0x4 -> 0x80003100)",
+              latest("via_pointer", 0x80003100) == 0x80003100)
+        check("unreadable address reports null", latest("mem2", None) is None)
+        markers = [e["value"] for e in w.history if e["event"] == "watch" and e["name"] == "marker"]
+        check(f"marker seen unpatched first, then patched {markers}",
+              markers[:1] == [0x600DF00D] and markers[-1] == 0xCAFEBABE)
+        ev = w.wait_for("game_event", lambda e: e["name"] == "patched")
+        time.sleep(1)
+        fired = [e["name"] for e in w.history if e["event"] == "game_event"]
+        check(f"trigger fires once on its rising edge, false trigger never {fired}",
+              fired == ["patched"])
+        w.send("watch_values")
+        vals = w.wait_for("watch_values")["values"]
+        check(f"watch_values snapshot {vals}",
+              vals["p1_health_pct"] == 94 and vals["marker"] == 0xCAFEBABE and vals["mem2"] is None)
+        w.send("quit")
+        w.wait_for("exit")
+        w.proc.wait(timeout=20)
+
         print("texture variants (@Group/Option folders)")
         # Shared texture library outside any user folder (--textures-dir).
         tex_lib = os.path.join(work, "texture-library")

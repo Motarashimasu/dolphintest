@@ -51,6 +51,7 @@
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/TextureCacheBase.h"
 #include "DolphinNoGUI/SparkingNetPlay.h"
+#include "DolphinNoGUI/SparkingWatch.h"
 #include "UICommon/UICommon.h"
 
 namespace Sparking
@@ -150,10 +151,14 @@ void OnCoreStateChanged(Core::State state)
                           .Add("revision", static_cast<int>(sc.GetRevision()))
                           .Add("netplay", NetPlay::IsNetPlayRunning())
                           .AddRaw("session", SessionSummary()));
+    LoadWatches(sc.GetGameID(), sc.GetRevision());
     Emit("game_started");
   }
   else if (state == Core::State::Uninitialized)
+  {
     s_game_started = false;
+    ClearWatches();
+  }
   Emit("emulation_state", Json().Add("state", StateName(state)));
 }
 
@@ -312,6 +317,11 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     return;
   }
 
+  if (cmd.name == "watch_values")  // every memory-watch value right now
+  {
+    EmitWatchValues();
+    return;
+  }
   if (cmd.name == "stats")  // "stats 500" = a stats event every 500 ms in game, "stats 0" = off
   {
     int ms = 0;
@@ -799,6 +809,7 @@ void InitFromOptions(const optparse::Values& options)
     ApplySessionOverrides(options, netplay);
     Common::RegisterMsgAlertHandler(EventMsgAlertHandler);
     OSD::SetMessageObserver(ForwardOsdMessage);
+    InitWatcher();
     State::SetOnAfterLoadCallback([] {
       if (State::LastLoadSucceeded())
         Emit("state_applied");
