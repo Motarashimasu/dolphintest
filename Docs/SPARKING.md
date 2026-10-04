@@ -341,14 +341,19 @@ p1_ko = p1_health_pct <= 0
 - Netplay keeps both games identical, so every player sees the same values and events — the
   basis for ranked results (both clients report, the server accepts matching reports).
 
-**BT3 PAL (RDSPAF)** — known so far: `p1_health_pct` (`0x803D1024`), `p2_health_pct`
-(`0x803D1028`), triggers `p1_ko` / `p2_ko`. Still to verify/find:
-- that both addresses stay the same in every new battle (they are in MEM1, so likely);
-- what they hold outside battles (menus/results may reset them to 0 and fire a KO trigger), so
-  for now take the **first** KO after `game_started`/battle start; an "in battle" value (scene
+**BT3 PAL (RDSPAF)**:
+- `p1_health_pct` (`0x803D1024`) and `p2_health_pct` (`0x803D1028`): each side's health in percent
+  (current HP / max HP × 100). In Team Battle it is the whole team's combined health. Verified:
+  P1 94.125 with 37650/40000 HP; P2 0 when dead; team totals in Team Battle.
+- Triggers `p1_defeated` / `p2_defeated`: that side's health reached 0 = that side lost the
+  match (Single and Team Battle alike). Winner = the other side.
+
+Still to check:
+- that both addresses are the same in every new battle (MEM1, so likely);
+- what they hold outside battles (menus/results may reset them to 0 and fire a trigger), so for
+  now count only the **first** `*_defeated` after a battle starts; an "in battle" value (scene
   ID) would make the triggers exact;
-- team battles: whether the percentage is the current character or the whole team, and time-out
-  wins (no KO).
+- time-out wins (no one reaches 0): compare the two percentages when the timer ends.
 
 ## Controllers
 
