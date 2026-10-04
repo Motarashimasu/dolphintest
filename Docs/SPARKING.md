@@ -107,7 +107,8 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `watch_values` | `values` (`{name: value}`) | Answer to `watch_values` |
 | `game_event` | `name`; for `p1_`..`p4_` names also `port`, `player`, `label` | A trigger's condition just became true (e.g. `p1_defeated` → `player: "Goku"`, `label: "Goku_defeated"`) |
 | `round_started` | `round`, `p1`, `p2` | Both sides are back at 100% health: a new round is live |
-| `round_result` | `round`, `winner_port`, `winner`, `loser_port`, `loser`, `wins` (`{name: rounds won}`), `local_result` (`win`/`lose`, absent for spectators) | First side to hit 0% in a live round; the other side scores. Nothing more counts until both are at 100% again. |
+| `round_result` | `round`, `winner_port`, `winner`, `loser_port`, `loser`, `wins` (`{name: rounds won}`), `local_result` (`win`/`lose`, absent for spectators) | A side hit 0% in a live round and the other side was still alive ~0.75 s later: the other side scores. Nothing more counts until both are at 100% again. |
+| `round_void` | `round`, `reason` (`both_health_zero`) | Both sides hit 0% within ~0.75 s (leaving a match, loading the next one): nobody scores |
 | `score` | `wins`, `rounds` | After `score reset` |
 | `hud` | `enabled` | After a `hud` command |
 | `poked` | `address`, `value` | Answer to `poke` |
@@ -362,9 +363,12 @@ p1_ko = p1_health_pct <= 0
   match (Single and Team Battle alike). Winner = the other side.
 
 - Round counting (temporary HUD score bar + `round_result`): a round is live once both sides are
-  at 100%; the first side to reach 0% loses it and the other side scores; nothing more counts
-  until both are at 100% again. Scores are per player name and last for the whole process (all
-  rematches in a netplay session). The `*_defeated` triggers stay available as raw events.
+  at 100%. When a side reaches 0%, the result waits ~0.75 s: if the other side is still alive
+  it's a KO and the other side scores; if both are at 0% by then (BT3 clears both values when
+  leaving a match or loading the next one from character select) the round is void
+  (`round_void`). Nothing more counts until both are at 100% again. Scores are per player name,
+  last for the whole boot (all rematches) and reset when the game is rebooted or closed. The
+  `*_defeated` triggers stay available as raw events.
 
 Still to check:
 - that both addresses are the same in every new battle (MEM1, so likely);

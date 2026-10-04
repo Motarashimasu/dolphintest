@@ -23,6 +23,8 @@ namespace
 {
 // "Back to 100%" with a little float tolerance.
 constexpr double FULL_HEALTH = 99.95;
+// Frames (video fields, ~60/s) a 0% must hold, with the other side still alive, to count as a KO.
+constexpr int CONFIRM_FRAMES = 45;
 
 struct Side
 {
@@ -35,6 +37,8 @@ std::atomic<bool> s_enabled{true};
 std::atomic<int> s_local_port{1};
 std::array<Side, 2> s_sides;          // P1, P2
 bool s_round_live = false;            // both sides were at 100% and nobody has hit 0% since
+int s_pending_loser = 0;              // port that hit 0%, waiting for confirmation (0 = none)
+int s_pending_frames = 0;
 std::map<std::string, int> s_wins;    // player name -> rounds won (this process)
 int s_rounds = 0;
 
@@ -166,6 +170,9 @@ void ResetHud()
   std::lock_guard lk(s_mutex);
   s_sides = {};
   s_round_live = false;
+  s_pending_loser = 0;
+  s_wins.clear();
+  s_rounds = 0;
 }
 
 void ResetScores()
@@ -202,13 +209,47 @@ void HudOnWatch(const std::string& name, int port, const std::string& player, do
     return;
   }
 
-  // Live round: the first side at 0% loses it.
-  if (!side.health || *side.health > 0.0)
+  // Live round: a side at 0% starts the confirmation (decided in HudTick).
+  if (s_pending_loser == 0 && side.health && *side.health <= 0.0)
+  {
+    s_pending_loser = port;
+    s_pending_frames = CONFIRM_FRAMES;
+  }
+}
+
+void HudTick()
+{
+  std::lock_guard lk(s_mutex);
+  if (!s_round_live || s_pending_loser == 0)
     return;
+  const int loser_port = s_pending_loser;
+  const int winner_port = loser_port == 1 ? 2 : 1;
+  const auto& loser_health = s_sides[loser_port - 1].health;
+  const auto& winner_health = s_sides[winner_port - 1].health;
+
+  // Both at 0% (or unreadable): the game cleared the values (menu, next match). Nobody scores.
+  if (!winner_health || *winner_health <= 0.0)
+  {
+    s_pending_loser = 0;
+    s_round_live = false;
+    Emit("round_void", Json()
+                           .Add("round", s_rounds + 1)
+                           .Add("reason", "both_health_zero"));
+    return;
+  }
+  // The "loser" came back above 0% (shouldn't happen in a KO): keep playing.
+  if (!loser_health || *loser_health > 0.0)
+  {
+    s_pending_loser = 0;
+    return;
+  }
+  if (--s_pending_frames > 0)
+    return;
+
+  // Confirmed KO.
+  s_pending_loser = 0;
   s_round_live = false;
   ++s_rounds;
-  const int loser_port = port;
-  const int winner_port = port == 1 ? 2 : 1;
   const std::string winner = DisplayName(s_sides[winner_port - 1], winner_port);
   const std::string loser = DisplayName(s_sides[loser_port - 1], loser_port);
   ++s_wins[winner];

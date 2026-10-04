@@ -363,6 +363,21 @@ def main():
         r = m.seen("round_result", lambda e: e["round"] == 3)
         check(f"round 3: wins keep adding up in one session {r['wins']}",
               r["wins"] == {"Trunks": 2, "P2": 1})
+        # Leaving a match / loading the next one: the game clears BOTH values within a moment.
+        poke(P1, FULL); poke(P2, FULL)
+        m.seen("round_started", lambda e: e["round"] == 4)
+        poke(P1, ZERO); poke(P2, ZERO)
+        v = m.seen("round_void")
+        time.sleep(1.2)
+        check(f"both bars to 0% together -> round void, nobody scores {v}",
+              len(events("round_result")) == 3 and v["reason"] == "both_health_zero")
+        poke(P1, FULL); poke(P2, FULL)
+        m.seen("round_started", lambda e: e["round"] == 4 and
+               len([x for x in events("round_started") if x["round"] == 4]) >= 2)
+        poke(P1, ZERO)
+        r = m.seen("round_result", lambda e: e["round"] == 4)
+        check(f"after a void the next real KO counts normally {r['wins']}",
+              r["wins"] == {"Trunks": 2, "P2": 2})
         m.send("score reset")
         check("score reset -> 0-0", m.wait_for("score")["wins"] == {})
         m.send("hud off")

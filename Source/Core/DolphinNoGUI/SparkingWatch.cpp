@@ -365,6 +365,7 @@ void OnField()
     }
     t.was_true = now;
   }
+  HudTick();  // once per frame, after all of this frame's values are in
 }
 }  // namespace
 
