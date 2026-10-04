@@ -3,7 +3,9 @@
 
 #include "DolphinNoGUI/SparkingHud.h"
 
+#include <algorithm>
 #include <array>
+#include <cfloat>
 #include <atomic>
 #include <chrono>
 #include <mutex>
