@@ -36,7 +36,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--textures <Group>=<Option>` (repeatable) | none | Texture variant to load, i.e. folder `@<Group>/<Option>` in the game's texture pack. Turns custom textures on. See *Texture variants*. |
 | `--textures-dir <dir>` | `<user>/Load/Textures` | Texture library folder (holds `<GAMEID>/` folders), shared by every profile. |
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
-| `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: each side's name + health % in the top corners, "<winner> WINS!" + "YOU WIN"/"YOU LOSE" when a side is defeated. Needs the game's `p1/p2_health_pct` watches and `p1/p2_defeated` triggers. |
+| `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: a Fightcade-style score bar at the top center (`Name1  W1  W2  Name2`) and each side's health % in the top corners. Needs the game's `p1/p2_health_pct` watches. |
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
@@ -106,8 +106,9 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `watch` | `name`, `value` (number, or `null` if unreadable); for `p1_`..`p4_` names also `port`, `player`, `label` | A watched memory value changed (every watch is sent once at game start) |
 | `watch_values` | `values` (`{name: value}`) | Answer to `watch_values` |
 | `game_event` | `name`; for `p1_`..`p4_` names also `port`, `player`, `label` | A trigger's condition just became true (e.g. `p1_defeated` → `player: "Goku"`, `label: "Goku_defeated"`) |
-| `battle_started` | `p1`, `p2` (names) | Both sides' health went above 0: a battle is running |
-| `match_result` | `winner_port`, `winner`, `loser_port`, `loser`, `local_result` (`win`/`lose`, absent for spectators) | First `p1/p2_defeated` of a battle. Only one per battle: later health resets (result screen, menus) are ignored until the next `battle_started`. |
+| `round_started` | `round`, `p1`, `p2` | Both sides are back at 100% health: a new round is live |
+| `round_result` | `round`, `winner_port`, `winner`, `loser_port`, `loser`, `wins` (`{name: rounds won}`), `local_result` (`win`/`lose`, absent for spectators) | First side to hit 0% in a live round; the other side scores. Nothing more counts until both are at 100% again. |
+| `score` | `wins`, `rounds` | After `score reset` |
 | `hud` | `enabled` | After a `hud` command |
 | `poked` | `address`, `value` | Answer to `poke` |
 | `texture_groups` | `game_id`, `groups[]` of `{name, options[]}` | `--list-textures` result |
@@ -158,6 +159,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `textures_cycle <Group>` | any, in game | Next option of a group (alphabetical, wraps) — what F3/F4 do |
 | `texture_path <tex1_name>` | any | Debug: which file a texture name is loaded from right now (`texture_path` event) |
 | `hud on\|off` | any | Show/hide the temporary in-game HUD |
+| `score reset` | any | Set the round score back to 0-0 |
 | `poke <hex address> <hex value>` | solo | Debug: write a 32-bit word of game memory |
 | `peek <hex address>` | solo | Debug: read a 32-bit word of game memory |
 | `quit` | any | Stop any game and exit |
@@ -359,8 +361,10 @@ p1_ko = p1_health_pct <= 0
 - Triggers `p1_defeated` / `p2_defeated`: that side's health reached 0 = that side lost the
   match (Single and Team Battle alike). Winner = the other side.
 
-- `match_result` (and the temporary HUD) turn these into one result per battle: a battle starts
-  when both sides are above 0 %, the first `*_defeated` decides it, later resets are ignored.
+- Round counting (temporary HUD score bar + `round_result`): a round is live once both sides are
+  at 100%; the first side to reach 0% loses it and the other side scores; nothing more counts
+  until both are at 100% again. Scores are per player name and last for the whole process (all
+  rematches in a netplay session). The `*_defeated` triggers stay available as raw events.
 
 Still to check:
 - that both addresses are the same in every new battle (MEM1, so likely);

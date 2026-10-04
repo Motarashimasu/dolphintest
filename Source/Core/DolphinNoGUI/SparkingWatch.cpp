@@ -362,8 +362,6 @@ void OnField()
       Json json;
       json.Add("name", t.name);
       Emit("game_event", AddPlayer(json, t.name));
-      if (const int port = PortOf(t.name))
-        HudOnTrigger(t.name, port, s_port_names[port - 1]);
     }
     t.was_true = now;
   }

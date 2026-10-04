@@ -314,48 +314,57 @@ def main():
         w.wait_for("exit")
         w.proc.wait(timeout=20)
 
-        print("match result (temporary HUD + match_result event)")
+        print("round counting (temporary HUD score bar + round_result event)")
         with open(os.path.join(user_dir("watch"), "GameSettings", f"{game_id}.ini"), "w") as f:
             f.write("[Sparking.Watch]\n"
                     "p1_health_pct = f32 0x80001100\n"
-                    "p2_health_pct = f32 0x80001104\n"
-                    "[Sparking.Trigger]\n"
-                    "p1_defeated = p1_health_pct <= 0\n"
-                    "p2_defeated = p2_health_pct <= 0\n")
+                    "p2_health_pct = f32 0x80001104\n")
         m = Instance("result", [exe, *common, "--sparking", "-u", user_dir("watch"),
                                 "--nand", nands["solo"], "--nickname", "Trunks", "-e", dol])
         m.send("hello")
         m.wait_for("game_started")
         m.seen("watches_loaded")
-        HUNDRED, ZERO = "42C80000", "00000000"
+        FULL, HALF, ZERO = "42C80000", "42480000", "00000000"   # 100.0, 50.0, 0.0
 
         def poke(addr, val):
             m.send(f"poke {addr} {val}")
             m.wait_for("poked", lambda e: e["address"] == addr and e["value"] == val)
+            time.sleep(0.15)  # let the watcher (once per frame) see it
 
-        def results():
-            return [e for e in m.history if e["event"] == "match_result"]
+        def events(name):
+            return [e for e in m.history if e["event"] == name]
 
-        poke("80001100", HUNDRED)
-        poke("80001104", HUNDRED)
-        bs = m.wait_for("battle_started")
-        check(f"battle starts once both sides are alive {bs}", bs["p1"] == "Trunks" and bs["p2"] == "P2")
-        poke("80001104", ZERO)
-        r = m.wait_for("match_result")
-        check(f"P2 defeated -> P1 (Trunks) wins, local player wins {r}",
-              r["winner_port"] == 1 and r["winner"] == "Trunks" and r["loser"] == "P2"
+        P1, P2 = "80001100", "80001104"
+        poke(P1, FULL); poke(P2, FULL)
+        rs = m.wait_for("round_started")
+        check(f"round 1 starts when both are at 100% {rs}",
+              rs["round"] == 1 and rs["p1"] == "Trunks" and rs["p2"] == "P2")
+        poke(P2, ZERO)
+        r = m.wait_for("round_result")
+        check(f"P2 hits 0% -> P1 (Trunks) gets the win {r}",
+              r["winner"] == "Trunks" and r["wins"] == {"Trunks": 1, "P2": 0}
               and r["local_result"] == "win")
-        poke("80001100", ZERO)   # e.g. the result screen resetting health: not a second result
-        time.sleep(1)
-        check("only one result per battle (later resets ignored)", len(results()) == 1)
-        poke("80001100", HUNDRED)
-        poke("80001104", HUNDRED)
-        m.wait_for("battle_started", lambda e: len([x for x in m.history if x["event"] == "battle_started"]) >= 2)
-        poke("80001100", ZERO)
-        time.sleep(1)
-        r2 = results()[-1] if len(results()) == 2 else {}
-        check(f"next battle: P1 defeated -> P2 wins, local player loses {r2}",
-              r2.get("winner_port") == 2 and r2.get("local_result") == "lose")
+        poke(P1, ZERO)                      # result screen resetting health: ignored
+        poke(P1, HALF); poke(P2, HALF)      # not back to 100% yet: still no new round
+        poke(P2, ZERO)
+        time.sleep(0.5)
+        check("no new round until both bars are back at 100%",
+              len(events("round_result")) == 1 and len(events("round_started")) == 1)
+        poke(P1, FULL); poke(P2, FULL)
+        m.seen("round_started", lambda e: e["round"] == 2)
+        poke(P1, ZERO)
+        r = m.seen("round_result", lambda e: e["round"] == 2)
+        check(f"round 2: P1 hits 0% -> P2 scores {r}",
+              r["winner"] == "P2" and r["wins"] == {"Trunks": 1, "P2": 1}
+              and r["local_result"] == "lose")
+        poke(P1, FULL); poke(P2, FULL)
+        m.seen("round_started", lambda e: e["round"] == 3)
+        poke(P2, ZERO)
+        r = m.seen("round_result", lambda e: e["round"] == 3)
+        check(f"round 3: wins keep adding up in one session {r['wins']}",
+              r["wins"] == {"Trunks": 2, "P2": 1})
+        m.send("score reset")
+        check("score reset -> 0-0", m.wait_for("score")["wins"] == {})
         m.send("hud off")
         check("hud can be switched off", m.wait_for("hud")["enabled"] is False)
         m.send("quit")

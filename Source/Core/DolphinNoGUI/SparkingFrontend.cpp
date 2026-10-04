@@ -330,6 +330,16 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     SetHudEnabled(cmd.arg == "on");
     return;
   }
+  if (cmd.name == "score")  // "score reset" = back to 0-0
+  {
+    if (cmd.arg != "reset")
+    {
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      return;
+    }
+    ResetScores();
+    return;
+  }
   if (cmd.name == "watch_values")  // every memory-watch value right now
   {
     EmitWatchValues();
@@ -714,7 +724,7 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .choices({"on", "off"})
       .set_default("on")
-      .help("Sparking mode: temporary in-game HUD (health %, win/lose message) drawn by Dolphin");
+      .help("Sparking mode: temporary in-game HUD (score bar, health %) drawn by Dolphin");
   parser.add_option("--osd-messages")
       .dest("osd_messages")
       .action("store")
