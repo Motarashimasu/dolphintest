@@ -149,14 +149,14 @@ func _make_row(item: Dictionary, i: int) -> Control:
 	Style.place(badge, 12, 5, 50, 50)
 	badge.visible = Style.BADGES
 	row.add_child(badge)
-	var glyph := Style.label(String(item.get("glyph", "")), 26, Color.BLACK, 0, Color.BLACK, true)
+	var glyph := Style.label(String(item.get("glyph", "")), 26, Color.BLACK, 0, Color.BLACK, "button")
 	glyph.name = "Glyph"
 	glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	glyph.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	Style.place(glyph, 0, 0, 50, 50)
 	badge.add_child(glyph)
 
-	var text := Style.label(String(item.get("label", "")), Style.ITEM_SIZE, Style.IDLE_TEXT, 4, Style.IDLE_EDGE, true)
+	var text := Style.label(String(item.get("label", "")), Style.ITEM_SIZE, Style.IDLE_TEXT, 4, Style.IDLE_EDGE, "button")
 	text.name = "Text"
 	text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	if fit_width > 0:

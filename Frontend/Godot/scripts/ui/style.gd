@@ -54,6 +54,7 @@ const LOOK_PATH := "res://look/menu_look.tres"
 static var look: Resource = null
 static var _menu_font: Font
 static var _body_font: Font
+static var _button_font: Font
 
 
 static func _ensure() -> void:
@@ -115,6 +116,7 @@ static func load_skin() -> void:
 	TOAST_TEXT = L.toast_text
 	_menu_font = null
 	_body_font = null
+	_button_font = null
 
 
 ## The color for a menu item: Item colors in the look, else the menu's own.
@@ -130,7 +132,8 @@ static func background(track: String) -> Texture2D:
 	return t if t else look.background_default
 
 
-## Fonts: the look's fonts, else res://fonts/menu.* / body.*, else Godot's own.
+## Fonts: the look's fonts, else res://fonts/menu.* / button.* / body.*, else the system font
+## (Impact for buttons, Tahoma for the rest; both come with Windows), else Godot's own.
 static func menu_font() -> Font:
 	_ensure()
 	if _menu_font == null:
@@ -141,28 +144,49 @@ static func menu_font() -> Font:
 static func body_font() -> Font:
 	_ensure()
 	if _body_font == null:
-		_body_font = look.body_font if look.body_font else _load_font("body", 0.4)
+		_body_font = look.body_font if look.body_font else _load_font("body", 0.4, ["Tahoma", "Verdana"])
 	return _body_font
 
 
-static func _load_font(base: String, fallback_bold: float) -> Font:
+static func button_font() -> Font:
+	_ensure()
+	if _button_font == null:
+		_button_font = look.button_font if look.button_font \
+				else _load_font("button", 0.6, ["Impact", "Haettenschweiler"])
+	return _button_font
+
+
+static func _load_font(base: String, fallback_bold: float, system: Array = []) -> Font:
 	for ext in ["ttf", "otf", "woff2", "woff"]:
 		var path := "res://fonts/%s.%s" % [base, ext]
 		if ResourceLoader.exists(path):
 			return load(path)
+	if not system.is_empty() and _system_has(system):
+		var f := SystemFont.new()
+		f.font_names = PackedStringArray(system)
+		return f
 	var v := FontVariation.new()
 	v.base_font = ThemeDB.fallback_font
 	v.variation_embolden = fallback_bold
 	return v
 
 
+static func _system_has(names: Array) -> bool:
+	var installed := OS.get_system_fonts()
+	for n in names:
+		if installed.has(n):
+			return true
+	return false
+
+
 ## Label with an outline (and optional drop shadow), like the game's menu text.
 static func label(text: String, size: int, color: Color, outline := 0, edge := Color.BLACK,
-		menu := false, shadow := 0) -> Label:
+		menu: Variant = false, shadow := 0) -> Label:
 	var l := Label.new()
 	l.text = text
 	var s := LabelSettings.new()
-	s.font = menu_font() if menu else body_font()
+	# menu: false = body (descriptions), true = title font, "button" = button font.
+	s.font = button_font() if menu is String else (menu_font() if menu else body_font())
 	s.font_size = size
 	s.font_color = color
 	s.outline_size = outline

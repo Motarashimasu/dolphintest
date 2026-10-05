@@ -8,9 +8,12 @@ extends Resource
 ## 2D editor to move, replace or delete the sky, clouds and ground, or to add your own art.
 
 @export_group("Fonts")
-## Titles and the menu wheel. Empty = Godot's built-in font (bold).
+## Screen titles (and the lobby's headings). Empty = Godot's built-in font (bold).
 @export var menu_font: Font
-## Everything else. Empty = Godot's built-in font.
+## Button text: the menu wheel, the rows of the settings screens, the button hints at the bottom.
+## Empty = Impact (installed with Windows).
+@export var button_font: Font
+## Descriptions and everything else. Empty = Tahoma (installed with Windows).
 @export var body_font: Font
 
 @export_group("Menu pictures")

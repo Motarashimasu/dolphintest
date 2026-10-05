@@ -195,13 +195,13 @@ func _rebuild() -> void:
 		root.gui_input.connect(_on_row_input.bind(i))
 		add_child(root)
 
-		var name_l := Style.label(String(r.get("label", "")), font_size, Color.WHITE, 3, Style.DARK)
+		var name_l := Style.label(String(r.get("label", "")), font_size, Color.WHITE, 3, Style.DARK, "button")
 		name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		name_l.clip_text = true
 		name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		root.add_child(name_l)
 
-		var value_l := Style.label("", font_size, Color.WHITE, 3, Style.DARK)
+		var value_l := Style.label("", font_size, Color.WHITE, 3, Style.DARK, "button")
 		value_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		value_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		value_l.clip_text = true

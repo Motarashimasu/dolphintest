@@ -189,4 +189,9 @@ Linux only (`xvfb-run`). The tour covers:
 - Godot 4.3 on Linux/macOS closes the frontend's stdin when it frees a process pipe, and the
   next launch then dies with SIGPIPE. `scripts/dolphin.gd` keeps finished pipes open to avoid
   this. Windows is not affected.
-- Fonts: set them in `look/menu_look.tres` (or drop `menu.ttf` / `body.ttf` into `fonts/`).
+- Fonts: titles use the title font (Godot's own, bold), button text (menu wheel, settings rows,
+  button hints) uses **Impact**, and descriptions and everything else use **Tahoma**. Impact and
+  Tahoma come with Windows and are loaded from the PC, so they aren't shipped with the launcher;
+  on a PC without them Godot's own font is used. To change any of them, set them in
+  `look/menu_look.tres` (Menu font / Button font / Body font), or drop `menu.ttf`, `button.ttf`
+  or `body.ttf` into `fonts/`.

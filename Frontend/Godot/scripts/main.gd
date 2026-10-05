@@ -627,13 +627,13 @@ func _hint(key: String, color: Color, text: String) -> Control:
 	box.add_theme_constant_override("separation", 8)
 	var badge := Style.panel(color, 15)
 	badge.custom_minimum_size = Vector2(maxf(30, 14 + 9 * key.length()), 30)
-	var k := Style.label(key, 14, Style.INK, 0, Color.BLACK, true)
+	var k := Style.label(key, 14, Style.INK, 0, Color.BLACK, "button")
 	k.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	k.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	k.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	badge.add_child(k)
 	box.add_child(badge)
-	box.add_child(Style.label(text, 17, Style.INK_LINE, 0, Color.BLACK, true))
+	box.add_child(Style.label(text, 17, Style.INK_LINE, 0, Color.BLACK, "button"))
 	return box
 
 
