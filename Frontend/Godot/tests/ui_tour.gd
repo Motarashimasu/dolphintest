@@ -1,4 +1,6 @@
 extends Node
+
+const Style := preload("res://scripts/ui/style.gd")
 ## Automated walk through every menu and the netplay flow, with screenshots. Started by
 ## tests/run_ui_tour.py (which supplies a fake lobby server and a second player):
 ##   godot --path Frontend/Godot -- --ui-tour <config.json>
@@ -153,6 +155,19 @@ func back() -> void:
 func _tour() -> void:
 	await frames(10)
 	check("main menu title", app._title.text == "Main Menu")
+	check("menu look loaded from look/menu_look.tres", Style.look != null and Style.look.resource_path == Style.LOOK_PATH
+			and app._title.label_settings.font_color == Style.look.title_color)
+	var before_mouse: int = top().carousel.index
+	for b in [MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_LEFT]:
+		var m := InputEventMouseButton.new()
+		m.button_index = b
+		m.pressed = true
+		m.position = Vector2(300, 112 + 152 + 64 + 30)   # the row below the selection
+		Input.parse_input_event(m)
+		await frames(3)
+	check("mouse does nothing (controller/keyboard only)", top().carousel.index == before_mouse
+			and app._title.text == "Main Menu")
+	check("backdrop scene in place", app._bg_image != null and app._scenery != null and app._scenery.visible)
 	await frames(30)
 	check("main menu music playing", Music.current_track() == "main_menu" and Music.is_audible())
 	await shot("main_menu")

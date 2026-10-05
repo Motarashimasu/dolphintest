@@ -58,7 +58,6 @@ Main Menu   Budokai Tenkaichi 3 > Play Offline
 ```
 
 Controls: Up/Down move, Left/Right change a value, A / Enter / Space select, B / Escape back.
-Mouse works too: wheel turns the carousel; click a value's left or right half to change it.
 
 **Controllers in the menus.** Xbox One / Series, DualShock 4 and DualSense work as soon as
 they're plugged in.
@@ -120,6 +119,21 @@ tutorial open it on A.
 - Godot can't play GIFs on its own, so `scripts/util/gif.gd` decodes them on a background
   thread.
 
+**Changing the look (in the Godot editor).**
+- **Colors, fonts, pictures:** open `look/menu_look.tres` and change it in the Inspector. That
+  covers the title, the menu wheel (highlight band color or picture, text colors and size,
+  letter icons, arrows), per-item colors, the description bar, panels and rows, toasts,
+  fonts, and a background picture per menu (main_menu, game_menu, netplay, lobby,
+  terminology, or one default).
+- **Background:** `scenes/Backdrop.tscn` is the scene behind every menu: the sky, the clouds
+  and the ground. Open it in the 2D editor to recolor, move, delete or replace anything, or add
+  your own art and animations. A menu picture from the look covers it (its `Scenery` node
+  hides).
+- Save, then run (F5). In the running menus, **F9** reloads both without restarting.
+
+The menus take controller and keyboard only: the mouse is hidden and ignored, so it can't
+steal the selection.
+
 **Splash.** `splash/splash.png` is shown in two places: as Godot's boot splash while the
 engine starts, then for 2 s over the menu before fading out. Any button skips it. It's blank
 (black) for now: replace that file, keeping the name, with your own image. 1920×1080 works
@@ -169,5 +183,4 @@ Linux only (`xvfb-run`). The tour covers:
 - Godot 4.3 on Linux/macOS closes the frontend's stdin when it frees a process pipe, and the
   next launch then dies with SIGPIPE. `scripts/dolphin.gd` keeps finished pipes open to avoid
   this. Windows is not affected.
-- Fonts: drop `menu.ttf` (titles/menus) and `body.ttf` into `fonts/` to replace Godot's
-  built-in font.
+- Fonts: set them in `look/menu_look.tres` (or drop `menu.ttf` / `body.ttf` into `fonts/`).

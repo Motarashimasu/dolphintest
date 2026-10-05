@@ -1,49 +1,155 @@
 extends RefCounted
-## Colors, fonts and small node factories shared by every screen.
+## The look of the whole frontend, read from res://look/menu_look.tres (edit it in the Godot
+## editor's Inspector; see look/menu_look.gd). F9 in the running menus reloads it.
 ## (No class_name, so the project runs without the editor's class cache: `preload` this.)
 
-const SKY := Color("#6cc4ee")
-const CLOUD := Color("#f4fbff")
-const GROUND := Color("#7cc576")
-const INK := Color("#0f3a48")          # description bar / panels
-const INK_LINE := Color("#cfe9ee")
-const DARK := Color("#1b1b24")
-const TITLE := Color("#ff8a1f")
-const TITLE_EDGE := Color("#6b1d0b")
-const SEL_TEXT := Color("#fff4d6")
-const SEL_EDGE := Color("#4a1a08")
-const IDLE_TEXT := Color("#5b3a8c")
-const GOLD := Color("#f2b531")
-const GOOD := Color("#3fbf6b")
-const MID := Color("#f2b531")
-const POOR := Color("#e8663d")
-const MUTED := Color("#8a9bb0")
+# --- Current look (filled from menu_look.tres by load_skin) ---------------------------------
+static var INK := Color("#0f3a48")
+static var INK_LINE := Color("#cfe9ee")
+static var DESC_TEXT := Color.WHITE
+static var DARK := Color("#1b1b24")
+static var TITLE := Color("#ff8a1f")
+static var TITLE_EDGE := Color("#6b1d0b")
+static var TITLE_SIZE := 64
+static var TITLE_OUTLINE := 8
+static var TITLE_SHADOW := 6
+static var SEL_TEXT := Color("#fff4d6")
+static var SEL_EDGE := Color("#4a1a08")
+static var IDLE_TEXT := Color("#5b3a8c")
+static var IDLE_EDGE := Color.WHITE
+static var ITEM_SIZE := 46
+static var BAND := "item"
+static var BAND_ALPHA := 0.82
+static var BAND_BORDER := Color(1, 1, 1, 0.8)
+static var BAND_BORDER_WIDTH := 3
+static var BADGES := true
+static var ARROW := Color("#f7a531")
+static var ARROW_HOVER := Color("#ffd27a")
+static var PANEL := Color("#2b6478", 0.94)
+static var PANEL_BORDER := Color(1, 1, 1, 0.45)
+static var PANEL_RADIUS := 18
+static var ROW := Color("#0f3a48", 0.72)
+static var ROW_SEL := Color("#f2b531", 0.85)
+static var ROW_SEL_BORDER := Color(1, 1, 1, 0.85)
+static var ROW_TEXT := Color.WHITE
+static var ROW_SEL_TEXT := Color("#fff4d6")
+static var ROW_RADIUS := 10
+static var GOLD := Color("#f2b531")
+static var GOOD := Color("#3fbf6b")
+static var MID := Color("#f2b531")
+static var POOR := Color("#e8663d")
+static var MUTED := Color("#8a9bb0")
+static var TOAST_BG := Color("#1b1b24")
+static var TOAST_TEXT := Color.WHITE
+static var ITEM_COLORS := {}
 
+static var BAND_IMAGE: Texture2D            # band_image
+static var BAND_IMAGE_TINT := true
+static var DESC_IMAGE: Texture2D
+static var PANEL_IMAGE: Texture2D
+static var PANEL_IMAGE_MARGIN := 24
+
+const LOOK_PATH := "res://look/menu_look.tres"
+
+static var look: Resource = null
 static var _menu_font: Font
 static var _body_font: Font
 
 
-## Optional fonts: res://fonts/menu.ttf (titles, carousel) and res://fonts/body.ttf (text).
-## Without them Godot's built-in font is used, emboldened for the menu.
+static func _ensure() -> void:
+	if look == null:
+		load_skin()
+
+
+## (Re)reads res://look/menu_look.tres (edited in the Godot editor's Inspector).
+static func load_skin() -> void:
+	look = ResourceLoader.load(LOOK_PATH, "", ResourceLoader.CACHE_MODE_REPLACE)
+	if look == null:
+		push_warning("Menu look not found: " + LOOK_PATH)
+		look = load("res://look/menu_look.gd").new()
+	var L := look
+	TITLE = L.title_color
+	TITLE_EDGE = L.title_outline_color
+	TITLE_SIZE = L.title_size
+	TITLE_OUTLINE = L.title_outline
+	TITLE_SHADOW = L.title_shadow
+	BAND = "item" if L.band_uses_item_color else "#" + L.band_color.to_html(false)
+	BAND_ALPHA = L.band_opacity
+	BAND_BORDER = L.band_border_color
+	BAND_BORDER_WIDTH = L.band_border
+	BAND_IMAGE = L.band_image
+	BAND_IMAGE_TINT = L.band_image_tint
+	SEL_TEXT = L.selected_text
+	SEL_EDGE = L.selected_outline
+	IDLE_TEXT = L.text
+	IDLE_EDGE = L.text_outline
+	ITEM_SIZE = L.text_size
+	BADGES = L.badges
+	ARROW = L.arrow_color
+	ARROW_HOVER = L.arrow_hover_color
+	ITEM_COLORS = {}
+	for k in L.item_colors:
+		var v = L.item_colors[k]
+		ITEM_COLORS[String(k)] = v if v is Color else Color(String(v))
+	INK = L.description_color
+	INK_LINE = L.description_border
+	DESC_TEXT = L.description_text
+	DESC_IMAGE = L.description_image
+	PANEL = L.panel_color
+	PANEL_BORDER = L.panel_border
+	PANEL_RADIUS = L.panel_radius
+	PANEL_IMAGE = L.panel_image
+	PANEL_IMAGE_MARGIN = L.panel_image_margin
+	ROW = L.row_color
+	ROW_SEL = L.row_selected_color
+	ROW_SEL_BORDER = L.row_selected_border
+	ROW_TEXT = L.row_text
+	ROW_SEL_TEXT = L.row_selected_text
+	ROW_RADIUS = L.row_radius
+	GOLD = L.accent
+	GOOD = L.good
+	MID = L.ok
+	POOR = L.poor
+	MUTED = L.muted
+	TOAST_BG = L.toast_color
+	TOAST_TEXT = L.toast_text
+	_menu_font = null
+	_body_font = null
+
+
+## The color for a menu item: Item colors in the look, else the menu's own.
+static func item_color(label: String, fallback: Color) -> Color:
+	_ensure()
+	return ITEM_COLORS.get(label, fallback)
+
+
+## Picture for a menu (by its music track name: main_menu, game_menu, ...), or null.
+static func background(track: String) -> Texture2D:
+	_ensure()
+	var t = look.get("background_" + track) if track != "" else null
+	return t if t else look.background_default
+
+
+## Fonts: the look's fonts, else res://fonts/menu.* / body.*, else Godot's own.
 static func menu_font() -> Font:
+	_ensure()
 	if _menu_font == null:
-		_menu_font = _load_font("menu", 0.9)
+		_menu_font = look.menu_font if look.menu_font else _load_font("menu", 0.9)
 	return _menu_font
 
 
 static func body_font() -> Font:
+	_ensure()
 	if _body_font == null:
-		_body_font = _load_font("body", 0.4)
+		_body_font = look.body_font if look.body_font else _load_font("body", 0.4)
 	return _body_font
 
 
 static func _load_font(base: String, fallback_bold: float) -> Font:
 	for ext in ["ttf", "otf", "woff2", "woff"]:
 		var path := "res://fonts/%s.%s" % [base, ext]
-		if FileAccess.file_exists(path):
-			var f := FontFile.new()
-			if f.load_dynamic_font(path) == OK:
-				return f
+		if ResourceLoader.exists(path):
+			return load(path)
 	var v := FontVariation.new()
 	v.base_font = ThemeDB.fallback_font
 	v.variation_embolden = fallback_bold
@@ -84,6 +190,21 @@ static func panel(bg: Color, radius := 0, border := 0, border_color := Color.WHI
 	var p := Panel.new()
 	p.add_theme_stylebox_override("panel", box(bg, radius, border, border_color))
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return p
+
+
+## A panel in the skin's [panels] colors (forms, lobby).
+static func skin_panel(radius := -1) -> Panel:
+	var p := panel(PANEL, PANEL_RADIUS if radius < 0 else radius, 3, PANEL_BORDER)
+	if PANEL_IMAGE:
+		var sbt := StyleBoxTexture.new()
+		sbt.texture = PANEL_IMAGE
+		var m := float(PANEL_IMAGE_MARGIN)
+		sbt.texture_margin_left = m
+		sbt.texture_margin_right = m
+		sbt.texture_margin_top = m
+		sbt.texture_margin_bottom = m
+		p.add_theme_stylebox_override("panel", sbt)
 	return p
 
 

@@ -341,10 +341,10 @@ func _refresh(i: int) -> void:
 	var sel := i == index
 	var enabled := _enabled(i)
 	var info: bool = r.get("type", "action") == "info"
-	var c = r.get("color", accent)
-	var color: Color = c if c is Color else Color(String(c))
-	var bg := Color(color, 0.85) if sel else (Color(0, 0, 0, 0.12) if info else Color(Style.INK, 0.72))
-	var sb := Style.box(bg, 10, 3 if sel else 0, Color(1, 1, 1, 0.85))
+	var c = r.get("color", null)
+	var sel_bg: Color = Style.ROW_SEL if c == null else Color(c if c is Color else Color(String(c)), Style.ROW_SEL.a)
+	var bg := sel_bg if sel else (Color(0, 0, 0, 0.12) if info else Style.ROW)
+	var sb := Style.box(bg, Style.ROW_RADIUS, 3 if sel else 0, Style.ROW_SEL_BORDER)
 	n.root.add_theme_stylebox_override("panel", sb)
 	n.name.text = String(r.get("label", ""))
 	n.value.text = _value_text(r)
@@ -352,8 +352,9 @@ func _refresh(i: int) -> void:
 	n.root.modulate = Color(1, 1, 1, dim)
 	if r.get("type", "") == "action" and r.get("value", null) == null:
 		n.name.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	n.name.label_settings.font_color = Style.SEL_TEXT if sel else Color.WHITE
+	n.name.label_settings.font_color = Style.ROW_SEL_TEXT if sel else Style.ROW_TEXT
 	n.name.label_settings.outline_color = Style.SEL_EDGE if sel else Style.DARK
 	n.value.label_settings.outline_color = Style.SEL_EDGE if sel else Style.DARK
+	n.value.label_settings.font_color = Style.ROW_SEL_TEXT if sel else Style.ROW_TEXT
 	if n.edit:
 		n.edit.editable = enabled

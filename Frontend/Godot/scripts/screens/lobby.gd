@@ -84,7 +84,7 @@ func _exit_tree() -> void:
 # --- Layout ------------------------------------------------------------------------------
 
 func _build() -> void:
-	var strip := Style.panel(Color(Style.INK, 0.95), 14, 3, Color(1, 1, 1, 0.4))
+	var strip := Style.panel(Color(Style.INK, 0.95), 14, 3, Style.PANEL_BORDER)
 	Style.place(strip, 40, 112, 1200, 56)
 	add_child(strip)
 	_info = Style.label("", 24, Color.WHITE, 3, Style.DARK, true)
@@ -97,7 +97,7 @@ func _build() -> void:
 	Style.place(_info_right, 700, 0, 480, 56)
 	strip.add_child(_info_right)
 
-	var pp := Style.panel(Color("#2b6478", 0.95), 14, 3, Color(1, 1, 1, 0.45))
+	var pp := Style.skin_panel(14)
 	Style.place(pp, 40, 180, 640, 262)
 	add_child(pp)
 	var ph := Style.label("Players", 24, Style.GOLD, 3, Style.DARK, true)
@@ -122,7 +122,7 @@ func _build() -> void:
 	_actions.pressed.connect(_on_press)
 	_actions.value_changed.connect(_on_value)
 
-	var cp := Style.panel(Color("#2b6478", 0.95), 14, 3, Color(1, 1, 1, 0.45))
+	var cp := Style.skin_panel(14)
 	Style.place(cp, 700, 180, 540, 520)
 	add_child(cp)
 	var ch := Style.label("Messages", 24, Style.GOLD, 3, Style.DARK, true)

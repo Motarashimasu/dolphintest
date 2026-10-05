@@ -58,7 +58,7 @@ func on_back() -> void:
 
 ## The standard form panel (dark, rounded) used by settings-style screens.
 func add_form_panel(x := 40.0, y := 112.0, w := 1200.0, h := 400.0) -> Panel:
-	var p := Style.panel(Color("#2b6478", 0.94), 18, 3, Color(1, 1, 1, 0.45))
+	var p := Style.skin_panel()
 	Style.place(p, x, y, w, h)
 	add_child(p)
 	return p

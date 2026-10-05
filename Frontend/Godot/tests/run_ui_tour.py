@@ -190,6 +190,14 @@ def main():
                             stderr=subprocess.STDOUT, text=True, bufsize=1)
     joiner = None
     result = None
+    # Watchdog: a broken script leaves Godot open; don't wait forever.
+    def watchdog():
+        time.sleep(540)
+        if tour.poll() is None:
+            print("TOUR TIMEOUT: killing Godot")
+            tour.kill()
+            subprocess.run(["pkill", "-f", "Godot_v4"], check=False)
+    threading.Thread(target=watchdog, daemon=True).start()
     for line in tour.stdout:
         line = line.rstrip("\n")
         if "[SPARKING]" not in line:

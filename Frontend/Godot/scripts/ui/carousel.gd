@@ -19,7 +19,8 @@ var items: Array = []
 var index := 0
 
 var _band: Panel
-var _band_box: StyleBoxFlat
+var _band_box: StyleBox   # StyleBoxFlat, or StyleBoxTexture with the skin's band_image
+var _band_prop := "bg_color" # what the color animates: bg_color, or modulate_color (image)
 var _rows: Array[Control] = []
 var _wheel_lock := 0
 var _band_tween: Tween
@@ -32,10 +33,18 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_band_box = Style.box(Color.WHITE)
-	_band_box.border_width_top = 3
-	_band_box.border_width_bottom = 3
-	_band_box.border_color = Color(1, 1, 1, 0.8)
+	var band_tex := Style.BAND_IMAGE
+	if band_tex:
+		var sbt := StyleBoxTexture.new()
+		sbt.texture = band_tex
+		_band_box = sbt
+		_band_prop = "modulate_color"
+	else:
+		var flat := Style.box(Color.WHITE)
+		flat.border_width_top = Style.BAND_BORDER_WIDTH
+		flat.border_width_bottom = Style.BAND_BORDER_WIDTH
+		flat.border_color = Style.BAND_BORDER
+		_band_box = flat
 	_band = Panel.new()
 	_band.add_theme_stylebox_override("panel", _band_box)
 	_band.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -104,7 +113,15 @@ func _gui_input(event: InputEvent) -> void:
 
 func _color(item: Dictionary) -> Color:
 	var c = item.get("color", Style.MUTED)
-	return c if c is Color else Color(String(c))
+	return Style.item_color(String(item.get("label", "")), c if c is Color else Color(String(c)))
+
+
+## The highlight band's color for the selected item (skin: band_color "item" or a color).
+func _band_color(item: Dictionary) -> Color:
+	var base := _color(item) if Style.BAND == "item" else Color(Style.BAND)
+	if _band_prop == "modulate_color" and not Style.BAND_IMAGE_TINT:
+		base = Color.WHITE
+	return Color(base, Style.BAND_ALPHA)
 
 
 func _build() -> void:
@@ -130,6 +147,7 @@ func _make_row(item: Dictionary, i: int) -> Control:
 	badge.name = "Badge"
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	Style.place(badge, 12, 5, 50, 50)
+	badge.visible = Style.BADGES
 	row.add_child(badge)
 	var glyph := Style.label(String(item.get("glyph", "")), 26, Color.BLACK, 0, Color.BLACK, true)
 	glyph.name = "Glyph"
@@ -138,7 +156,7 @@ func _make_row(item: Dictionary, i: int) -> Control:
 	Style.place(glyph, 0, 0, 50, 50)
 	badge.add_child(glyph)
 
-	var text := Style.label(String(item.get("label", "")), 46, Style.IDLE_TEXT, 4, Color.WHITE, true)
+	var text := Style.label(String(item.get("label", "")), Style.ITEM_SIZE, Style.IDLE_TEXT, 4, Style.IDLE_EDGE, true)
 	text.name = "Text"
 	text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	if fit_width > 0:
@@ -146,7 +164,7 @@ func _make_row(item: Dictionary, i: int) -> Control:
 		var w := ls.font.get_string_size(text.text, HORIZONTAL_ALIGNMENT_LEFT, -1, ls.font_size).x
 		if w > fit_width:
 			ls.font_size = maxi(22, int(ls.font_size * fit_width / w))
-	Style.place(text, 78, 0, 640, ROW_H)
+	Style.place(text, 78 if Style.BADGES else 12, 0, 640, ROW_H)
 	row.add_child(text)
 	return row
 
@@ -164,15 +182,14 @@ func _layout(animate: bool) -> void:
 	var n := items.size()
 	if n == 0:
 		return
-	var cur_color := _color(items[index])
-	var band_color := Color(cur_color, 0.82)
+	var band_color := _band_color(items[index])
 	if _band_tween and _band_tween.is_valid():
 		_band_tween.kill()
 	if animate:
 		_band_tween = create_tween()
-		_band_tween.tween_property(_band_box, "bg_color", band_color, TWEEN_S)
+		_band_tween.tween_property(_band_box, _band_prop, band_color, TWEEN_S)
 	else:
-		_band_box.bg_color = band_color
+		_band_box.set(_band_prop, band_color)
 
 	for i in n:
 		var row := _rows[i]
@@ -228,7 +245,7 @@ func _layout(animate: bool) -> void:
 		else:
 			ls.font_color = Style.MUTED if disabled else Style.IDLE_TEXT
 			ls.outline_size = 4
-			ls.outline_color = Color.WHITE
+			ls.outline_color = Style.IDLE_EDGE
 			ls.shadow_size = 0
 			ls.shadow_offset = Vector2.ZERO
 
@@ -239,8 +256,8 @@ func _add_arrow(up: bool) -> void:
 	b.focus_mode = Control.FOCUS_NONE
 	b.text = "▲" if up else "▼"
 	b.add_theme_font_size_override("font_size", 30)
-	b.add_theme_color_override("font_color", Color("#f7a531"))
-	b.add_theme_color_override("font_hover_color", Color("#ffd27a"))
+	b.add_theme_color_override("font_color", Style.ARROW)
+	b.add_theme_color_override("font_hover_color", Style.ARROW_HOVER)
 	b.add_theme_color_override("font_outline_color", Style.TITLE_EDGE)
 	b.add_theme_constant_override("outline_size", 8)
 	Style.place(b, 400, 0 if up else 356, 64, 40)

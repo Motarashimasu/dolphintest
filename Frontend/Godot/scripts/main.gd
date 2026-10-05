@@ -11,6 +11,8 @@ const BASE_SIZE := Vector2i(1280, 720)
 
 var _stack: Array = []
 var _bg: Control
+var _bg_image: TextureRect
+var _scenery: Control
 var _header: Control
 var _title: Label
 var _desc_bar: Control
@@ -33,12 +35,17 @@ var ignore_focus := false    # tests: accept input without window focus
 func _ready() -> void:
 	get_window().min_size = Vector2i(640, 360)
 	get_window().title = "DRAGON BALL Sparking! Collection PC"
+	Style.load_skin()
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN   # menus are controller / keyboard only
 	_build_backdrop()
 	Dolphin.event.connect(_on_dolphin_event)
 	Pad.kind_changed.connect(func(_k): _refresh_hints())
 	var user_args := OS.get_cmdline_user_args()
 	var tour := user_args.find("--ui-tour")
-	if tour < 0 and not "--no-splash" in user_args:
+	# F9 (skin reload) rebuilds the scene: straight back to the menu, no splash.
+	var reloading: bool = Engine.get_meta("skin_reload", false)
+	Engine.set_meta("skin_reload", false)
+	if tour < 0 and not "--no-splash" in user_args and not reloading:
 		_show_splash()
 	push(_main_menu())
 	if "--pad-check" in user_args:
@@ -101,6 +108,10 @@ func _apply_chrome(screen: Control) -> void:
 	_title.text = screen.screen_title()
 	_header.visible = screen.show_header
 	_desc_bar.visible = screen.show_desc_bar
+	if _bg_image:
+		_bg_image.texture = Style.background(music_for_stack())
+		if _scenery:
+			_scenery.visible = _bg_image.texture == null
 	set_desc(screen.current_desc() if screen.has_method("current_desc") else screen.screen_desc())
 	if not _splash:
 		Music.play(music_for_stack())
@@ -299,6 +310,10 @@ func quit_app() -> void:
 # --- Input -------------------------------------------------------------------------------
 
 func _input(event: InputEvent) -> void:
+	# Controller and keyboard only: the mouse would steal the selection (hover, clicks, wheel).
+	if event is InputEventMouse:
+		get_viewport().set_input_as_handled()
+		return
 	# A text field being edited lets go on Back / Up / Down (controller-friendly).
 	var f := get_viewport().gui_get_focus_owner()
 	if f is LineEdit and (event.is_action_pressed("ui_cancel") or event.is_action_pressed("ui_up")
@@ -314,6 +329,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _splash:
 		if event.is_pressed() and not event.is_echo() and not event is InputEventMouseMotion:
 			_end_splash()
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F9:
+		# After saving look/menu_look.tres or Backdrop.tscn in the editor: reload and rebuild.
+		Style.load_skin()
+		Engine.set_meta("skin_reload", true)
+		get_tree().reload_current_scene()
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F12:
@@ -479,20 +501,12 @@ func _build_backdrop() -> void:
 	_bg = Control.new()
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_bg)
-	var sky := ColorRect.new()
-	sky.color = Style.SKY
-	sky.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	Style.place(sky, 0, 0, 1280, 720)
-	_bg.add_child(sky)
-	for c in [[640, 40, 260, 70, 0.85], [720, 18, 150, 70, 0.85], [980, 430, 240, 60, 0.7]]:
-		var cloud := Style.panel(Color(Style.CLOUD, c[4]), 40)
-		Style.place(cloud, c[0], c[1], c[2], c[3])
-		_bg.add_child(cloud)
-	var ground := ColorRect.new()
-	ground.color = Style.GROUND
-	ground.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	Style.place(ground, 0, 470, 1280, 60)
-	_bg.add_child(ground)
+	# The background is a scene you can edit in the Godot editor (scenes/Backdrop.tscn). Its
+	# "MenuPicture" shows the look's per-menu pictures; "Scenery" hides while one is shown.
+	var backdrop: Node = load("res://scenes/Backdrop.tscn").instantiate()
+	_bg.add_child(backdrop)
+	_bg_image = backdrop.get_node_or_null("MenuPicture")
+	_scenery = backdrop.get_node_or_null("Scenery")
 
 	_desc_bar = Style.panel(Style.INK)
 	var sb: StyleBoxFlat = _desc_bar.get_theme_stylebox("panel")
@@ -500,7 +514,16 @@ func _build_backdrop() -> void:
 	sb.border_color = Style.INK_LINE
 	Style.place(_desc_bar, 0, 530, 1280, 190)
 	add_child(_desc_bar)
-	_desc = Style.label("", 28, Color.WHITE)
+	var desc_tex := Style.DESC_IMAGE
+	if desc_tex:
+		var pic := TextureRect.new()
+		pic.texture = desc_tex
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_SCALE
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		pic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_desc_bar.add_child(pic)
+	_desc = Style.label("", 28, Style.DESC_TEXT)
 	_desc.label_settings.line_spacing = 8
 	_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	Style.place(_desc, 56, 30, 1000, 120)
@@ -514,7 +537,8 @@ func _build_backdrop() -> void:
 	_header = Control.new()
 	_header.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_header)
-	_title = Style.label("", 64, Style.TITLE, 8, Style.TITLE_EDGE, true, 6)
+	_title = Style.label("", Style.TITLE_SIZE, Style.TITLE, Style.TITLE_OUTLINE, Style.TITLE_EDGE, true,
+			Style.TITLE_SHADOW)
 	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	Style.place(_title, 40, 14, 1200, 90)
 	_header.add_child(_title)
@@ -526,11 +550,11 @@ func _build_backdrop() -> void:
 	_overlay = Control.new()
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_overlay)
-	_toast = Style.label("", 20, Color.WHITE)
+	_toast = Style.label("", 20, Style.TOAST_TEXT)
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var toast_bg := Style.panel(Style.DARK, 10)
+	var toast_bg := Style.panel(Style.TOAST_BG, 10)
 	toast_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	toast_bg.offset_left = -14
 	toast_bg.offset_right = 14
@@ -561,7 +585,7 @@ func _hint(key: String, color: Color, text: String) -> Control:
 	var box := HBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	var badge := Style.panel(color, 15)
-	badge.custom_minimum_size = Vector2(34 if key.length() > 1 else 30, 30)
+	badge.custom_minimum_size = Vector2(maxf(30, 14 + 9 * key.length()), 30)
 	var k := Style.label(key, 14, Style.INK, 0, Color.BLACK, true)
 	k.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	k.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
