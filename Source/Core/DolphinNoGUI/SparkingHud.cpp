@@ -34,7 +34,8 @@ struct Side
 };
 
 std::mutex s_mutex;
-std::atomic<bool> s_enabled{true};
+std::atomic<bool> s_enabled{true};         // score bar + netplay ping/buffer
+std::atomic<bool> s_health_enabled{true};  // health % in the corners
 std::atomic<int> s_local_port{1};
 std::array<Side, 2> s_sides;          // P1, P2
 bool s_round_live = false;            // both sides were at 100% and nobody has hit 0% since
@@ -159,7 +160,8 @@ struct Box
 //  - ping + buffer: bottom centre of the window, netplay only  (relative to the window)
 void Draw()
 {
-  if (!s_enabled)
+  const bool hud = s_enabled, health = s_health_enabled;
+  if (!hud && !health)
     return;
   std::array<Side, 2> sides;
   std::array<int, 2> wins{};
@@ -205,6 +207,7 @@ void Draw()
   // see-through panel. The scores stay centred; names grow outwards, shrink to fit their slot and
   // get cut with "..." so the bar never reaches the health bars. Netplay: wired/Wi-Fi icons on the
   // outer ends.
+  if (hud)
   {
     const Box row = in_pic(0.479f, 0.0f, 0.521f, 0.050f);
     const float h = row.h();
@@ -261,8 +264,8 @@ void Draw()
     }
   }
 
-  // Health % (yellow boxes): the window's top corners.
-  for (int i = 0; i < 2; ++i)
+  // Health % (yellow boxes): the window's top corners. Its own switch (--hud-health).
+  for (int i = 0; i < 2 && health; ++i)
   {
     const Box box = i == 0 ? in_win(0.004f, 0.006f, 0.060f, 0.070f) :
                              in_win(0.940f, 0.006f, 0.996f, 0.070f);
@@ -277,7 +280,7 @@ void Draw()
 
   // Ping + buffer (purple box): bottom centre of the window, netplay only. No panel, outlined text.
   const int ping = s_ping, buffer = s_buffer;
-  if (ping >= 0)
+  if (hud && ping >= 0)
   {
     const Box box = in_win(0.397f, 0.905f, 0.631f, 0.988f);
     const int jitter = s_jitter;
@@ -313,9 +316,10 @@ std::string ScoreJson()
 }
 }  // namespace
 
-void InitHud(bool enabled)
+void InitHud(bool enabled, bool health)
 {
   s_enabled = enabled;
+  s_health_enabled = health;
   OSD::SetCustomDrawCallback(Draw);
 }
 
@@ -323,6 +327,12 @@ void SetHudEnabled(bool enabled)
 {
   s_enabled = enabled;
   Emit("hud", Json().Add("enabled", enabled));
+}
+
+void SetHudHealthEnabled(bool enabled)
+{
+  s_health_enabled = enabled;
+  Emit("hud_health", Json().Add("enabled", enabled));
 }
 
 void SetHudNetplayStats(int ping_ms, int buffer)

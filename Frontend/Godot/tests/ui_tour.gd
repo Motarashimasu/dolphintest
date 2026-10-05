@@ -14,6 +14,7 @@ var shots := 0
 func _ready() -> void:
 	app = get_parent()
 	app.ignore_focus = true
+	Pad.ignore_focus = true
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(config_path))
 	out_dir = cfg["out_dir"]
 	Settings.use_file(cfg["settings_file"])
@@ -129,6 +130,15 @@ func type_into(list: Control, key: String, text: String) -> void:
 	await frames(4)
 
 
+func stick(y: float) -> void:
+	var e := InputEventJoypadMotion.new()
+	e.device = 0
+	e.axis = JOY_AXIS_LEFT_Y
+	e.axis_value = y
+	Input.parse_input_event(e)
+	await frames(3)
+
+
 func back() -> void:
 	await press("ui_cancel")
 	await frames(4)
@@ -144,9 +154,33 @@ func _tour() -> void:
 	await shot("main_menu")
 	await press("ui_down")
 	check("Down moves the wheel", top().carousel.current().get("label") == "Video Settings")
-	check("description follows the selection", app._desc.text.begins_with("Renderer"))
+	check("description follows the selection", app._desc.text == "Change your video settings here.")
 	await shot("main_menu_video")
 	await press("ui_up")
+
+	# Controller: the left stick moves the wheel once, and keeps moving while held.
+	var c0: int = top().carousel.index
+	var moves := [0]
+	var count := func(_i): moves[0] += 1
+	top().carousel.changed.connect(count)
+	await stick(1.0)
+	check("stick down moves the wheel once", moves[0] == 1)
+	await get_tree().create_timer(0.7).timeout
+	check("holding the stick repeats (%d moves)" % moves[0], moves[0] >= 3)
+	await stick(0.0)
+	var m1: int = moves[0]
+	await get_tree().create_timer(0.5).timeout
+	check("letting go stops it", moves[0] == m1)
+	top().carousel.changed.disconnect(count)
+	while top().carousel.index != c0:
+		await press("ui_up")
+
+	check("Dolphin-Sparking found automatically", Settings._found_dolphin != "")
+	var solo := Settings.solo_args()
+	var host := Settings.host_args("single", false, false)
+	check("offline: match HUD off by default, health % on",
+			"--hud" in solo and solo[solo.find("--hud") + 1] == "off" and solo[solo.find("--hud-health") + 1] == "on")
+	check("netplay: match HUD on", host[host.find("--hud") + 1] == "on")
 
 	await choose("Budokai Tenkaichi 3")
 	check("game menu", app._title.text == "Tenkaichi 3")
@@ -184,6 +218,12 @@ func _tour() -> void:
 	await shot("lobby_waiting")
 	check("lobby music", Music.current_track() == "lobby" and Music.is_audible())
 	await wait_for("second player joined", func(): return lobby._players.size() == 2, 30)
+	var icons: Array = []
+	for row in lobby._players_box.get_children():
+		for c in row.get_children():
+			if c.has_method("_plug"):
+				icons.append(c.link)
+	check("lobby shows a connection icon per player (%s)" % [icons], icons.size() == 2 and "wireless" in icons)
 	await wait_for("chat from the joiner", func(): return "hello from Vegeta" in "\n".join(lobby._chat))
 	await type_into(lobby._actions, "chat", "Good luck!")
 	await wait_for("own chat line shown", func(): return "Good luck!" in "\n".join(lobby._chat))
@@ -304,7 +344,7 @@ func _tour() -> void:
 	check("graphics set to Legacy", Settings.get_value("options", "graphics") == "Legacy")
 	await shot("graphics")
 	await back()
-	await choose("Gecko Codes")
+	await choose("Codes")
 	var mods: Control = top()
 	await wait_for("gecko codes loaded", func(): return not mods._loading, 20)
 	check("gecko codes listed", mods._codes.size() > 0)
@@ -376,8 +416,11 @@ func _tour() -> void:
 	await back()
 	await choose("Options")
 	await shot("options")
-	await pick("files", top().list)
-	await shot("files_and_folders")
+	check("Options has Profile, no Files & Folders", top().list.row("profile").get("label") == "Profile"
+			and top().list.row("files").is_empty())
+	await back()
+	app.open("setup")
+	await shot("first_run_setup")
 
 	# Splash (skipped at startup for the tour): shows, and any button skips it.
 	app._show_splash()

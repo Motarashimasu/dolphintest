@@ -23,9 +23,11 @@
 
 namespace Sparking
 {
-// Once at startup. `enabled` = draw the HUD (round counting and events happen either way).
-void InitHud(bool enabled);
+// Once at startup. `enabled` = draw the score bar (+ netplay ping/buffer), `health` = draw the
+// health % in the corners. Round counting and events happen either way.
+void InitHud(bool enabled, bool health);
 void SetHudEnabled(bool enabled);
+void SetHudHealthEnabled(bool enabled);
 // GameCube port of the local player (1-4; 0 = spectator / unknown); reported in round_result.
 void SetHudLocalPort(int port);
 // Netplay connection info for the bottom bar (any thread). Pass -1 to clear a value, -2 to leave

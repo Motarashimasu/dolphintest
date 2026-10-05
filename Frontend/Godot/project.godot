@@ -20,6 +20,7 @@ Settings="*res://scripts/settings.gd"
 Dolphin="*res://scripts/dolphin.gd"
 Demos="*res://scripts/demos.gd"
 Music="*res://scripts/music.gd"
+Pad="*res://scripts/pad.gd"
 
 [display]
 

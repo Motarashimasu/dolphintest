@@ -35,6 +35,7 @@ func _ready() -> void:
 	get_window().title = "DRAGON BALL Sparking! Collection PC"
 	_build_backdrop()
 	Dolphin.event.connect(_on_dolphin_event)
+	Pad.kind_changed.connect(func(_k): _refresh_hints())
 	var user_args := OS.get_cmdline_user_args()
 	var tour := user_args.find("--ui-tour")
 	if tour < 0 and not "--no-splash" in user_args:
@@ -46,9 +47,8 @@ func _ready() -> void:
 		t.config_path = user_args[tour + 1]
 		add_child(t)
 		return
-	if not Settings.is_configured():
+	if Settings.needs_setup():
 		push(load(SCREENS % "setup").new())
-		toast("First, tell me where your files are.")
 
 
 # --- Screen stack ------------------------------------------------------------------------
@@ -98,12 +98,20 @@ func _apply_chrome(screen: Control) -> void:
 	_title.text = screen.screen_title()
 	_header.visible = screen.show_header
 	_desc_bar.visible = screen.show_desc_bar
-	set_desc(screen.screen_desc())
+	set_desc(screen.current_desc() if screen.has_method("current_desc") else screen.screen_desc())
 	if not _splash:
 		Music.play(music_for_stack())
+	_refresh_hints()
+
+
+## Button hints for the top screen, in the controller's own prompts (A/B, ×/O or Enter/Esc).
+func _refresh_hints() -> void:
+	var t := top()
+	if t == null:
+		return
 	for c in _hints.get_children():
 		c.queue_free()
-	for h in screen.screen_hints():
+	for h in t.screen_hints():
 		_hints.add_child(_hint(h[0], h[1], h[2]))
 
 
@@ -160,7 +168,7 @@ func require_setup() -> bool:
 	if Settings.is_configured():
 		return true
 	toast("Missing: " + ", ".join(Settings.missing_paths()))
-	open("setup")
+	open("setup")   # only the missing parts can be fixed there
 	return false
 
 
@@ -176,10 +184,10 @@ func _main_menu() -> Control:
 			"desc": "%s.\nPlay offline or online, set up controllers and codes." % Settings.GAME["full_title"],
 			"action": func(): push(_game_menu())},
 		{"label": "Video Settings", "glyph": "V", "color": "#9b6be6",
-			"desc": "Renderer (OpenGL or Vulkan), resolution,\nand windowed or borderless.",
+			"desc": "Change your video settings here.",
 			"action": func(): open("video_settings")},
 		{"label": "Options", "glyph": "O", "color": "#2ec4c4",
-			"desc": "Aspect ratio, music, HUD, your files\nand other preferences.",
+			"desc": "Aspect ratio, music, health %, match HUD\nand other preferences.",
 			"action": func(): open("options")},
 		{"label": "Exit", "glyph": "X", "color": "#8a9bb0", "desc": "Close the collection.",
 			"action": quit_app},
@@ -198,10 +206,10 @@ func _game_menu() -> Control:
 			"desc": "Set up your controller for this game.",
 			"action": func(): open("controller_setup")},
 		{"label": "Modifications", "glyph": "M", "color": "#e8663d",
-			"desc": "Graphics (Enhanced / Legacy), button prompts\n(GameCube / PlayStation / Xbox) and Gecko codes.",
+			"desc": "Graphics (Enhanced / Legacy), button prompts\n(GameCube / PlayStation / Xbox) and codes.",
 			"action": func(): push(_modifications_menu())},
 		{"label": "Tenkaichi Terminology", "glyph": "T", "color": "#ffd23f",
-			"desc": "What every mechanic and tech is called, what it does,\nand a demo of each. By the BT3 community.",
+			"desc": "What every mechanic and tech is called, what it does, and a demo of each.\nCreated by Majin Xu & Creatful_Chaos of 'BT3 North America'.",
 			"action": func(): push(_terminology_menu())},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the main menu."},
@@ -241,8 +249,8 @@ func _modifications_menu() -> Control:
 		{"label": "Button Prompts", "glyph": "B", "color": "#3fa9f5",
 			"desc": func(): return "GameCube, PlayStation or Xbox buttons in the game.\nNow: %s" % Settings.option_name("buttons", Settings.get_value("options", "buttons")),
 			"action": func(): push(load(SCREENS % "variant_picker").new().setup("buttons"))},
-		{"label": "Gecko Codes", "glyph": "C", "color": "#e8663d",
-			"desc": "Turn this game's Gecko codes on or off\nfor offline play.",
+		{"label": "Codes", "glyph": "C", "color": "#e8663d",
+			"desc": "Turn this game's codes on or off\nfor offline play.",
 			"action": open_checked.bind("modifications")},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the game menu."},
@@ -503,17 +511,9 @@ func _build_backdrop() -> void:
 	_header = Control.new()
 	_header.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_header)
-	var emblem := Style.panel(Style.DARK, 42, 5, Style.GOLD)
-	Style.place(emblem, 28, 18, 84, 84)
-	_header.add_child(emblem)
-	var star := Style.label("★", 44, Style.GOLD, 0, Color.BLACK, true)
-	star.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	star.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	Style.place(star, 0, 0, 84, 84)
-	emblem.add_child(star)
 	_title = Style.label("", 64, Style.TITLE, 8, Style.TITLE_EDGE, true, 6)
 	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	Style.place(_title, 130, 14, 1100, 90)
+	Style.place(_title, 40, 14, 1200, 90)
 	_header.add_child(_title)
 
 	_screens = Control.new()
@@ -551,6 +551,10 @@ func _build_backdrop() -> void:
 
 
 func _hint(key: String, color: Color, text: String) -> Control:
+	if key == "A" or key == "B":
+		var p: Dictionary = Pad.prompt("accept" if key == "A" else "back")
+		key = p["key"]
+		color = p["color"]
 	var box := HBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	var badge := Style.panel(color, 15)

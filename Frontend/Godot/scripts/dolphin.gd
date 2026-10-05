@@ -110,7 +110,7 @@ func launch(args: PackedStringArray) -> bool:
 	# The chosen controller preset goes into GCPadNew.ini before every game.
 	Controllers.apply_selected()
 	var p := Proc.new()
-	if not p.start(Settings.get_value("paths", "dolphin"), args):
+	if not p.start(Settings.dolphin_path(), args):
 		return false
 	_session = p
 	_log("launch: " + " ".join(args))
@@ -140,7 +140,7 @@ func quit_session(grace_ms := 4000) -> void:
 ## event it printed, once it exits.
 func query(args: PackedStringArray, callback: Callable) -> bool:
 	var p := Proc.new()
-	if not p.start(Settings.get_value("paths", "dolphin"), args):
+	if not p.start(Settings.dolphin_path(), args):
 		return false
 	_queries.append({"proc": p, "callback": callback, "events": []})
 	return true

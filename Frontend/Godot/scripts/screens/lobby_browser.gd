@@ -94,13 +94,13 @@ func build_rows() -> Array:
 			state = "Other game"
 		rows.append({"type": "action", "key": "lobby:%d" % _lobbies.find(l),
 			"label": String(l.get("host", "?")),
-			"value": "%s   ·   %s   ·   %s   ·   %s" % [Style.mode_name(l.get("mode", "any")),
-				l.get("region", "?"), Style.link_name(l.get("link", "")),
-				state if state != "" else "%d/2 players" % int(l.get("players", 1))],
+			"value": "%s   ·   %s   ·   %s" % [Style.mode_name(l.get("mode", "any")),
+				l.get("region", "?"), state if state != "" else "%d/2 players" % int(l.get("players", 1))],
+			"icon": String(l.get("link", "")),
 			"disabled": full or not right_game or l.get("in_game", false),
 			"desc": "Host: %s   Mode: %s   Region: %s\nConnection: %s   Players: %d   %s" % [l.get("host", "?"),
 				Style.mode_name(l.get("mode", "any")), l.get("region", "?"), Style.link_name(l.get("link", "")),
-				int(l.get("players", 1)), "Press A to join." if state == "" else state + "."]})
+				int(l.get("players", 1)), "Press %s to join." % Pad.prompt("accept")["key"] if state == "" else state + "."]})
 	rows.append_array([
 		{"type": "action", "key": "refresh", "label": "Refresh", "desc": "Check the list again."},
 		{"type": "text", "key": "direct", "label": "Join by code or IP", "value": "",

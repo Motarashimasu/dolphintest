@@ -1,5 +1,5 @@
 extends "res://scripts/screens/form_screen.gd"
-## Gecko codes for offline play. "Game defaults" = whatever the game ini enables; "Custom" =
+## Codes for offline play. "Game defaults" = whatever the game ini enables; "Custom" =
 ## exactly the codes ticked here. Netplay always uses the lobby's fixed code set.
 
 var _codes: Array = []   # from the gecko_codes event
@@ -11,11 +11,11 @@ func screen_music() -> String:
 
 
 func screen_title() -> String:
-	return "Gecko Codes"
+	return "Codes"
 
 
 func screen_desc() -> String:
-	return "Gecko codes for offline play.\nNetplay always uses the same fixed set for everyone."
+	return "Codes for offline play.\nNetplay always uses the same fixed set for everyone."
 
 
 func on_enter() -> void:

@@ -80,7 +80,7 @@ func _preset_desc(p: Dictionary) -> String:
 	var first := String(p.get("notes", ""))
 	if first == "":
 		first = "Controller: " + String(p["device"])
-	return first + "\n" + Controllers.summary(p)
+	return first
 
 
 func _on_joy_changed(_id: int, _connected: bool) -> void:

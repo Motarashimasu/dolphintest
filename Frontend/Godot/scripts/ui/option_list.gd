@@ -16,6 +16,7 @@ signal pressed(key: String)
 signal focused(row: Dictionary)
 
 const Style := preload("res://scripts/ui/style.gd")
+const LinkIcon := preload("res://scripts/ui/link_icon.gd")
 
 var row_height := 52.0
 var row_gap := 6.0
@@ -215,7 +216,13 @@ func _rebuild() -> void:
 			edit.focus_exited.connect(_on_edit_done.bind(i))
 			edit.focus_entered.connect(_set_index.bind(i))
 			root.add_child(edit)
-		_nodes.append({"root": root, "name": name_l, "value": value_l, "edit": edit})
+		# Optional connection icon at the right end ("icon": "wired" / "wireless" / ...).
+		var icon: Control = null
+		if r.has("icon"):
+			icon = LinkIcon.new()
+			icon.link = String(r["icon"])
+			root.add_child(icon)
+		_nodes.append({"root": root, "name": name_l, "value": value_l, "edit": edit, "icon": icon})
 	_layout_rows()
 
 
@@ -232,7 +239,10 @@ func _layout_rows() -> void:
 		Style.place(n.root, 0, y, w, row_height)
 		y += row_height + row_gap
 		Style.place(n.name, 18, 0, lw - 24, row_height)
-		Style.place(n.value, lw, 0, w - lw - 12, row_height)
+		Style.place(n.value, lw, 0, w - lw - (56 if n.icon else 12), row_height)
+		if n.icon:
+			var s := row_height * 0.6
+			Style.place(n.icon, w - 18 - s, (row_height - s) / 2, s, s)
 		if n.edit:
 			Style.place(n.edit, lw, 6, w - lw - 14, row_height - 12)
 

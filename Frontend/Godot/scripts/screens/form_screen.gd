@@ -51,8 +51,14 @@ func on_input(event: InputEvent) -> bool:
 
 
 func _on_focused(row: Dictionary) -> void:
-	var d := String(row.get("desc", ""))
-	app.set_desc(d if d != "" else screen_desc())
+	if app:
+		app.set_desc(current_desc())
+
+
+## What the description bar shows: the selected row's text, else the screen's.
+func current_desc() -> String:
+	var d := String(list.row(list.current_key()).get("desc", "")) if list else ""
+	return d if d != "" else screen_desc()
 
 
 ## Opens a file/folder picker; `done.call(path)` on success.

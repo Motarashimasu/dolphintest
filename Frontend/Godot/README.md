@@ -11,13 +11,33 @@ Dolphin-Sparking build (`DolphinNoGUI.exe`) through its `[SPARKING]` stdin/stdou
    "controller paused while the menu is open" need the new `DolphinNoGUI.exe`.
 3. In Godot, use **Import** and pick `Frontend/Godot/project.godot`, then press **Run** (F5).
    - A newer Godot asks to convert the project once; say yes.
-4. The first time, **Files & Folders** opens. Set:
-   - `DolphinNoGUI.exe` (default `E:\SparkDol\dolphin-sparking\build\release\x64\Binaries`);
-   - your BT3 game file;
-   - the `SparkingData` folder (the one with `settings.bat`, `user`, `saves`, `states`, `textures`);
-   - your netplay name and region.
+4. The first time only, **Welcome** asks for your BT3 game file, netplay name and region.
 
-Settings are saved in Godot's user folder (`%APPDATA%\Godot\app_userdata\DRAGON BALL Sparking! Collection PC\sparking.cfg`).
+Dolphin-Sparking and SparkingData are found automatically: next to the launcher, or up to 4
+folders above it. In the development layout that's
+`dolphin-sparking\build\release\x64\Binaries\DolphinNoGUI.exe` and `E:\SparkDol\SparkingData`.
+Settings are saved in `SparkingData\frontend.cfg`, so moving the folder keeps them. Older
+settings from Godot's user folder are copied over once.
+
+## Packaging (one folder for players)
+
+```
+DRAGON BALL Sparking! Collection\
+  DRAGON BALL Sparking! Collection.exe   the exported frontend
+  Dolphin\                               everything from build\release\x64\Binaries
+                                         (DolphinNoGUI.exe, Sys\, DLLs)
+  SparkingData\                          user, saves, states, textures, music, controllers
+```
+
+1. In Godot, choose **Project > Export > Windows Desktop > Export Project**. The preset is
+   included and writes `E:\SparkDol\SparkingRelease\DRAGON BALL Sparking! Collection.exe`.
+   - The first time, Godot asks you to download its export templates; one click.
+2. Copy the `Binaries` folder into `SparkingRelease` and rename it to `Dolphin`.
+3. Copy `SparkingData` into `SparkingRelease`. Leave out `frontend.cfg` and anything else
+   personal.
+
+Players then only pick their game file once. Dolphin can't run from inside the Godot `.exe`
+itself (it's a separate program with its own files), so it ships beside it in the same folder.
 
 ## Menus
 
@@ -30,15 +50,26 @@ Main Menu   Budokai Tenkaichi 3 > Play Offline
                                   Controller Setup (presets)
                                   Modifications > Graphics (Enhanced / Legacy)
                                                   Button Prompts (GameCube / PlayStation / Xbox)
-                                                  Gecko Codes (offline)
+                                                  Codes (offline)
                                   Tenkaichi Terminology > Movement / Offense / ... / Tech
             Video Settings  (renderer, resolution, window size / borderless)
-            Options         (aspect, music volume, HUD, FPS, Files & Folders)
+            Options         (aspect, music volume, health %, match HUD, FPS, profile)
             Exit
 ```
 
 Controls: Up/Down move, Left/Right change a value, A / Enter / Space select, B / Escape back.
 Mouse works too: wheel turns the carousel; click a value's left or right half to change it.
+
+**Controllers in the menus.** Xbox One / Series, DualShock 4 and DualSense work as soon as
+they're plugged in.
+- D-pad or left stick moves; holding a direction repeats it.
+- A / Cross (or Start) selects; B / Circle goes back.
+- The button prompts follow the controller you used last: A/B, ×/O, or Enter/Esc.
+
+**In-game HUD.** Two separate options:
+- **Health %** (Options, on by default): both fighters' health in the top corners.
+- **Match HUD** (score bar, plus ping and buffer): always on in netplay matches. Offline it's
+  off unless Options > Match HUD offline is turned on.
 
 **Lobby.** Shows the room code or address, the players (slot, ping ± jitter, wired/Wi-Fi,
 quality dot) and messages. You can also send a message, change the pad buffer (host), Start
@@ -92,7 +123,7 @@ best; it's scaled to cover the window.
 
 | Track | Plays on |
 |---|---|
-| `main_menu` | Main Menu, Video Settings, Options, Files & Folders. Also used for any track that has no file. |
+| `main_menu` | Main Menu, Video Settings, Options, Welcome. Also used for any track that has no file. |
 | `game_menu` | the Budokai Tenkaichi 3 menu, Controller Setup, Modifications |
 | `netplay` | Netplay, Player Match, Host, Find, Lobby Browser |
 | `lobby` | the lobby screen |
@@ -132,7 +163,5 @@ Linux only (`xvfb-run`). The tour covers:
 - Godot 4.3 on Linux/macOS closes the frontend's stdin when it frees a process pipe, and the
   next launch then dies with SIGPIPE. `scripts/dolphin.gd` keeps finished pipes open to avoid
   this. Windows is not affected.
-- Exporting a standalone .exe: add `*.ini, *.json, *.txt` to the export preset's "Filters to export
-  non-resource files" so the controller presets and terminology data are included.
 - Fonts: drop `menu.ttf` (titles/menus) and `body.ttf` into `fonts/` to replace Godot's
   built-in font.

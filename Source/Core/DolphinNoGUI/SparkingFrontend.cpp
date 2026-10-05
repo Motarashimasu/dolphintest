@@ -322,14 +322,17 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     return;
   }
 
-  if (cmd.name == "hud")  // "hud on" / "hud off"
+  if (cmd.name == "hud" || cmd.name == "hud_health")  // "hud on|off", "hud_health on|off"
   {
     if (cmd.arg != "on" && cmd.arg != "off")
     {
       Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
       return;
     }
-    SetHudEnabled(cmd.arg == "on");
+    if (cmd.name == "hud")
+      SetHudEnabled(cmd.arg == "on");
+    else
+      SetHudHealthEnabled(cmd.arg == "on");
     return;
   }
   // "background_input off" while the frontend's in-game menu has focus, so pressing buttons in
@@ -791,7 +794,13 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .choices({"on", "off"})
       .set_default("on")
-      .help("Sparking mode: temporary in-game HUD (score bar, health %) drawn by Dolphin");
+      .help("Sparking mode: temporary in-game HUD (score bar, netplay ping) drawn by Dolphin");
+  parser.add_option("--hud-health")
+      .dest("hud_health")
+      .action("store")
+      .choices({"on", "off"})
+      .set_default("on")
+      .help("Sparking mode: health % in the window's top corners");
   parser.add_option("--osd-messages")
       .dest("osd_messages")
       .action("store")
@@ -961,7 +970,8 @@ void InitFromOptions(const optparse::Values& options)
     Common::RegisterMsgAlertHandler(EventMsgAlertHandler);
     OSD::SetMessageObserver(ForwardOsdMessage);
     InitWatcher();
-    InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off");
+    InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off",
+            std::string_view(static_cast<const char*>(options.get("hud_health"))) != "off");
     {
       // XInput / SDL "Back" (Xbox View/Back), "Select", "Share" (PlayStation Create/Share)
       std::vector<std::string> buttons{"Back", "Select", "Share"};

@@ -7,7 +7,7 @@ func screen_title() -> String:
 
 
 func screen_desc() -> String:
-	return "Changes apply the next time the game starts."
+	return "Change your video settings here."
 
 
 func build_rows() -> Array:

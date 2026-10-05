@@ -1,8 +1,18 @@
 extends Node
-## Saved settings (user://sparking.cfg) and the Dolphin command lines built from them.
+## Saved settings and the Dolphin command lines built from them.
 ## This test build supports one game: BT3 PAL (RDSPAF).
+##
+## Dolphin-Sparking and the SparkingData folder are found automatically, next to the launcher:
+##   <folder>/DRAGON BALL Sparking! Collection.exe   (this frontend, exported)
+##   <folder>/Dolphin/DolphinNoGUI.exe               (+ its Sys folder and DLLs)
+##   <folder>/SparkingData/                          (user, saves, states, textures, music, ...)
+## The search also walks up a few folders, so the development layout works too
+## (Frontend/Godot inside the dolphin-sparking checkout, SparkingData next to the checkout).
+## Settings live in SparkingData/frontend.cfg, so the whole folder can be moved or copied.
 
-const CONFIG_PATH := "user://sparking.cfg"
+const CONFIG_FILE := "frontend.cfg"
+const OLD_CONFIG := "user://sparking.cfg"   # before settings moved into SparkingData
+const DOLPHIN_NAMES := ["DolphinNoGUI.exe", "dolphin-emu-nogui"]
 
 ## The one game of this build. Per-game data the launcher needs.
 const GAME := {
@@ -26,18 +36,20 @@ const REGION_NAMES := ["North America", "South America", "Europe", "Africa", "Ea
 
 var _cfg := ConfigFile.new()
 
-## Defaults match the test PC's layout (E:\SparkDol); the Setup screen changes them.
 var defaults := {
 	"paths": {
-		"dolphin": "E:/SparkDol/dolphin-sparking/build/release/x64/Binaries/DolphinNoGUI.exe",
+		"dolphin": "",              # "" = found automatically (see above); tests can force one
 		"game": "",
-		"data": "E:/SparkDol/SparkingData",
-		"profile": "user",          # folder inside data: user (or user2 for a 2nd local instance)
+		"data": "",                 # "" = found automatically
+		"profile": "user",          # folder inside data: user (or user2 for LAN tests on one PC)
 		"extra_args": "",           # advanced/testing, e.g. "-p headless -v Null"
+		"setup_done": false,        # first-run setup finished
 	},
 	"player": {"nickname": "Player", "region": "NA"},
 	"video": {"renderer": "Vulkan", "resolution": 3, "window": "1280x720", "borderless": false},
-	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9", "hud": true,
+	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9",
+		"hud": false,             # score bar offline (netplay always shows it)
+		"hud_health": true,       # health % in the corners
 		"show_fps": false, "minimize_while_playing": true, "music_volume": 7},
 	"netplay": {"mode": "single", "find_mode": "any", "public": true, "traversal": true,
 		"buffer": 4, "public_address": ""},
@@ -47,11 +59,60 @@ var defaults := {
 }
 
 
-var _path := CONFIG_PATH
+var _path := OLD_CONFIG
+var _found_dolphin := ""
+var _found_data := ""
 
 
 func _ready() -> void:
+	_found_dolphin = _search(func(dir: String) -> String:
+		for sub in ["Dolphin", "", "build/release/x64/Binaries", "dolphin-sparking/build/release/x64/Binaries",
+				"build/Binaries"]:
+			for n in DOLPHIN_NAMES:
+				var p := dir.path_join(sub).path_join(n)
+				if FileAccess.file_exists(p):
+					return p
+		return "")
+	_found_data = _search(func(dir: String) -> String:
+		var p := dir.path_join("SparkingData")
+		return p if DirAccess.dir_exists_absolute(p) else "")
+	if _found_data != "":
+		_path = _found_data.path_join(CONFIG_FILE)
+		# Settings used to live in Godot's user folder: bring them along once.
+		if not FileAccess.file_exists(_path) and FileAccess.file_exists(OLD_CONFIG):
+			DirAccess.copy_absolute(ProjectSettings.globalize_path(OLD_CONFIG), _path)
 	_cfg.load(_path)  # missing file = defaults
+
+
+## The folder the launcher runs from (the project folder when run from the editor).
+func app_dir() -> String:
+	if OS.has_feature("editor") or not OS.has_feature("template"):
+		return ProjectSettings.globalize_path("res://").trim_suffix("/")
+	return OS.get_executable_path().get_base_dir()
+
+
+## Looks in the launcher's folder and up to 4 folders above it.
+func _search(check: Callable) -> String:
+	var dir := app_dir()
+	for i in 5:
+		var hit: String = check.call(dir)
+		if hit != "":
+			return hit
+		var up := dir.get_base_dir()
+		if up == dir or up == "":
+			break
+		dir = up
+	return ""
+
+
+func dolphin_path() -> String:
+	var forced: String = get_value("paths", "dolphin")
+	return forced if forced != "" else _found_dolphin
+
+
+func data_dir() -> String:
+	var forced: String = get_value("paths", "data")
+	return forced if forced != "" else _found_data
 
 
 ## Tests: use another settings file, starting from defaults.
@@ -71,24 +132,27 @@ func set_value(section: String, key: String, value: Variant) -> void:
 
 
 func data_path(sub: String) -> String:
-	return get_value("paths", "data").path_join(sub)
+	return data_dir().path_join(sub)
 
 
 ## Everything needed to launch is in place.
 func is_configured() -> bool:
-	return FileAccess.file_exists(get_value("paths", "dolphin")) \
-		and FileAccess.file_exists(get_value("paths", "game")) \
-		and DirAccess.dir_exists_absolute(get_value("paths", "data"))
+	return missing_paths().is_empty()
+
+
+## The first-run setup is needed: never done, or the game file has gone.
+func needs_setup() -> bool:
+	return not get_value("paths", "setup_done") or not FileAccess.file_exists(get_value("paths", "game"))
 
 
 func missing_paths() -> PackedStringArray:
 	var out := PackedStringArray()
-	if not FileAccess.file_exists(get_value("paths", "dolphin")):
-		out.append("DolphinNoGUI.exe")
+	if dolphin_path() == "" or not FileAccess.file_exists(dolphin_path()):
+		out.append("Dolphin-Sparking")
 	if not FileAccess.file_exists(get_value("paths", "game")):
 		out.append("game file")
-	if not DirAccess.dir_exists_absolute(get_value("paths", "data")):
-		out.append("data folder")
+	if data_dir() == "" or not DirAccess.dir_exists_absolute(data_dir()):
+		out.append("SparkingData folder")
 	return out
 
 
@@ -109,7 +173,7 @@ func common_args() -> PackedStringArray:
 	a.append_array(["--resolution", str(get_value("video", "resolution"))])
 	a.append_array(["--window", get_value("video", "window")])
 	a.append_array(["--aspect", get_value("options", "aspect")])
-	a.append_array(["--hud", "on" if get_value("options", "hud") else "off"])
+	a.append_array(["--hud-health", "on" if get_value("options", "hud_health") else "off"])
 	a.append_array(["--textures-dir", data_path("textures")])
 	a.append_array(["--textures", "Graphics=" + get_value("options", "graphics")])
 	a.append_array(["--textures", "Buttons=" + get_value("options", "buttons")])
@@ -121,6 +185,8 @@ func common_args() -> PackedStringArray:
 
 func solo_args() -> PackedStringArray:
 	var a := common_args()
+	# Score bar offline only if the player wants it.
+	a.append_array(["--hud", "on" if get_value("options", "hud") else "off"])
 	a.append_array(["--sparking", "--nand", data_path("saves/solo"), "--state-dir", data_path("states")])
 	if get_value("gecko", "custom"):
 		var codes: Array = get_value("gecko", "enabled")
@@ -134,6 +200,7 @@ func solo_args() -> PackedStringArray:
 
 func _netplay_base() -> PackedStringArray:
 	var a := common_args()
+	a.append_array(["--hud", "on"])   # score bar + ping always on in netplay matches
 	a.append_array(["--nand", data_path("saves/netplay"), "--state-dir", data_path("states")])
 	a.append_array(["--nickname", get_value("player", "nickname")])
 	for port in GAME["port_codes"]:

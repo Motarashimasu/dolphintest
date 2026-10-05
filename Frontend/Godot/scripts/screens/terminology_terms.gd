@@ -33,7 +33,7 @@ func screen_desc() -> String:
 func _desc(item: Dictionary) -> String:
 	var t := String(item.get("desc", ""))
 	if item.has("tutorial"):
-		t += "   (A: watch the video tutorial)"
+		t += "   (%s: watch the video tutorial)" % Pad.prompt("accept")["key"]
 	return t
 
 

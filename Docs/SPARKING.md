@@ -46,7 +46,8 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--netplay-find single\|team\|any` | | Matchmaking (needs `--netplay-game`): join the best open public lobby of a compatible mode for the same game (same region first, exact mode before "any"); if it's taken or none exist, host a public lobby of that mode and wait. `matchmaking` events report progress. |
 | `--menu-button <input>` (repeatable) / `--menu-hold-ms <ms>` | `Back`,`Select`,`Share` / `1000` | Holding that controller button sends `menu_request` (the frontend opens its in-game menu). `none` disables. |
 | `--link auto\|wired\|wireless\|unknown` | `auto` | Netplay: this PC's connection type, shown to everyone. `auto` asks the OS which adapter reaches the internet (Ethernet = wired, Wi-Fi/mobile = wireless, VPN/tunnel/virtual adapter = `virtual`). Only this PC's own adapter is visible: a cable into a Wi-Fi extender/powerline/mesh node reads as wired. Self-reported, so not for anything ranked. |
-| `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: a score bar in the centre of BT3's top HUD (`Name1  W1 | W2  Name2`; long names shrink, then get cut with "..."), health % in the window's top corners, and in netplay the ping + pad buffer at the bottom centre. Needs the game's `p1/p2_health_pct` watches. **For the Godot overlay this whole HUD is netplay-only.** |
+| `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: a score bar in the centre of BT3's top HUD (`Name1  W1 | W2  Name2`; long names shrink, then get cut with "..."), and in netplay the ping + pad buffer at the bottom centre. Needs the game's `p1/p2_health_pct` watches. The Godot frontend turns it on for netplay and leaves it to the player offline. |
+| `--hud-health on\|off` | `on` | Health % in the window's top corners (separate from `--hud`). |
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
@@ -180,7 +181,8 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `textures <Group>=<Option>` | any, in game (netplay too) | Switch a texture variant live; `<Group>=` clears it (no option loaded) |
 | `textures_cycle <Group>` | any, in game | Next option of a group (alphabetical, wraps) — what F3/F4 do |
 | `texture_path <tex1_name>` | any | Debug: which file a texture name is loaded from right now (`texture_path` event) |
-| `hud on\|off` | any | Show/hide the temporary in-game HUD |
+| `hud on\|off` | any | Show/hide the score bar (+ netplay ping/buffer) |
+| `hud_health on\|off` | any | Show/hide the health % in the corners |
 | `score reset` | any | Set the round score back to 0-0 |
 | `background_input on\|off` | any | Controllers work (`on`) or are ignored (`off`) while the game window isn't focused. The frontend turns it off while its in-game menu is open (`background_input` event confirms). |
 | `poke <hex address> <hex value>` | solo | Debug: write a 32-bit word of game memory |

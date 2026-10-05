@@ -6,6 +6,7 @@ extends "res://scripts/screens/screen.gd"
 
 const OptionList := preload("res://scripts/ui/option_list.gd")
 const InGamePanel := preload("res://scripts/ui/ingame_panel.gd")
+const LinkIcon := preload("res://scripts/ui/link_icon.gd")
 
 const ERRORS := {
 	"not_all_players_have_game": "Not everyone has the game yet.",
@@ -15,8 +16,8 @@ const ERRORS := {
 	"connect_failed": "Couldn't connect to the lobby.",
 	"connection_error": "Connection error.",
 	"traversal_error": "Room code server error.",
-	"game_not_found": "Your game file wasn't found (Files & Folders).",
-	"invalid_game": "The game file can't be used (Files & Folders).",
+	"game_not_found": "Your game file wasn't found. Was it moved?",
+	"invalid_game": "The game file can't be used.",
 	"listen_failed": "Couldn't open the port (is another lobby running?).",
 	"bad_address": "That code or address isn't valid.",
 	"boot_failed": "The game failed to start.",
@@ -69,7 +70,7 @@ func on_enter() -> void:
 	_phase = "searching" if kind == "find" else "connecting"
 	_status = "Looking for a %s lobby..." % Style.mode_name(mode) if kind == "find" else "Connecting..."
 	if not Dolphin.launch(_args):
-		app.toast("Couldn't start Dolphin-Sparking. Check Files & Folders.")
+		app.toast("Couldn't start Dolphin-Sparking (is the Dolphin folder next to the launcher?).")
 		app.pop.call_deferred()
 		return
 	_refresh_all()
@@ -223,9 +224,9 @@ func _player_row(p: Dictionary) -> Control:
 	nl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	Style.place(nl, 70, 0, 250, 44)
 	row.add_child(nl)
-	var link := Style.label(Style.link_name(p.get("link", "")), 18, Style.INK_LINE, 0, Color.BLACK, true)
-	link.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	Style.place(link, 330, 0, 80, 44)
+	var link: Control = LinkIcon.new()
+	link.link = String(p.get("link", ""))
+	Style.place(link, 350, 9, 26, 26)
 	row.add_child(link)
 	var ping := int(p.get("ping", 0))
 	var jitter := int(p.get("jitter", -1))
@@ -257,7 +258,7 @@ func _action_rows(in_game_menu: bool) -> Array:
 	elif host:
 		rows.append({"type": "action", "key": "start", "label": "Start Match", "color": "#3fbf6b",
 			"disabled": _phase == "playing" or _players.size() < 2})
-	rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": "Press A to type",
+	rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": "Press %s to type" % Pad.prompt("accept")["key"],
 		"max_length": 200})
 	if host:
 		rows.append({"type": "number", "key": "buffer", "label": "Pad buffer", "min": 1, "max": 20, "step": 1,

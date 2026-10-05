@@ -26,7 +26,7 @@ func on_enter() -> void:
 	super()
 	Dolphin.event.connect(_on_event)
 	if not Dolphin.launch(Settings.solo_args()):
-		app.toast("Couldn't start Dolphin-Sparking. Check Files & Folders.")
+		app.toast("Couldn't start Dolphin-Sparking (is the Dolphin folder next to the launcher?).")
 		app.pop.call_deferred()
 
 
