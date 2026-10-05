@@ -96,6 +96,8 @@ var _session: Proc
 var _queries: Array = []  # [{proc, callback, events}]
 var _helpers: Array = []  # [{proc, callback}] long-running helpers (start_helper)
 var log_lines: PackedStringArray = []  # last events, for the debug panel
+## A game is booting or being played (offline or netplay): the controller belongs to the game.
+var in_game := false
 
 
 func is_running() -> bool:
@@ -192,12 +194,14 @@ func _process(_delta: float) -> void:
 			var data = JSON.parse_string(raw)
 			if data is Dictionary and data.has("event"):
 				_log(raw)
+				_track_game(String(data["event"]))
 				event.emit(String(data["event"]), data)
 		if _session.is_finished():
 			var p := _session
 			_session = null
 			p.close()
 			var code := 0
+			in_game = false
 			event.emit("process_exited", {"event": "process_exited"})
 			exited.emit(code)
 
@@ -229,3 +233,11 @@ func _exit_tree() -> void:
 		OS.delay_msec(300)
 		if OS.is_process_running(_session.pid):
 			OS.kill(_session.pid)
+
+
+func _track_game(name: String) -> void:
+	match name:
+		"game_booting", "game_started":
+			in_game = true
+		"game_stopped", "game_start_aborted", "boot_failed":
+			in_game = false

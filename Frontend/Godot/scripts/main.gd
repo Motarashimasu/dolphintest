@@ -316,6 +316,12 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouse:
 		get_viewport().set_input_as_handled()
 		return
+	# The controller belongs to the game while it runs (unless the in-game menu is open). Dropped
+	# here, before the menus' own input handling sees it.
+	if (event is InputEventJoypadButton or event is InputEventJoypadMotion) and not Pad.accepts():
+		Pad.note_ignored(event)
+		get_viewport().set_input_as_handled()
+		return
 	# A text field being edited lets go on Back / Up / Down (controller-friendly).
 	var f := get_viewport().gui_get_focus_owner()
 	if f is LineEdit and (event.is_action_pressed("ui_cancel") or event.is_action_pressed("ui_up")

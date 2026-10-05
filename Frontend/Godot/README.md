@@ -62,6 +62,8 @@ Controls: Up/Down move, Left/Right change a value, A / Enter / Space select, B /
 **Controllers in the menus.** Xbox One / Series, DualShock 4 and DualSense work as soon as
 they're plugged in.
 - D-pad or left stick moves; holding a direction repeats it.
+- While a game is running the controller belongs to the game: the menus behind it ignore it
+  completely (even if Windows still gives them the input), until the in-game menu opens.
 - A / Cross (or Start) selects; B / Circle goes back.
 - The button prompts follow the controller you used last: A/B, ×/O, or Enter/Esc.
 

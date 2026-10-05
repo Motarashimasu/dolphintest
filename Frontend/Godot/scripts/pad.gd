@@ -76,10 +76,32 @@ func _set_kind(k: String) -> void:
 		kind_changed.emit(k)
 
 
-## Controllers also reach a background window: only ignore them while a game is running (so
-## presses meant for the game don't move the menus).
+## Whether the menus may use the controller right now. Windows delivers controller input to every
+## window, focused or not, so:
+##  - while a game is booting or running, only the in-game menu gets it (never the menus behind
+##    the game, even if Windows still thinks this window has the focus);
+##  - otherwise (no Dolphin, or a lobby waiting), only when this window has the focus.
+func accepts() -> bool:
+	if ignore_focus or menu_open:
+		return true
+	if Dolphin.in_game:
+		return false
+	return get_window().has_focus() or not Dolphin.is_running()
+
+
 func _focused() -> bool:
-	return ignore_focus or menu_open or get_window().has_focus() or not Dolphin.is_running()
+	return accepts()
+
+
+## Called by the menus for every controller event they're about to drop: keeps the F12 log.
+func note_ignored(event: InputEvent) -> void:
+	if event is InputEventJoypadButton and event.pressed:
+		last_press = "%s: %s" % [Input.get_joy_name(event.device), button_name(event.button_index)]
+		press_log.append(last_press + "  (ignored: the game has the controller)")
+		if press_log.size() > 40:
+			press_log = press_log.slice(press_log.size() - 40)
+	_held = ""
+	_stick = ""
 
 
 func _input(event: InputEvent) -> void:

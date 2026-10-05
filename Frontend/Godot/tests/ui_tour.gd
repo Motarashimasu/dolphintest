@@ -333,6 +333,19 @@ func _tour() -> void:
 	await wait_for("offline game running", func(): return play._state == "running", 30)
 	await wait_for("music muted for the offline game", func(): return not Music.is_audible(), 5)
 	await shot("play_offline")
+	# While the game runs the controller is the game's: the menus behind it ignore pad presses.
+	Pad.ignore_focus = false
+	var sel_before: int = play.list.index
+	for b in [JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_A]:
+		for pressed in [true, false]:
+			var jb := InputEventJoypadButton.new()
+			jb.button_index = b
+			jb.pressed = pressed
+			Input.parse_input_event(jb)
+			await frames(3)
+	check("menus ignore the controller while the game runs",
+			not Pad.accepts() and play.list.index == sel_before and play._state == "running")
+	Pad.ignore_focus = true
 	await pick("buttons", play.list)
 	# Dolphin cycles options alphabetically: PlayStation, Vanilla, Xbox.
 	await wait_for("button layout switched live", func(): return Settings.get_value("options", "buttons") == "Xbox", 10)
