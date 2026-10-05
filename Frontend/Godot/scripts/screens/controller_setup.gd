@@ -52,7 +52,7 @@ func build_rows() -> Array:
 		{"type": "info", "key": "pads", "label": "Connected", "value": _pads()},
 		{"type": "choice", "key": "preset", "label": "Preset", "values": values, "names": names,
 			"value": choice, "desc": _preset_desc(sel)},
-		{"type": "info", "key": "device", "label": "Dolphin device",
+		{"type": "info", "key": "device", "label": "Controller",
 			"value": sel.get("device", "from GCPadNew.ini: " + _current_device())},
 		{"type": "text", "key": "save_as", "label": "Save current mapping as", "value": "",
 			"placeholder": "preset name", "max_length": 40,
@@ -75,7 +75,7 @@ func _preset_desc(p: Dictionary) -> String:
 		return "Uses the mapping already in GCPadNew.ini (%s)." % _current_device()
 	var first := String(p.get("notes", ""))
 	if first == "":
-		first = "Device: " + String(p["device"])
+		first = "Controller: " + String(p["device"])
 	return first + "\n" + Controllers.summary(p)
 
 
