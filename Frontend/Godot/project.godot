@@ -14,6 +14,7 @@ config/features=PackedStringArray("4.3")
 
 Settings="*res://scripts/settings.gd"
 Dolphin="*res://scripts/dolphin.gd"
+Demos="*res://scripts/demos.gd"
 
 [display]
 

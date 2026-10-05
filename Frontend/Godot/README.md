@@ -27,8 +27,9 @@ Main Menu   Budokai Tenkaichi 3 > Play Offline
                                             Player Match > Host  (lobby options > Lobby)
                                                            Find  (Single / Team / Any > Lobby)
                                             Ranked Match (work in progress)
-                                  Controller Setup (placeholder)
+                                  Controller Setup (presets)
                                   Modifications (Gecko codes, offline)
+                                  Tenkaichi Terminology > Movement / Offense / ... / Tech
             Video Settings  (renderer, resolution, window size / borderless)
             Options         (graphics, button prompts, aspect, HUD, FPS, Files & Folders)
             Exit
@@ -50,6 +51,31 @@ on top of the game:
 
 While that menu is open, the game ignores the controller. "Back to the game" (or B) returns.
 
+**Controller Setup.** Scroll through presets with Left/Right. The one you pick is written into
+`SparkingData\user\Config\GCPadNew.ini` as `[GCPad1]` right away, and again before every
+game. It's used offline and in netplay.
+- **Auto** (the default) picks the preset that matches the first connected controller. If none
+  matches, it leaves the mapping alone.
+- Built-in presets: Xbox (your current mapping) and PlayStation 4/5 (the same layout through
+  SDL; their device names aren't confirmed yet).
+- Add your own: "Save current mapping as", or drop Dolphin GameCube pad profiles (`.ini`) into
+  `SparkingData\controllers`.
+- An optional `[Sparking]` section with `Match = word, word` tells Auto when to pick a preset.
+
+Gecko codes always come from the build's own `Sys\GameSettings\RDSPAF.ini`. Nothing is taken
+from regular Dolphin except `GCPadNew.ini` (once, by `1_setup.bat`).
+
+**Tenkaichi Terminology.** Pick a category, then scroll through its terms; they can't be
+selected. The definition shows at the bottom and the demo GIF on the right. Terms with a video
+tutorial open it on A.
+- Text: `data/terminology.json`, taken from the community doc.
+- GIFs: downloaded from the doc the first time a term (or its category) is shown, into
+  `SparkingData\terminology`, and played from there afterwards.
+- To add or replace a demo, put a GIF named after the term in that folder, e.g.
+  `dragon-dash.gif`, or `blast-2-boost_2.gif` for a second one.
+- Godot can't play GIFs on its own, so `scripts/util/gif.gd` decodes them on a background
+  thread.
+
 ## Tests
 
 `tests/run_ui_tour.py` walks every screen with a real `dolphin-emu-nogui`. It sets up a fake
@@ -65,12 +91,18 @@ Linux only (`xvfb-run`). The tour covers:
 - the browser and joining a lobby;
 - matchmaking;
 - offline play and live texture switching;
-- the Gecko code list and the settings screens.
+- the Gecko code list and the settings screens;
+- controller presets;
+- Terminology, with a fake doc server serving test GIFs.
+
+`tests/gif_check.gd` decodes a folder of GIFs to PNGs, to compare the decoder against PIL.
 
 ## Notes
 
 - Godot 4.3 on Linux/macOS closes the frontend's stdin when it frees a process pipe, and the
   next launch then dies with SIGPIPE. `scripts/dolphin.gd` keeps finished pipes open to avoid
   this. Windows is not affected.
+- Exporting a standalone .exe: add `*.ini, *.json` to the export preset's "Filters to export
+  non-resource files" so the controller presets and terminology data are included.
 - Fonts: drop `menu.ttf` (titles/menus) and `body.ttf` into `fonts/` to replace Godot's
   built-in font.

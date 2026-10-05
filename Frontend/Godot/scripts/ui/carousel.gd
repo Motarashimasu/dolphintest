@@ -13,6 +13,7 @@ const CENTER_Y := 152.0   # selected row's top inside the 860x400 box
 const TWEEN_S := 0.22
 
 var visible_range := 2
+var fit_width := 0.0      # > 0: shrink labels wider than this (px at full size)
 var row_gap := 64.0
 var items: Array = []
 var index := 0
@@ -140,6 +141,11 @@ func _make_row(item: Dictionary, i: int) -> Control:
 	var text := Style.label(String(item.get("label", "")), 46, Style.IDLE_TEXT, 4, Color.WHITE, true)
 	text.name = "Text"
 	text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	if fit_width > 0:
+		var ls := text.label_settings
+		var w := ls.font.get_string_size(text.text, HORIZONTAL_ALIGNMENT_LEFT, -1, ls.font_size).x
+		if w > fit_width:
+			ls.font_size = maxi(22, int(ls.font_size * fit_width / w))
 	Style.place(text, 78, 0, 640, ROW_H)
 	row.add_child(text)
 	return row
@@ -189,7 +195,7 @@ func _layout(animate: bool) -> void:
 		# Rows jumping across the wrap point would fly through the band: snap those.
 		var jump := absf(row.position.y - y) > row_gap * 2.5
 		# A row still moving from the last step must not keep going after we re-place it.
-		var running: Tween = row.get_meta("tween", null)
+		var running: Tween = row.get_meta("tween") if row.has_meta("tween") else null
 		if running and running.is_valid():
 			running.kill()
 		if animate and not jump:

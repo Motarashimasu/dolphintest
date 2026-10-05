@@ -285,9 +285,62 @@ func _tour() -> void:
 	check("custom code selection on", Settings.get_value("gecko", "custom") == true)
 	await shot("modifications")
 	await back()
+	# --- Controller presets: scroll with Right, applied to GCPadNew.ini [GCPad1] ----------
 	await choose("Controller Setup")
+	var pads: Control = top()
+	var preset_row: Dictionary = pads.list.row("preset")
+	check("built-in presets listed", "Xbox - Sparking Standard" in preset_row["values"]
+			and "PlayStation 5 - Sparking Standard" in preset_row["values"])
+	await pick("preset", pads.list)   # Accept on a choice = next: keep -> first preset
+	await press("ui_right")           # and one more
+	var chosen: String = Settings.get_value("controller", "preset")
+	var gc := FileAccess.get_file_as_string(pads.Controllers.gcpad_path())
+	var want_dev: String = pads.Controllers.find(chosen).get("device", "?")
+	check("preset '%s' written to GCPadNew.ini" % chosen, ("[GCPad1]\nDevice = " + want_dev) in gc)
+	check("other ports kept", "[GCPad2]" in gc)
 	await shot("controller_setup")
+	await type_into(pads.list, "save_as", "Tour Pad")
+	check("current mapping saved as preset", FileAccess.file_exists(
+			pads.Controllers.user_dir().path_join("Tour Pad.ini")) and Settings.get_value("controller", "preset") == "Tour Pad")
 	await back()
+
+	# --- Tenkaichi Terminology -------------------------------------------------------------
+	await choose("Tenkaichi Terminology")
+	check("terminology menu", app._title.text == "Terminology")
+	await shot("terminology_categories")
+	await choose("Movement")
+	var terms: Control = top()
+	check("terms screen", terms.has_method("_show_demo") and terms.carousel.current().get("label") == "Drifting")
+	check("definition in the description bar", app._desc.text.begins_with("Holding any direction"))
+	await wait_for("Drifting demo downloaded and playing", func(): return terms._player.is_showing(), 30)
+	await frames(40)
+	await shot("terminology_drifting")
+	await press("ui_accept")   # nothing to pick: stays here
+	check("terms are not selectable", app.top() == terms)
+	await press("ui_down")
+	check("Down moves to Dashing", terms.carousel.current().get("label") == "Dashing")
+	await wait_for("Dashing demo playing", func(): return terms._player.is_showing(), 30)
+	await shot("terminology_dashing")
+	await back()
+	await choose("Blast-2")
+	var b2: Control = top()
+	for i in 3:
+		await press("ui_down")
+	check("Blast-2 Boost selected", b2.carousel.current().get("label") == "Blast-2 Boost")
+	await wait_for("both Blast-2 Boost demos downloaded", func(): return Demos.files_for("Blast-2 Boost").size() == 2, 30)
+	await wait_for("Blast-2 Boost demo playing", func(): return b2._player.is_showing(), 30)
+	await shot("terminology_blast2_boost")
+	await back()
+	await choose("Defense")
+	var df: Control = top()
+	for i in 16:
+		await press("ui_down")
+	check("long name shrunk to fit", df.carousel.current().get("label").begins_with("Emergency Blaster Wave")
+			and df.carousel._rows[df.carousel.index].get_node("Text").label_settings.font_size < 46)
+	await wait_for("no-demo message", func(): return "No demo" in df._status.text, 10)
+	await shot("terminology_long_name")
+	await back()
+	await back()   # categories -> game menu
 	await back()   # game menu -> main menu
 	await choose("Video Settings")
 	await pick("window", top().list)

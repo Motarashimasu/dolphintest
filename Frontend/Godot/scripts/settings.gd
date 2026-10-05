@@ -42,6 +42,8 @@ var defaults := {
 	"netplay": {"mode": "single", "find_mode": "any", "public": true, "traversal": true,
 		"buffer": 4, "public_address": ""},
 	"gecko": {"custom": false, "enabled": []},
+	"controller": {"preset": "auto"},    # auto, keep, or a preset name (scripts/controllers.gd)
+	"terminology": {"source": "https://docs.google.com/document/d/1QYI1z6ukEn-8PBvgysOUYB4-6EpmVy0HhpQmGjAmarU/mobilebasic"},
 }
 
 

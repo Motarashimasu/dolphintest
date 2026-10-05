@@ -30,6 +30,11 @@ func screen_desc() -> String:
 	return ""
 
 
+## Button hints in the description bar: [[key, color, text], ...].
+func screen_hints() -> Array:
+	return [["▲▼", Style.INK_LINE, "Move"], ["A", Style.GOOD, "Select"], ["B", Style.POOR, "Back"]]
+
+
 func on_enter() -> void:
 	pass
 

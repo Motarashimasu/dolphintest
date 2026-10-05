@@ -95,6 +95,68 @@ def main():
     piccolo.send("hello")
     piccolo.seen("public", lambda e: e.get("listed"))
 
+    # A stand-in for the Terminology Google Doc ("mobilebasic" HTML: one table per category,
+    # rows of term | definition | GIF). Images only answer at the "=s650" URL, so the
+    # downloader's "=s0" (original size) attempt fails first, like a doc without originals.
+    from PIL import Image, ImageDraw
+    import http.server
+    gifs = {}
+    def make_gif(color, n):
+        import io
+        frames = []
+        for i in range(n):
+            im = Image.new("RGB", (650, 366), (20, 30, 60))
+            d = ImageDraw.Draw(im)
+            d.ellipse([40 + i * 40, 120, 160 + i * 40, 240], fill=color)
+            d.text((12, 12), f"demo frame {i}", fill=(255, 255, 255))
+            frames.append(im)
+        buf = io.BytesIO()
+        frames[0].save(buf, "GIF", save_all=True, append_images=frames[1:], duration=80, loop=0)
+        return buf.getvalue()
+    rows = {"Movement": [("Drifting", [(255, 200, 0)]), ("Dashing", [(0, 200, 255)])],
+            "Blast-2": [("Blast-2 Boost", [(255, 80, 80), (80, 255, 80)])],
+            "Defense": [("Emergency Blaster Wave (EBW/Double L1)", [])]}
+    html = ["<html><body>"]
+    for cat, terms in rows.items():
+        html.append(f"<h1>{cat}</h1><table><tbody>")
+        for term, colors in terms:
+            imgs = ""
+            for k, c in enumerate(colors):
+                name = f"img{len(gifs)}"
+                gifs[name + "=s650"] = make_gif(c, 10)
+                imgs += f'<span><img alt="" src="DOCURL/docs-images-rt/{name}=s650" title=""></span>'
+            html.append(f'<tr class="c1"><td class="c2" colspan="1"><p><span>{term.replace("&", "&amp;")}</span></p></td>'
+                        f'<td><p><span>Definition &amp; more</span></p></td><td><p>{imgs}</p></td></tr>')
+        html.append("</tbody></table>")
+    html.append("</body></html>")
+
+    class DocHandler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            if self.path == "/doc/mobilebasic":
+                body, ctype = "".join(html).replace("DOCURL", doc_url).encode(), "text/html"
+            elif self.path.startswith("/docs-images-rt/") and self.path.split("/")[-1] in gifs:
+                body, ctype = gifs[self.path.split("/")[-1]], "image/gif"
+            else:
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+    doc_server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), DocHandler)
+    doc_url = f"http://127.0.0.1:{doc_server.server_address[1]}"
+    threading.Thread(target=doc_server.serve_forever, daemon=True).start()
+
+    # The current mapping, as 1_setup.bat would have copied it (ports 1 and 2).
+    with open(os.path.join(godot_user, "Config", "GCPadNew.ini"), "w") as f:
+        f.write("[GCPad1]\nDevice = XInput/0/Gamepad\nButtons/A = `Button X`\n"
+                "[GCPad2]\nDevice = XInput/1/Gamepad\nButtons/A = `Button X`\n")
+
     config = os.path.join(work, "tour.json")
     with open(config, "w") as f:
         json.dump({
@@ -107,6 +169,8 @@ def main():
                 "netplay": {"public": True, "mode": "single", "traversal": True,
                             "public_address": "127.0.0.1", "find_mode": "any", "buffer": 4},
                 "options": {"minimize_while_playing": False, "buttons": "Vanilla"},
+                "controller": {"preset": "keep"},
+                "terminology": {"source": doc_url + "/doc/mobilebasic"},
             },
         }, f)
 

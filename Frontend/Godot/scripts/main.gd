@@ -97,6 +97,10 @@ func _apply_chrome(screen: Control) -> void:
 	_header.visible = screen.show_header
 	_desc_bar.visible = screen.show_desc_bar
 	set_desc(screen.screen_desc())
+	for c in _hints.get_children():
+		c.queue_free()
+	for h in screen.screen_hints():
+		_hints.add_child(_hint(h[0], h[1], h[2]))
 
 
 func set_title(text: String) -> void:
@@ -105,6 +109,15 @@ func set_title(text: String) -> void:
 
 func set_desc(text: String) -> void:
 	_desc.text = text
+	# Long definitions get a smaller font so they fit the bar.
+	var ls := _desc.label_settings
+	var size := 28
+	while size > 17:
+		var h := ls.font.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, _desc.size.x, size).y
+		if h * 1.2 <= _desc.size.y:
+			break
+		size -= 1
+	ls.font_size = size
 
 
 func toast(text: String, seconds := 3.0) -> void:
@@ -174,9 +187,37 @@ func _game_menu() -> Control:
 		{"label": "Modifications", "glyph": "M", "color": "#e8663d",
 			"desc": "Turn this game's Gecko codes on or off\nfor offline play.",
 			"action": open_checked.bind("modifications")},
+		{"label": "Tenkaichi Terminology", "glyph": "T", "color": "#ffd23f",
+			"desc": "What every mechanic and tech is called, what it does,\nand a demo of each. By the BT3 community.",
+			"action": func(): push(_terminology_menu())},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the main menu."},
 	])
+
+
+var _terminology: Dictionary = {}
+
+
+func terminology() -> Dictionary:
+	if _terminology.is_empty():
+		var data = JSON.parse_string(FileAccess.get_file_as_string("res://data/terminology.json"))
+		_terminology = data if data is Dictionary else {"categories": []}
+	return _terminology
+
+
+func _terminology_menu() -> Control:
+	var doc := terminology()
+	var items: Array = []
+	for c in doc.get("categories", []):
+		var cat: Dictionary = c
+		items.append({"label": cat["name"], "glyph": cat["glyph"], "color": cat["color"],
+			"desc": "%s\n%d terms." % [cat["desc"], cat["terms"].size()],
+			"action": func(): push(load(SCREENS % "terminology_terms").new().setup(cat))})
+	items.append({"label": "Contributors", "glyph": "C", "color": "#8a9bb0",
+		"desc": String(doc.get("contributors", ""))})
+	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
+		"desc": "Back to the game menu."})
+	return _menu("Terminology", items)
 
 
 func _netplay_menu() -> Control:
@@ -378,8 +419,6 @@ func _build_backdrop() -> void:
 	_hints.alignment = BoxContainer.ALIGNMENT_END
 	Style.place(_hints, 640, 140, 600, 36)
 	_desc_bar.add_child(_hints)
-	for h in [["▲▼", Style.INK_LINE, "Move"], ["A", Style.GOOD, "Select"], ["B", Style.POOR, "Back"]]:
-		_hints.add_child(_hint(h[0], h[1], h[2]))
 
 	_header = Control.new()
 	_header.mouse_filter = Control.MOUSE_FILTER_IGNORE

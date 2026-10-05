@@ -9,6 +9,7 @@ signal event(name: String, data: Dictionary)
 signal exited(code: int)
 
 const PREFIX := "[SPARKING] "
+const Controllers := preload("res://scripts/controllers.gd")
 
 
 class Proc:
@@ -106,6 +107,8 @@ func launch(args: PackedStringArray) -> bool:
 	if _session:
 		push_warning("Dolphin is already running")
 		return false
+	# The chosen controller preset goes into GCPadNew.ini before every game.
+	Controllers.apply_selected()
 	var p := Proc.new()
 	if not p.start(Settings.get_value("paths", "dolphin"), args):
 		return false

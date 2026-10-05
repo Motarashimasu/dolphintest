@@ -1,0 +1,458 @@
+{
+ "title": "Tenkaichi Terminology",
+ "source": "https://docs.google.com/document/d/1QYI1z6ukEn-8PBvgysOUYB4-6EpmVy0HhpQmGjAmarU/edit",
+ "contributors": "Community members who took time out of their days to help build this document. All who contributed are from the various corners of the game's community, from the experienced to the inexperienced. Contributions vary from language translations for other regions to helping refine the little things.",
+ "categories": [
+  {
+   "name": "Movement",
+   "color": "#3fa9f5",
+   "glyph": "M",
+   "desc": "How fighters get around the stage: drifting, dashing, stepping and Dragon Dashes.",
+   "terms": [
+    {
+     "name": "Drifting",
+     "desc": "Holding any direction using the Analog Stick."
+    },
+    {
+     "name": "Dashing",
+     "desc": "Holding any direction using the Analog Stick in combination with X."
+    },
+    {
+     "name": "Stepping (Step-In/Sidestep/Backstep)",
+     "desc": "Holding either Forward, Left, Right, Back or nothing and pressing X while in the Step-In Barrier (refer to 'Game Mechanics')."
+    },
+    {
+     "name": "Free Dragon Dash",
+     "desc": "Holding any direction using the Analog Stick in combination with Ki Charge + X."
+    },
+    {
+     "name": "Dragon Dash",
+     "desc": "Pressing Ki Charge + X. It will send you towards the opponent while being able to influence the direction a bit."
+    },
+    {
+     "name": "Z-Burst Dash",
+     "desc": "A variant of the Homing Dash where you zip behind the opponent by pressing Ki Charge + X a second time."
+    },
+    {
+     "name": "Jump",
+     "desc": "A jump performed by using the Ascend button on the ground. Some fighters jump midair."
+    },
+    {
+     "name": "Ascend",
+     "desc": "Increasing your vertical position with the Ascend button."
+    },
+    {
+     "name": "Descend",
+     "desc": "Lowering your vertical position with the Descend button."
+    },
+    {
+     "name": "Dragon Ascend",
+     "desc": "A variant of the Ascend that consumes Ki, but travels faster by doing Ki Charge + Ascend."
+    },
+    {
+     "name": "Dragon Descend",
+     "desc": "A variant of the Descend that consumes Ki, but travels faster by doing Ki Charge + Descend."
+    }
+   ]
+  },
+  {
+   "name": "Offense",
+   "color": "#e8663d",
+   "glyph": "O",
+   "desc": "Rush Attacks, smashes, throws and follow-ups.",
+   "terms": [
+    {
+     "name": "Rush Attack(s)",
+     "desc": "An attack or series of attacks from the Attack button being tapped repeatedly."
+    },
+    {
+     "name": "Charged Smash",
+     "desc": "An attack performed by holding the Attack button."
+    },
+    {
+     "name": "Rush Follow-Up",
+     "desc": "A follow-up from a Rush Attack performed by pressing Triangle."
+    },
+    {
+     "name": "String",
+     "desc": "A set of extensions performed after a Rush Follow-Up. Specific strings can be found in a character's movelist."
+    },
+    {
+     "name": "Step-In Attack",
+     "desc": "A step-in action only available after the Rush Attacks, which will allow you to transition to your next Rush Attacks."
+    },
+    {
+     "name": "Step-In Follow-Up",
+     "desc": "A step-in action that can be used to lead into a character specific follow-up."
+    },
+    {
+     "name": "Perfect Smash",
+     "desc": "A variant of the Charged Smash that performs a tracking teleport before attacking."
+    },
+    {
+     "name": "Hyper Smash",
+     "desc": "A Charged Smash only available in Max Power mode, plays a brief shot of the user before it unleashes an unblockable Charged Smash."
+    },
+    {
+     "name": "Throw",
+     "desc": "A move that throws the opponent by pressing Up + Dash buttons."
+    },
+    {
+     "name": "Giant Throw",
+     "desc": "A technique that allows you to throw opponents lying on their back pressing the Up + Ki-Blast buttons."
+    },
+    {
+     "name": "Dash Attack",
+     "desc": "A chargeable attack that can be performed from a dash."
+    },
+    {
+     "name": "Vanishing Attack",
+     "desc": "A follow-up that can be performed after a Full Charged Smash by pressing the Ki-Blast button."
+    },
+    {
+     "name": "Dragon Dash Attack",
+     "desc": "An attack performed by doing a Dragon Dash and then pressing the Attack button."
+    },
+    {
+     "name": "Rush Vanish",
+     "desc": "A Vanish performed manually by holding a direction while pressing Guard after a Rush Attack."
+    }
+   ]
+  },
+  {
+   "name": "Defense",
+   "color": "#4cc38a",
+   "glyph": "D",
+   "desc": "Blocking, deflecting, recoveries, getups and counters.",
+   "terms": [
+    {
+     "name": "Block",
+     "desc": "Pressing the Guard button to prevent enemy attacks from landing. High and Low Guards can be used to block from the incoming direction."
+    },
+    {
+     "name": "Deflect",
+     "desc": "A move used to redirect enemy Ki-Blasts. Some Android characters can absorb Ki attacks with this action. Performed by pressing Left/Right with the Guard button."
+    },
+    {
+     "name": "Reflect",
+     "desc": "A variant of the Deflect that sends the opponent's Charged Ki Blasts straight to them by pressing Guard with good timing."
+    },
+    {
+     "name": "Throw Tech",
+     "desc": "Preventing a Throw from connecting with a well timed Guard input."
+    },
+    {
+     "name": "Dash Recovery",
+     "desc": "An immediate recovery performed by holding Up after being sent into a Light Knockback. This consumes Ki."
+    },
+    {
+     "name": "Backroll",
+     "desc": "A recovery where your character spins themselves upright after being sent flying. Can be performed after a Light or Medium Knockback by holding Down + an action button."
+    },
+    {
+     "name": "Smash Recovery",
+     "desc": "A recovery performed by hitting the action buttons repeatedly."
+    },
+    {
+     "name": "Dragon Dash Recovery",
+     "desc": "A recovery where the user performs a Dragon Dash upon stopping themselves midair."
+    },
+    {
+     "name": "Ascending Getup",
+     "desc": "A recovery where the user breaks out of their Heavy Knockback and upon touching a solid surface, pushes themselves into the air. This consumes Ki. Performed by holding Down as you touch a surface."
+    },
+    {
+     "name": "Dragon Dash Getup",
+     "desc": "A recovery where the user breaks out of their Heavy Knockback upon touching a solid surface and begins a Dragon Dash. Performed by holding Up as you touch a surface."
+    },
+    {
+     "name": "Grounded Getup",
+     "desc": "A getup where the user quickly stands up while they are lying on the ground. Performed by pressing Down/Left/Right + an action button."
+    },
+    {
+     "name": "Back Turned Getup",
+     "desc": "A variation of the Grounded Getup where the user stands up with his back to the opponent. Performed by pressing Up + an action button."
+    },
+    {
+     "name": "Auto-Counter",
+     "desc": "A counterattack triggered by Rush Attacks if the user is hit."
+    },
+    {
+     "name": "Sonic Sway",
+     "desc": "A counterattack triggered by quickly activating a counter stance before the opponent's Rush Attack."
+    },
+    {
+     "name": "Step-In Sway",
+     "desc": "An evasive command that can be performed after a Step-In to evade more attacks."
+    },
+    {
+     "name": "Vanish",
+     "desc": "A vanish performed by tapping Guard right before receiving a vanishable attack. Vanishing will trigger a Counterattack against a few moves."
+    },
+    {
+     "name": "Emergency Blaster Wave (EBW/Double L1)",
+     "desc": "A health consuming get-off-me option performed by quickly tapping your C-Stick Left or Right. You'll need to have more than 5000 health to perform this."
+    },
+    {
+     "name": "Z-Counter",
+     "desc": "A reversal option performed by pressing Up + Attack the exact frame a physical move hits you."
+    },
+    {
+     "name": "Z-Counter/Vanish Chain",
+     "desc": "A series of Z-Counters or Vanish Counter Attacks that are performed repeatedly until one user is hit."
+    }
+   ]
+  },
+  {
+   "name": "Ki",
+   "color": "#f2b531",
+   "glyph": "K",
+   "desc": "Charging, spending and firing Ki.",
+   "terms": [
+    {
+     "name": "Ki Charge",
+     "desc": "Raising your Ki gauge with the Ki Charge button."
+    },
+    {
+     "name": "Max Power Mode",
+     "desc": "A state where in exchange for a Blast Stock (or Stocks) you gain unrestricted Ki usage and new abilities/attacks."
+    },
+    {
+     "name": "Standard Ki-Blast(s)",
+     "desc": "The basic projectile, performed by pressing or tapping the Ki Blast button."
+    },
+    {
+     "name": "Charged Ki-Blast",
+     "desc": "An enhanced version of the Standard Ki-Blast performed by holding the Ki Blast button, it can vary from minimum charge to maximum charge."
+    },
+    {
+     "name": "Ascending Ki-Blasts",
+     "desc": "An stationary spray of Ki-Blasts performed from a Jump or Ascend."
+    },
+    {
+     "name": "Charged Ascending Ki-Blast",
+     "desc": "An enhanced version of the Ascending Ki-Blasts, it can vary from minimum charge to maximum charge."
+    },
+    {
+     "name": "Dash Ki-Blasts",
+     "desc": "An advancing spray of Ki-Blasts performed from Dash."
+    },
+    {
+     "name": "Charged Dash Ki-Blast",
+     "desc": "An enhanced version of the Dash Ki-Blast, it can vary from minimum charge to maximum charge."
+    },
+    {
+     "name": "Ki Regen",
+     "desc": "The automatic generation of Ki."
+    }
+   ]
+  },
+  {
+   "name": "Blast-1",
+   "color": "#9b6be6",
+   "glyph": "1",
+   "desc": "Blast-1 skills: support, evasive, reversal, disruptive and teleport.",
+   "terms": [
+    {
+     "name": "Primary Blast-1",
+     "desc": "The first Blast-1 in a character's movelist, performed by pressing Ki Charge + Guard."
+    },
+    {
+     "name": "Secondary Blast-1",
+     "desc": "The second Blast-1 in a character's movelist, performed by pressing Ki Charge + Up + Guard."
+    },
+    {
+     "name": "Support Blast-1",
+     "desc": "A Blast-1 that influences the user's base stats or resources."
+    },
+    {
+     "name": "Evasive Blast-1",
+     "desc": "A Blast-1 that teleports the user away from incoming attacks."
+    },
+    {
+     "name": "Reversal Blast-1",
+     "desc": "A Blast-1 that cancels the user's hitstun in order to repel the opponent back."
+    },
+    {
+     "name": "Disruptive Blast-1",
+     "desc": "A Blast-1 that places the opponent in an Abnormal Condition if it connects."
+    },
+    {
+     "name": "Teleport Blast-1 (Instant Transmission)",
+     "desc": "A Blast-1 that teleports the user directly behind the opponent."
+    }
+   ]
+  },
+  {
+   "name": "Blast-2",
+   "color": "#c94bd6",
+   "glyph": "2",
+   "desc": "Blast-2 attacks: rushes, projectiles, beams, volleys and grabs.",
+   "terms": [
+    {
+     "name": "Primary Blast-2",
+     "desc": "The first Blast-2 in a character's movelist, performed by pressing Ki Charge + Ki Blast."
+    },
+    {
+     "name": "Secondary Blast-2",
+     "desc": "The second Blast-2 in a character's movelist, performed by pressing Ki Charge + Up + Ki Blast."
+    },
+    {
+     "name": "Ultimate Blast",
+     "desc": "The final Blast-2 in a character's movelist and is only available in Max Power Mode, performed by pressing Ki Charge + Up + Ki Blast."
+    },
+    {
+     "name": "Blast-2 Boost",
+     "desc": "The command(s) applied to a Blast-2 to increase the damage."
+    },
+    {
+     "name": "Target Rush Blast-2",
+     "desc": "A Blast-2 with similar travel speed to a Dragon Dash and allows the user to guide the direction."
+    },
+    {
+     "name": "Linear Rush Blast-2",
+     "desc": "A Blast-2 that sends the user towards the opponent at high speed but doesn't allow directional inputs."
+    },
+    {
+     "name": "Projectile Blast-2",
+     "desc": "A Blast-2 that propels at it's opponent and explodes on impact."
+    },
+    {
+     "name": "Beam Blast-2",
+     "desc": "A Blast-2 that continually travels to the opponent from the user's body until it connects."
+    },
+    {
+     "name": "Energy Volley Blast-2",
+     "desc": "A Blast-2 that unleashes a spray amount of powerful Ki-Blasts."
+    },
+    {
+     "name": "A.O.E. Blast-2",
+     "desc": "A Blast-2 that targets a wide area of the stage while unleashing their attack."
+    },
+    {
+     "name": "Command Grab Blast-2",
+     "desc": "A Blast-2 where the user triggers a point-blank grab with similar properties to a Throw."
+    },
+    {
+     "name": "Assault Blast-2",
+     "desc": "A Blast-2 where the user charges at the opponent in a with the ability to influence direction."
+    }
+   ]
+  },
+  {
+   "name": "Game Mechanics",
+   "color": "#2ec4c4",
+   "glyph": "G",
+   "desc": "Barriers, Lock-On, knockbacks, Guard Breaks and other rules of the game.",
+   "terms": [
+    {
+     "name": "Step-In Barrier",
+     "desc": "The distance where both fighters are able to Throws, Steps, and strafe movement while focused on the enemy."
+    },
+    {
+     "name": "Movement Barrier",
+     "desc": "The distance where both fighters are able to use any type of movement actions."
+    },
+    {
+     "name": "Lock-On",
+     "desc": "A state where your character has complete focus on the opponent. Some moves will remove your Lock-On but you can regain it by facing them."
+    },
+    {
+     "name": "Back Damage Multiplier",
+     "desc": "A damage increase applied to physical moves when they connect on the opponent's back."
+    },
+    {
+     "name": "Blast Gauge",
+     "desc": "The icon that shows the current number of Blast Stocks."
+    },
+    {
+     "name": "Character Swap",
+     "desc": "An action only available in 'Team Battle' where the user switches places with a benched teammate. Benched teammates will also restore their Ki and Health slowly over time."
+    },
+    {
+     "name": "Character Toggle",
+     "desc": "An action only available in 'Team Battle' where the benched teammates can be scrolled through. Requires a minimum of 2 teammates."
+    },
+    {
+     "name": "Transform",
+     "desc": "An action where the user can consume their Blast Stock(s) to achieve new form. Some characters can revert back to their previous forms. More specifics are detailed in a character's movelist."
+    },
+    {
+     "name": "Light Knockback",
+     "desc": "A knockback state where the character will be sent plunging down to the ground."
+    },
+    {
+     "name": "Medium Knockback",
+     "desc": "A knockback state where a character is sent spinning through the air for a short period of time."
+    },
+    {
+     "name": "Heavy Knockback",
+     "desc": "A knockback state where the character is sent flying at high speeds across the map, usually from a charged move."
+    },
+    {
+     "name": "Guard Break",
+     "desc": "An animation that occurs when a character attempts to block a physical move that is too strong."
+    },
+    {
+     "name": "Ki Fatigue",
+     "desc": "The result of a character experiencing a Guard Break while below one Ki bar. They will be unable to move for a long period until a certain amount of Ki is restored."
+    },
+    {
+     "name": "Wall Bounce",
+     "desc": "A stun that occurs if a character is sent into the stage's barrier during Heavy Knockback."
+    },
+    {
+     "name": "Unblockables",
+     "desc": "Attacks that can't be negated by blocking."
+    },
+    {
+     "name": "10-Hit Rule for Knockdowns",
+     "desc": "A rule applied to characters being knocked to the ground. Any knockdown that occurs within less than 10 hits forces the character to delay their getup. If the combo reaches 10 hits the character will be able to use a getup immediately."
+    }
+   ]
+  },
+  {
+   "name": "Tech",
+   "color": "#ff8a1f",
+   "glyph": "T",
+   "desc": "Advanced techniques: cancels, slides, flanks and resets.",
+   "terms": [
+    {
+     "name": "Dash Cancel",
+     "desc": "A quick tap of the Ascend or Descend button done to cancel a Dash while midair."
+    },
+    {
+     "name": "Dash Ki Flanking",
+     "desc": "A back-catching maneuver used from Dash Ki-Blasts on the front of the opponent.",
+     "tutorial": "https://www.youtube.com/watch?v=ZSVX2nz3fPY"
+    },
+    {
+     "name": "Slide",
+     "desc": "A quick tap of the Ascend or Descend button done while holding direction on the Analog Stick to cancel a Dash with momentum. The use of this to get behind the opponent is called a \"Flank\"."
+    },
+    {
+     "name": "Ground Dash",
+     "desc": "A Dash used after a Jump to create a quick burst of movement that is low to the ground."
+    },
+    {
+     "name": "Dragon Dash Cancel",
+     "desc": "A movement that allows you to manipulate the Dragon Dash towards the opponent's back after certain attacks such as Charged Smashes or Throws.",
+     "tutorial": "https://www.youtube.com/watch?v=a_om7HDeNqs"
+    },
+    {
+     "name": "Back Maneuver",
+     "desc": "A sequence of movements used usually after a Giant Throw or Throw to reach the opponent's back."
+    },
+    {
+     "name": "Rush Reset Cancel",
+     "desc": "A technique performed by delaying a Rush Attack long enough to reset the Rush Combo while keeping the combo counter.",
+     "tutorial": "https://www.youtube.com/watch?v=TE7nU2S7opM&t=79s"
+    },
+    {
+     "name": "Wall Combo",
+     "desc": "The use of the Wall Bounce mechanic as a combo extender."
+    }
+   ]
+  }
+ ]
+}
