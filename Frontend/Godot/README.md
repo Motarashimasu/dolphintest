@@ -81,7 +81,11 @@ on top of the game:
   to the lobby).
 - Offline: graphics, button prompts, aspect ratio, and Stop Game.
 
-While that menu is open, the game ignores the controller. "Back to the game" (or B) returns.
+While that menu is open it has the controller and the game ignores it. Dolphin also lets the
+menu take the focus from the game window. "Back to the game" (or B) returns.
+
+**Window.** The menus open in borderless fullscreen; Video Settings > Menu display switches to
+a 1280 x 720 window. While a game runs they stay minimised.
 
 **Modifications.** Graphics and Button Prompts each list their options; the current one is
 marked "Selected". A choice is saved for the next game, and switched live if a game is running.

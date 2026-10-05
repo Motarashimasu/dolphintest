@@ -4,8 +4,13 @@
 #include "DolphinNoGUI/SparkingMenu.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <optional>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "Common/HookableEvent.h"
 #include "Core/NetPlayProto.h"
@@ -24,6 +29,7 @@ std::vector<std::string> s_buttons;
 std::chrono::milliseconds s_hold{1000};
 std::optional<Clock::time_point> s_down_since;  // CPU thread only
 bool s_fired = false;                           // until the button is released
+std::atomic<bool> s_pad_blocked{false};
 
 // Name of the device + input currently held, or empty.
 std::string HeldButton()
@@ -62,10 +68,25 @@ void OnField()
   if (!s_fired && now - *s_down_since >= s_hold)
   {
     s_fired = true;
+#ifdef _WIN32
+    // Windows only lets the foreground app hand the foreground to another: that's us (the game
+    // window), so allow the frontend to bring its menu to the front and take the focus.
+    AllowSetForegroundWindow(ASFW_ANY);
+#endif
     Emit("menu_request", Json().Add("button", held).Add("netplay", NetPlay::IsNetPlayRunning()));
   }
 }
 }  // namespace
+
+void SetPadBlocked(bool blocked)
+{
+  s_pad_blocked = blocked;
+}
+
+bool IsPadBlocked()
+{
+  return s_pad_blocked;
+}
 
 void InitMenuButton(std::vector<std::string> buttons, int hold_ms)
 {

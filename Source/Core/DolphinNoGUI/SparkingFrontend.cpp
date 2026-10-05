@@ -346,6 +346,9 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
       return;
     }
     Config::SetCurrent(Config::MAIN_INPUT_BACKGROUND_INPUT, cmd.arg == "on");
+    // "off" = the frontend's menu owns the controller: the game ignores it even while its own
+    // window still has the focus.
+    SetPadBlocked(cmd.arg == "off");
     Emit("background_input", Json().Add("enabled", cmd.arg == "on"));
     return;
   }

@@ -46,7 +46,8 @@ var defaults := {
 		"setup_done": false,        # first-run setup finished
 	},
 	"player": {"nickname": "Player", "region": "NA"},
-	"video": {"renderer": "Vulkan", "resolution": 3, "window": "1280x720", "borderless": false},
+	"video": {"renderer": "Vulkan", "resolution": 3, "window": "1280x720", "borderless": false,
+		"menu_display": "fullscreen"},   # these menus: fullscreen (borderless) or window
 	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9",
 		"hud": false,             # score bar offline (netplay always shows it)
 		"hud_health": true,       # health % in the corners

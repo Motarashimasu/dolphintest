@@ -16,4 +16,10 @@ namespace Sparking
 // Once at startup (Sparking mode). `buttons`: input names as Dolphin's controller backends call
 // them (XInput / SDL: "Back"). `hold_ms`: how long to hold.
 void InitMenuButton(std::vector<std::string> buttons, int hold_ms);
+
+// While the frontend's in-game menu is open, the game must not see the controller: the frontend
+// sends "background_input off" and Dolphin reports its UI as blocking the controller
+// (Host_UIBlocksControllerState), which closes Dolphin's input gate whatever the window focus.
+void SetPadBlocked(bool blocked);
+bool IsPadBlocked();
 }  // namespace Sparking

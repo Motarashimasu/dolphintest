@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinNoGUI/Platform.h"
+#include "DolphinNoGUI/SparkingMenu.h"
 
 #include <OptionParser.h>
 #include <csignal>
@@ -65,7 +66,8 @@ void Host_PPCBreakpointsChanged()
 
 bool Host_UIBlocksControllerState()
 {
-  return false;
+  // The frontend's in-game menu has the controller ("background_input off").
+  return Sparking::IsPadBlocked();
 }
 
 void Host_Message(const HostMessageID id)

@@ -37,6 +37,8 @@ func _ready() -> void:
 	get_window().title = "DRAGON BALL Sparking! Collection PC"
 	Style.load_skin()
 	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN   # menus are controller / keyboard only
+	if not "--ui-tour" in OS.get_cmdline_user_args():
+		get_window().mode = menu_window_mode()
 	_build_backdrop()
 	Dolphin.event.connect(_on_dolphin_event)
 	Pad.kind_changed.connect(func(_k): _refresh_hints())
@@ -324,7 +326,7 @@ func _input(event: InputEvent) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	# Controllers deliver events even when this window is in the background (game running).
-	if not get_window().has_focus() and not ignore_focus and Dolphin.is_running():
+	if not get_window().has_focus() and not ignore_focus and Dolphin.is_running() and not _compact:
 		return
 	if _splash:
 		if event.is_pressed() and not event.is_echo() and not event is InputEventMouseMotion:
@@ -378,12 +380,29 @@ func _on_dolphin_event(name: String, data: Dictionary) -> void:
 			open_ingame_menu()
 
 
+## Brings the menus back (after a game): in the player's chosen display mode.
 func show_window() -> void:
 	var w := get_window()
-	if w.mode == Window.MODE_MINIMIZED:
-		w.mode = Window.MODE_WINDOWED
+	if w.mode == Window.MODE_MINIMIZED or (not _compact and w.mode != menu_window_mode()):
+		w.mode = menu_window_mode()
 	w.grab_focus()
 	DisplayServer.window_move_to_foreground()
+
+
+## Video Settings > Menu display: borderless fullscreen (default) or a window.
+func menu_window_mode() -> Window.Mode:
+	return Window.MODE_WINDOWED if Settings.get_value("video", "menu_display") == "window" \
+			else Window.MODE_FULLSCREEN
+
+
+func apply_menu_display() -> void:
+	if _compact or Dolphin.is_running():
+		return
+	var w := get_window()
+	w.mode = menu_window_mode()
+	if w.mode == Window.MODE_WINDOWED:
+		w.size = BASE_SIZE
+		w.move_to_center()
 
 
 ## Held Select in game: shrink this window to a small always-on-top panel over the game.
@@ -396,9 +415,11 @@ func open_ingame_menu() -> void:
 	var panel: Control = t.make_ingame_panel()
 	if panel == null:
 		return
+	# The game ignores the controller from now on; this menu takes it, focused or not.
+	Dolphin.send("background_input off")
+	Pad.menu_open = true
 	var w := get_window()
 	_saved_window = {"mode": w.mode, "size": w.size, "position": w.position}
-	var psize := Vector2i(panel.size)
 	_compact = panel
 	_bg.visible = false
 	_header.visible = false
@@ -406,8 +427,24 @@ func open_ingame_menu() -> void:
 	_screens.visible = false
 	add_child(panel)
 	move_child(panel, _overlay.get_index())
+	# Leaving fullscreen / minimised takes the OS a moment; size the window once it has.
 	if w.mode != Window.MODE_WINDOWED:
 		w.mode = Window.MODE_WINDOWED
+		await get_tree().process_frame
+		await get_tree().process_frame
+	if _compact != panel:
+		return   # closed again meanwhile
+	_place_compact(Vector2i(panel.size))
+	w.always_on_top = true
+	show_window()
+	# Some window managers re-apply the old geometry after a restore: place it once more.
+	await get_tree().create_timer(0.15).timeout
+	if _compact == panel:
+		_place_compact(Vector2i(panel.size))
+
+
+func _place_compact(psize: Vector2i) -> void:
+	var w := get_window()
 	w.content_scale_size = psize
 	w.min_size = psize
 	w.size = psize
@@ -416,10 +453,6 @@ func open_ingame_menu() -> void:
 	else:
 		var screen := DisplayServer.screen_get_usable_rect(w.current_screen)
 		w.position = screen.position + (screen.size - psize) / 2
-	w.always_on_top = true
-	# The game ignores the controller while the menu has focus.
-	Dolphin.send("background_input off")
-	show_window()
 
 
 func close_ingame_menu(back_to_game := true) -> void:
@@ -427,6 +460,7 @@ func close_ingame_menu(back_to_game := true) -> void:
 		return
 	_compact.queue_free()
 	_compact = null
+	Pad.menu_open = false
 	Dolphin.send("background_input on")
 	var w := get_window()
 	w.always_on_top = false
@@ -442,6 +476,8 @@ func close_ingame_menu(back_to_game := true) -> void:
 	# Minimising hands the focus back to the game window.
 	if back_to_game and Dolphin.is_running():
 		w.mode = Window.MODE_MINIMIZED
+	elif not Dolphin.is_running():
+		w.mode = menu_window_mode()
 
 
 func is_ingame_menu_open() -> bool:

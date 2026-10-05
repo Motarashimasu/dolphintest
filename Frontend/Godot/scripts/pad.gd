@@ -20,6 +20,7 @@ var kind := "keyboard"
 var last_press := ""        # "Xbox Controller: A" - shown by the controller tester
 var press_log: PackedStringArray = []   # recent pad presses, for the F12 log
 var ignore_focus := false   # tests: accept input without window focus
+var menu_open := false      # the in-game menu is up: it owns the controller, focused or not
 
 var _stick := ""            # direction the left stick is held in ("" = neutral)
 var _held := ""             # direction being repeated (D-pad or stick)
@@ -78,7 +79,7 @@ func _set_kind(k: String) -> void:
 ## Controllers also reach a background window: only ignore them while a game is running (so
 ## presses meant for the game don't move the menus).
 func _focused() -> bool:
-	return ignore_focus or get_window().has_focus() or not Dolphin.is_running()
+	return ignore_focus or menu_open or get_window().has_focus() or not Dolphin.is_running()
 
 
 func _input(event: InputEvent) -> void:
