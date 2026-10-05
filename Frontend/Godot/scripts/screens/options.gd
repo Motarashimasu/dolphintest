@@ -1,0 +1,41 @@
+extends "res://scripts/screens/form_screen.gd"
+## Texture variants, aspect ratio, HUD and other preferences.
+
+
+func screen_title() -> String:
+	return "Options"
+
+
+func build_rows() -> Array:
+	return [
+		{"type": "choice", "key": "graphics", "label": "Graphics", "values": Settings.GRAPHICS,
+			"names": ["Enhanced (HD)", "Legacy (original)"], "value": Settings.get_value("options", "graphics"),
+			"desc": "Enhanced loads the HD texture pack; Legacy keeps the original\ntextures. F3 switches it during a game."},
+		{"type": "choice", "key": "buttons", "label": "Button prompts", "values": Settings.BUTTONS,
+			"value": Settings.get_value("options", "buttons"),
+			"desc": "Which buttons the game shows: GameCube (Vanilla),\nPlayStation or Xbox. F4 switches it during a game."},
+		{"type": "choice", "key": "aspect", "label": "Aspect ratio", "values": ["16:9", "4:3"],
+			"names": ["16:9 widescreen", "4:3"], "value": Settings.get_value("options", "aspect"),
+			"desc": "The picture's shape when the game starts.\nF5 switches it during a game."},
+		{"type": "toggle", "key": "hud", "label": "Match HUD", "value": Settings.get_value("options", "hud"),
+			"desc": "Round score with player names, health % and\nconnection info on top of the game."},
+		{"type": "toggle", "key": "show_fps", "label": "FPS counter", "value": Settings.get_value("options", "show_fps"),
+			"desc": "Show frames per second in the top-left corner."},
+		{"type": "toggle", "key": "minimize_while_playing", "label": "Hide menu while playing",
+			"value": Settings.get_value("options", "minimize_while_playing"),
+			"desc": "Minimise this window while a game runs.\nHold Select in game for the in-game menu."},
+		{"type": "action", "key": "files", "label": "Files & Folders...",
+			"desc": "Dolphin-Sparking, your game file, the SparkingData folder,\nyour netplay name and region."},
+		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the main menu."},
+	]
+
+
+func on_value(key: String, value: Variant) -> void:
+	Settings.set_value("options", key, value)
+
+
+func on_press(key: String) -> void:
+	if key == "files":
+		app.open("setup")
+	else:
+		super(key)

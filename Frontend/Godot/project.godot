@@ -1,0 +1,28 @@
+; Engine configuration file.
+; Dolphin-Sparking test frontend (Godot 4.3+).
+
+config_version=5
+
+[application]
+
+config/name="DRAGON BALL Sparking! Collection PC"
+config/description="Test frontend for Dolphin-Sparking: menus, offline play and netplay for Budokai Tenkaichi 3."
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.3")
+
+[autoload]
+
+Settings="*res://scripts/settings.gd"
+Dolphin="*res://scripts/dolphin.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

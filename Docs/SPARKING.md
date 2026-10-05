@@ -10,6 +10,8 @@ touched are `DolphinNoGUI/MainNoGUI.cpp` (hook calls, null-checks for the lobby'
 window), `DolphinNoGUI/CMakeLists.txt`, and `Core/State.{h,cpp}` (a single-use permission for the
 netplay boot-state load, plus reporting whether a load succeeded).
 
+The Godot test frontend that speaks this protocol lives in `Frontend/Godot` (see its README).
+
 ## Launching
 
 | Mode | Command line |
@@ -50,7 +52,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
 | `--aspect 16:9\|4:3` | `16:9` | Starting aspect ratio. **F5** in the game window (or the `aspect` command) flips it. See *Display*. |
 | `--resolution <n>` | `3` | Internal resolution as a multiple of native: `3` = 1080p, `2` = 720p, `4` = 1440p, `6` = 4K. |
-| `--window <W>x<H>` | `1280x720` | Size of the game window. Rendering stays at `--resolution` regardless. |
+| `--window <W>x<H>\|borderless` | `1280x720` | Size of the game window, or `borderless`: a frameless window covering the whole monitor (Windows; X11 uses its fullscreen). Rendering stays at `--resolution` regardless. |
 | `--netplay-saves host-readonly\|keep` | `host-readonly` | Netplay: every player plays on the **host's** save, which is never written back. |
 
 Dolphin's own Discord Rich Presence ("Playing on Dolphin") is always switched off in Sparking
@@ -180,6 +182,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `texture_path <tex1_name>` | any | Debug: which file a texture name is loaded from right now (`texture_path` event) |
 | `hud on\|off` | any | Show/hide the temporary in-game HUD |
 | `score reset` | any | Set the round score back to 0-0 |
+| `background_input on\|off` | any | Controllers work (`on`) or are ignored (`off`) while the game window isn't focused. The frontend turns it off while its in-game menu is open (`background_input` event confirms). |
 | `poke <hex address> <hex value>` | solo | Debug: write a 32-bit word of game memory |
 | `peek <hex address>` | solo | Debug: read a 32-bit word of game memory |
 | `quit` | any | Stop any game and exit |

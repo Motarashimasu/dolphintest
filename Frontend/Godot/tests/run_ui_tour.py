@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Runs the Godot frontend's automated UI tour (tests/ui_tour.gd) against a real
+dolphin-emu-nogui, with a fake lobby server, a second player joining the tour's lobby and a
+public lobby to find in the browser. Saves a screenshot of every screen.
+
+    python3 Frontend/Godot/tests/run_ui_tour.py <dolphin-emu-nogui> <godot binary> [out_dir]
+
+Linux: runs Godot under xvfb-run (needs Xvfb + Mesa). The test "game" is the smoke test's DOL.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+sys.path.insert(0, os.path.join(ROOT, "Tools"))
+from sparking_smoke_test import FakeLobbyServer, Instance, make_test_dol  # noqa: E402
+
+FAKE_GAME = "Dragon Ball Z Budokai Tenkaichi 3 (RDSPAF)"
+COMMON = ["-p", "headless", "-v", "Null"]
+
+
+def main():
+    exe = os.path.abspath(sys.argv[1])
+    godot = os.path.abspath(sys.argv[2])
+    work = tempfile.mkdtemp(prefix="sparking-ui-")
+    out_dir = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else os.path.join(work, "shots")
+    os.makedirs(out_dir, exist_ok=True)
+    dol = os.path.join(work, "game.dol")
+    make_test_dol(dol)
+
+    server = FakeLobbyServer()
+
+    # Show every listing as BT3 in the browser (the DOL has no real game name).
+    def rename_games():
+        while True:
+            for s in list(server.sessions.values()):
+                s["game"] = FAKE_GAME
+            time.sleep(0.1)
+    threading.Thread(target=rename_games, daemon=True).start()
+
+    def user(path, port):
+        os.makedirs(os.path.join(path, "Config"), exist_ok=True)
+        with open(os.path.join(path, "Config", "Dolphin.ini"), "w") as f:
+            f.write(f"[NetPlay]\nTraversalChoice = direct\nHostPort = {port}\n"
+                    f"IndexServer = {server.url}\nSyncSaves = False\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        return path
+
+    data = os.path.join(work, "SparkingData")
+    godot_user = user(os.path.join(data, "user"), 26300)
+    joiner_user = user(os.path.join(work, "joiner"), 26301)
+    piccolo_user = user(os.path.join(work, "piccolo"), 26310)
+
+    # The DOL's game ID, for its Gecko codes and texture pack.
+    probe = Instance("probe", [exe, *COMMON, "--sparking", "-u", user(os.path.join(work, "probe"), 26399),
+                               "-e", dol])
+    probe.send("hello")
+    game_id = probe.seen("game_info")["game_id"]
+    probe.send("quit")
+    probe.proc.wait(timeout=15)
+    print("test game id:", game_id)
+
+    for u in (godot_user, joiner_user, piccolo_user):
+        os.makedirs(os.path.join(u, "GameSettings"), exist_ok=True)
+        with open(os.path.join(u, "GameSettings", f"{game_id}.ini"), "w") as f:
+            f.write("[Gecko]\n$Player 1 Splitscreen Remover\n04001000 00000001\n"
+                    "$Player 2 Splitscreen Remover\n04001004 00000002\n"
+                    "$16:9 aspect ratio\n04001008 00000003\n"
+                    "[Gecko_Enabled]\n$16:9 aspect ratio\n")
+    # Texture pack with the frontend's variant groups (empty placeholder textures).
+    png = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+                        "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
+    for group, options in (("Graphics", ["Enhanced", "Legacy"]),
+                           ("Buttons", ["Vanilla", "PlayStation", "Xbox"])):
+        for opt in options:
+            d = os.path.join(data, "textures", game_id, "@" + group, opt)
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, f"tex1_8x8_{group.lower()}00000000_0.png"), "wb") as f:
+                f.write(png)
+
+    netplay_codes = ["--netplay-gecko", "1=Player 1 Splitscreen Remover",
+                     "--netplay-gecko", "2=Player 2 Splitscreen Remover"]
+
+    # A public Team Battle lobby for the Lobby Browser step.
+    piccolo = Instance("piccolo", [exe, *COMMON, "-u", piccolo_user, "--netplay-host", dol,
+                                   "--netplay-direct", "--public", "--mode", "team", "--region", "EU",
+                                   "--public-address", "127.0.0.1", "--nickname", "Piccolo",
+                                   "--link", "wired", *netplay_codes])
+    piccolo.send("hello")
+    piccolo.seen("public", lambda e: e.get("listed"))
+
+    config = os.path.join(work, "tour.json")
+    with open(config, "w") as f:
+        json.dump({
+            "out_dir": out_dir,
+            "settings_file": os.path.join(work, "settings.cfg"),
+            "settings": {
+                "paths": {"dolphin": exe, "game": dol, "data": data, "profile": "user",
+                          "extra_args": " ".join(COMMON)},
+                "player": {"nickname": "Goku", "region": "EU"},
+                "netplay": {"public": True, "mode": "single", "traversal": True,
+                            "public_address": "127.0.0.1", "find_mode": "any", "buffer": 4},
+                "options": {"minimize_while_playing": False, "buttons": "Vanilla"},
+            },
+        }, f)
+
+    cmd = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", *os.environ.get("TOUR_WRAP", "").split(), godot, "--path",
+           os.path.join(ROOT, "Frontend", "Godot"), "--rendering-driver", "opengl3",
+           "--", "--ui-tour", config]
+    # stdin must be open: on Linux, Godot 4.3's execute_with_pipe breaks the child's stdin when
+    # the frontend's own fd 0 is closed (the pipe lands on fd 0 and gets closed in the child).
+    tour = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, bufsize=1)
+    joiner = None
+    result = None
+    for line in tour.stdout:
+        line = line.rstrip("\n")
+        if "[SPARKING]" not in line:
+            print(line)
+        if line == "TOUR_EVENT host_ready":
+            joiner = Instance("vegeta", [exe, *COMMON, "-u", joiner_user, "--netplay-join", "127.0.0.1:26300",
+                                         "--netplay-game", dol, "--nickname", "Vegeta", "--link", "wireless",
+                                         *netplay_codes])
+            joiner.send("hello")
+            joiner.seen("lobby_ready")
+            joiner.send("chat hello from Vegeta")
+        elif line == "TOUR_EVENT host_left" and joiner:
+            joiner.send("quit")
+        elif line.startswith("TOUR_RESULT"):
+            result = line.split()[1]
+    tour.wait(timeout=30)
+    for inst in (piccolo, joiner):
+        if inst and inst.proc.poll() is None:
+            inst.send("quit")
+            try:
+                inst.proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                inst.proc.kill()
+    print("godot exit code:", tour.returncode)
+    print("screenshots:", out_dir)
+    print("UI TOUR", "PASSED" if result == "ok" and tour.returncode == 0 else "FAILED")
+    sys.exit(0 if result == "ok" else 1)
+
+
+if __name__ == "__main__":
+    main()

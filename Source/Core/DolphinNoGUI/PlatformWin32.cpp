@@ -109,10 +109,26 @@ bool PlatformWin32::RegisterRenderWindowClass()
 bool PlatformWin32::CreateRenderWindow()
 {
   const std::wstring title = UTF8ToWString(Sparking::APP_NAME);
-  m_hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, WINDOW_CLASS_NAME, title.c_str(), WS_OVERLAPPEDWINDOW,
-                          m_window_x < 0 ? CW_USEDEFAULT : m_window_x,
-                          m_window_y < 0 ? CW_USEDEFAULT : m_window_y, m_window_width,
-                          m_window_height, nullptr, nullptr, GetModuleHandle(nullptr), this);
+  if (Config::Get(Config::MAIN_FULLSCREEN))
+  {
+    // Borderless fullscreen: a frameless window covering the monitor the window would open on.
+    const POINT where = {m_window_x < 0 ? 0 : m_window_x, m_window_y < 0 ? 0 : m_window_y};
+    MONITORINFO info = {};
+    info.cbSize = sizeof(info);
+    GetMonitorInfo(MonitorFromPoint(where, MONITOR_DEFAULTTOPRIMARY), &info);
+    const RECT& r = info.rcMonitor;
+    m_hwnd = CreateWindowEx(0, WINDOW_CLASS_NAME, title.c_str(), WS_POPUP, r.left, r.top,
+                            r.right - r.left, r.bottom - r.top, nullptr, nullptr,
+                            GetModuleHandle(nullptr), this);
+    m_window_fullscreen = m_hwnd != nullptr;
+  }
+  else
+  {
+    m_hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, WINDOW_CLASS_NAME, title.c_str(),
+                            WS_OVERLAPPEDWINDOW, m_window_x < 0 ? CW_USEDEFAULT : m_window_x,
+                            m_window_y < 0 ? CW_USEDEFAULT : m_window_y, m_window_width,
+                            m_window_height, nullptr, nullptr, GetModuleHandle(nullptr), this);
+  }
   if (!m_hwnd)
   {
     MessageBox(nullptr, _T("CreateWindowEx failed."), _T("Error"), MB_ICONERROR | MB_OK);

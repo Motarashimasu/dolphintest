@@ -332,6 +332,19 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     SetHudEnabled(cmd.arg == "on");
     return;
   }
+  // "background_input off" while the frontend's in-game menu has focus, so pressing buttons in
+  // the menu doesn't also move the fighter; "on" again when the menu closes.
+  if (cmd.name == "background_input")
+  {
+    if (cmd.arg != "on" && cmd.arg != "off")
+    {
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      return;
+    }
+    Config::SetCurrent(Config::MAIN_INPUT_BACKGROUND_INPUT, cmd.arg == "on");
+    Emit("background_input", Json().Add("enabled", cmd.arg == "on"));
+    return;
+  }
   if (cmd.name == "score")  // "score reset" = back to 0-0
   {
     if (cmd.arg != "reset")
@@ -588,6 +601,8 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
     SetDefaultWidescreen(wide);
     const std::string window = static_cast<const char*>(options.get("window"));
     int w = 0, h = 0;
+    // "borderless" = a borderless window covering the whole monitor (Windows render window).
+    layer->Set(Config::MAIN_FULLSCREEN, window == "borderless");
     if (std::sscanf(window.c_str(), "%dx%d", &w, &h) == 2 && w > 0 && h > 0)
     {
       layer->Set(Config::MAIN_RENDER_WINDOW_WIDTH, w);
@@ -811,7 +826,8 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .dest("window")
       .action("store")
       .set_default("1280x720")
-      .help("Sparking mode render window size WxH (default 1280x720; rendering stays 1080p)");
+      .help("Sparking mode render window: WxH (default 1280x720; rendering stays 1080p) or "
+            "borderless (whole monitor, no frame)");
   parser.add_option("--nickname").dest("nickname").action("store").help("NetPlay nickname");
   parser.add_option("--automap")
       .dest("automap")
