@@ -43,6 +43,9 @@ int s_pending_frames = 0;
 std::map<std::string, int> s_wins;    // player name -> rounds won (this boot)
 std::atomic<int> s_ping{-1};          // netplay ping in ms (-1: not in netplay)
 std::atomic<int> s_buffer{-1};        // netplay pad buffer (-1: unknown)
+std::atomic<int> s_jitter{-1};        // ping jitter in ms (-1: not measured yet)
+std::string s_rating;                 // guarded by s_mutex: good/ok/poor/measuring
+std::array<std::string, 2> s_links;   // guarded by s_mutex: wired/wireless/virtual/unknown, "" = none
 int s_rounds = 0;
 
 std::string DisplayName(const Side& side, int port)
@@ -96,6 +99,50 @@ std::pair<std::string, float> FitName(ImFont* font, std::string name, float max_
   return {name + "...", size};
 }
 
+// Small connection icon centred in a square of side `size`: Wi-Fi arcs, a network plug, or "?".
+void DrawLinkIcon(ImDrawList* dl, ImFont* font, ImVec2 c, float size, const std::string& link)
+{
+  const ImU32 shadow = IM_COL32(0, 0, 0, 220);
+  if (link == "wireless")
+  {
+    const ImU32 col = IM_COL32(245, 205, 50, 255);
+    const ImVec2 base(c.x, c.y + size * 0.32f);
+    for (const ImU32 color : {shadow, col})
+    {
+      const float t = color == shadow ? size * 0.16f : size * 0.09f;
+      for (int i = 1; i <= 3; ++i)
+      {
+        dl->PathArcTo(base, size * 0.2f * i, -2.36f, -0.79f, 12);
+        dl->PathStroke(color, 0, t);
+      }
+      dl->AddCircleFilled(base, color == shadow ? size * 0.1f : size * 0.07f, color);
+    }
+  }
+  else if (link == "wired")
+  {
+    const ImU32 col = IM_COL32(90, 225, 150, 255);
+    // Ethernet plug: body, three contacts, cable.
+    const ImVec2 a(c.x - size * 0.3f, c.y - size * 0.32f), b(c.x + size * 0.3f, c.y + size * 0.12f);
+    dl->AddRectFilled(ImVec2(a.x - 1, a.y - 1), ImVec2(b.x + 1, b.y + 1), shadow, size * 0.06f);
+    dl->AddRectFilled(a, b, col, size * 0.06f);
+    for (int i = -1; i <= 1; ++i)
+    {
+      const float x = c.x + i * size * 0.14f;
+      dl->AddLine(ImVec2(x, a.y + size * 0.06f), ImVec2(x, a.y + size * 0.2f), shadow,
+                  size * 0.06f);
+    }
+    dl->AddRectFilled(ImVec2(c.x - size * 0.09f, b.y), ImVec2(c.x + size * 0.09f, c.y + size * 0.44f),
+                      col);
+  }
+  else
+  {
+    const float t = size * 0.8f;
+    const ImVec2 dim = TextSize(font, t, "?");
+    OutlinedText(dl, font, t, ImVec2(c.x - dim.x / 2, c.y - dim.y / 2), IM_COL32(190, 190, 190, 255),
+                 "?");
+  }
+}
+
 struct Box
 {
   float x0, y0, x1, y1;
@@ -116,9 +163,13 @@ void Draw()
     return;
   std::array<Side, 2> sides;
   std::array<int, 2> wins{};
+  std::array<std::string, 2> links;
+  std::string rating;
   {
     std::lock_guard lk(s_mutex);
     sides = s_sides;
+    links = s_links;
+    rating = s_rating;
     for (int i = 0; i < 2; ++i)
     {
       const auto it = s_wins.find(DisplayName(sides[i], i + 1));
@@ -177,10 +228,19 @@ void Draw()
   {
     const Box box = i == 0 ? in_pic(0.141f, 0.124f, 0.262f, 0.178f) :
                              in_pic(0.762f, 0.124f, 0.865f, 0.178f);
-    const auto [name, size] = FitName(font, DisplayName(sides[i], i + 1), box.w(), box.h());
+    // Netplay: wired/Wi-Fi icon on the outer side (P1: before the name, P2: after it).
+    const float icon = links[i].empty() ? 0.0f : box.h();
+    const float icon_gap = icon > 0 ? box.h() * 0.2f : 0.0f;
+    const float text_w = box.w() - icon - icon_gap;
+    const auto [name, size] = FitName(font, DisplayName(sides[i], i + 1), text_w, box.h());
     const float w = TextSize(font, size, name).x;
-    const float x = i == 0 ? box.x0 : box.x1 - w;
+    const float x = i == 0 ? box.x0 + icon + icon_gap : box.x1 - icon - icon_gap - w;
     OutlinedText(dl, font, size, ImVec2(x, box.y0 + (box.h() - size) / 2), white, name);
+    if (icon > 0)
+    {
+      const float icon_x = i == 0 ? box.x0 + icon / 2 : box.x1 - icon / 2;
+      DrawLinkIcon(dl, font, ImVec2(icon_x, box.y0 + box.h() / 2), icon, links[i]);
+    }
   }
 
   // Health % (yellow boxes): the window's top corners.
@@ -202,13 +262,23 @@ void Draw()
   if (ping >= 0)
   {
     const Box box = in_win(0.397f, 0.905f, 0.631f, 0.988f);
-    const std::string text = buffer >= 0 ? fmt::format("{} ms   |   Buffer {}", ping, buffer) :
-                                           fmt::format("{} ms", ping);
+    const int jitter = s_jitter;
+    // "42 ms ±3": ping and how much it varies (Wi-Fi / busy connections jump around).
+    const std::string ping_text =
+        jitter >= 0 ? fmt::format("{} ms \xC2\xB1{}", ping, jitter) : fmt::format("{} ms", ping);
+    const std::string text = buffer >= 0 ? fmt::format("{}   |   Buffer {}", ping_text, buffer) :
+                                           ping_text;
     const float size = FitSize(font, text, box.w() * 0.88f, box.h() * 0.62f);
     const ImVec2 dim = TextSize(font, size, text);
-    const ImU32 ping_color = ping < 60   ? IM_COL32(90, 225, 150, 255) :
-                             ping < 120  ? IM_COL32(245, 205, 50, 255) :
-                                           IM_COL32(240, 90, 70, 255);
+    // Colour = connection quality once measured (ping + stability), else ping alone.
+    const ImU32 good = IM_COL32(90, 225, 150, 255), ok = IM_COL32(245, 205, 50, 255),
+                poor = IM_COL32(240, 90, 70, 255);
+    const ImU32 ping_color = rating == "good" ? good :
+                             rating == "ok"   ? ok :
+                             rating == "poor" ? poor :
+                             ping < 60        ? good :
+                             ping < 120       ? ok :
+                                                poor;
     OutlinedText(dl, font, size,
                  ImVec2(box.x0 + (box.w() - dim.x) / 2, box.y0 + (box.h() - dim.y) / 2),
                  ping_color, text);
@@ -243,6 +313,19 @@ void SetHudNetplayStats(int ping_ms, int buffer)
     s_ping = ping_ms;
   if (buffer >= -1)
     s_buffer = buffer;
+}
+
+void SetHudLinkQuality(int jitter_ms, const std::string& rating)
+{
+  s_jitter = jitter_ms;
+  std::lock_guard lk(s_mutex);
+  s_rating = rating;
+}
+
+void SetHudLinks(const std::array<std::string, 2>& links)
+{
+  std::lock_guard lk(s_mutex);
+  s_links = links;
 }
 
 void SetHudLocalPort(int port)

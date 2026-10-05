@@ -36,6 +36,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--textures <Group>=<Option>` (repeatable) | none | Texture variant to load, i.e. folder `@<Group>/<Option>` in the game's texture pack. Turns custom textures on. See *Texture variants*. |
 | `--textures-dir <dir>` | `<user>/Load/Textures` | Texture library folder (holds `<GAMEID>/` folders), shared by every profile. |
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
+| `--link auto\|wired\|wireless\|unknown` | `auto` | Netplay: this PC's connection type, shown to everyone. `auto` asks the OS which adapter reaches the internet (Ethernet = wired, Wi-Fi/mobile = wireless, VPN/tunnel/virtual adapter = `virtual`). Only this PC's own adapter is visible: a cable into a Wi-Fi extender/powerline/mesh node reads as wired. Self-reported, so not for anything ranked. |
 | `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: round score in the centre of BT3's top HUD, player names under each health bar (P1 left, P2 right; long names shrink, then get cut with "..."), health % in the window's top corners, and in netplay the ping + pad buffer at the bottom centre. Needs the game's `p1/p2_health_pct` watches. **For the Godot overlay this whole HUD is netplay-only.** |
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
@@ -121,6 +122,12 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `alert` | `severity`, `caption`, `text`, `auto_answer` | A Dolphin panic/assert alert. In Sparking mode these never open a Dolphin dialog; they are reported here and answered "yes/ok" so emulation continues. |
 | `error` | `code`, plus context | See below |
 | `exit` | `code` | Last line before the process exits |
+
+`players[]` entries also carry `link` (`wired`, `wireless`, `virtual`, `unknown`: each player's
+own report), `jitter` (average ping change between 1-second samples over the last ~10 s, -1 until
+measured) and `quality` (`good`: ping ≤ 80, jitter ≤ 8, peak ≤ 120 ms; `ok`: ≤ 150 / ≤ 20 / ≤ 250;
+else `poor`; `measuring` for the first seconds). A `link` event at startup reports this PC's own
+type.
 
 Host `players[]` entries also carry `state_status`: `ok`, `missing`, `mismatch`, `pending`, or
 empty when no battle state is selected.

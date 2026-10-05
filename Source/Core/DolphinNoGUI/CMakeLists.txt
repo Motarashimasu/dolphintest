@@ -11,6 +11,8 @@ add_executable(dolphin-nogui
   SparkingGecko.h
   SparkingIO.cpp
   SparkingIO.h
+  SparkingNet.cpp
+  SparkingNet.h
   SparkingNetPlay.cpp
   SparkingNetPlay.h
   SparkingHud.cpp
@@ -69,6 +71,8 @@ endif()
 if(WIN32)
   # needed for adjusting window decorations with DwmSetWindowAttribute
   target_link_libraries(dolphin-nogui PRIVATE dwmapi.lib)
+  # Sparking: network adapter type (wired / Wi-Fi) for the netplay lobby
+  target_link_libraries(dolphin-nogui PRIVATE iphlpapi.lib ws2_32.lib)
 endif()
 
 if(MSVC)

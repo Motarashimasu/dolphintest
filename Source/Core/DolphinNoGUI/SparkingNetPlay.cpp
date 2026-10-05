@@ -6,9 +6,11 @@
 #include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingGecko.h"
 #include "DolphinNoGUI/SparkingHud.h"
+#include "DolphinNoGUI/SparkingNet.h"
 #include "DolphinNoGUI/SparkingWatch.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <filesystem>
 #include <string_view>
@@ -184,6 +186,8 @@ NetPlaySession::~NetPlaySession()
 bool NetPlaySession::Start(const NetPlayOptions& options)
 {
   m_nickname = options.nickname.empty() ? Config::Get(Config::NETPLAY_NICKNAME) : options.nickname;
+  m_local_link = options.link.empty() ? DetectLinkType() : options.link;
+  Emit("link", Json().Add("type", m_local_link));
   SetHudNetplayStats(-2, static_cast<int>(Config::Get(Config::NETPLAY_BUFFER_SIZE)));
   m_automap = options.automap;
   m_state_dir = options.state_dir;
@@ -332,6 +336,16 @@ void NetPlaySession::Pump()
     BroadcastBattleState();
   if (m_server && m_rebroadcast_save.exchange(false))
     BroadcastSaveCheck();
+  if (m_rebroadcast_link.exchange(false))
+  {
+    {
+      std::lock_guard lk(m_links_mutex);
+      m_links[m_client->GetLocalPlayerId()] = m_local_link;
+    }
+    SendControl("link " + m_local_link);
+    PushHudPlayers();
+    m_players_dirty = true;
+  }
 
   const auto now = std::chrono::steady_clock::now();
   // Pings change constantly without an Update() callback, so also refresh once a second.
@@ -349,6 +363,10 @@ void NetPlaySession::EmitPlayers()
   const auto& pad_map = m_client->GetPadMapping();
   const auto& gba = m_client->GetGBAConfig();
   const auto& wii_map = m_client->GetWiimoteMapping();
+
+  std::map<NetPlay::PlayerId, LinkQuality> quality;
+  for (const NetPlay::Player* p : players)
+    quality[p->pid] = QualityOf(p->pid, p->ping);
 
   std::vector<std::string> list;
   list.reserve(players.size());
@@ -372,6 +390,9 @@ void NetPlaySession::EmitPlayers()
                        .Add("wii_slot", wii_slot)
                        .Add("mapping", NetPlay::GetPlayerMappingString(p->pid, pad_map, gba, wii_map))
                        .Add("revision", p->revision)
+                       .Add("link", LinkOf(p->pid))
+                       .Add("jitter", quality[p->pid].jitter_ms)
+                       .Add("quality", quality[p->pid].rating)
                        .Add("state_status", [&]() -> std::string {
                          if (!m_server)
                            return "";
@@ -670,6 +691,7 @@ void NetPlaySession::BootGame(const std::string& filename,
         port = i + 1;
     }
     SetHudLocalPort(port);  // "YOU WIN"/"YOU LOSE" from this player's side (0 = spectator)
+    PushHudPlayers();       // wired/Wi-Fi icons for whoever is on ports 1/2 this match
     std::shared_ptr<const UICommon::GameFile> game;
     {
       std::lock_guard lk(m_game_mutex);
@@ -722,13 +744,37 @@ void NetPlaySession::Update()
 {
   m_players_dirty = true;
   // Netplay thread, right after a ping update: same thread that writes the player list.
-  if (m_client)
+  if (!m_client)
+    return;
+  // Netplay thread, right after a ping update: same thread that writes the player list.
+  u32 ping = 0;  // the same figure Dolphin shows as "Ping": the highest player ping
+  NetPlay::PlayerId worst = 0;
+  const auto now = std::chrono::steady_clock::now();
+  const auto players = m_client->GetPlayers();
   {
-    u32 ping = 0;  // the same figure Dolphin shows as "Ping": the highest player ping
-    for (const NetPlay::Player* p : m_client->GetPlayers())
-      ping = std::max(ping, p->ping);
-    SetHudNetplayStats(static_cast<int>(ping), -2);
+    std::lock_guard lk(m_quality_mutex);
+    const bool sample = now - m_last_ping_sample >= std::chrono::milliseconds(900);
+    if (sample)
+      m_last_ping_sample = now;
+    for (const NetPlay::Player* p : players)
+    {
+      if (sample)
+      {
+        auto& samples = m_ping_samples[p->pid];
+        samples.push_back(p->ping);
+        if (samples.size() > 10)  // ~10 seconds of history
+          samples.erase(samples.begin());
+      }
+      if (p->ping >= ping)
+      {
+        ping = p->ping;
+        worst = p->pid;
+      }
+    }
   }
+  const LinkQuality q = QualityOf(worst, ping);
+  SetHudNetplayStats(static_cast<int>(ping), -2);
+  SetHudLinkQuality(q.jitter_ms, q.rating);
 }
 
 void NetPlaySession::AppendChat(const std::string& msg)
@@ -812,6 +858,7 @@ void NetPlaySession::OnPlayerConnect(const std::string& player)
   m_players_dirty = true;
   m_rebroadcast_state = true;  // late joiners need the current battle-state selection
   m_rebroadcast_save = true;   // ...and must prove their save matches
+  m_rebroadcast_link = true;   // ...and need to know everyone's wired/Wi-Fi status
   Emit("player_joined", Json().Add("name", player));
 }
 
@@ -1050,6 +1097,18 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
     SendControl(fmt::format("ack {} {}", wanted.sha1, status));
     EmitBattleState();
   }
+  else if (parts[0] == "link" && parts.size() == 2)
+  {
+    static constexpr std::array<std::string_view, 4> known = {"wired", "wireless", "virtual",
+                                                               "unknown"};
+    {
+      std::lock_guard lk(m_links_mutex);
+      m_links[from] = std::ranges::find(known, parts[1]) != known.end() ? parts[1] : "unknown";
+    }
+    m_players_dirty = true;
+    PushHudPlayers();
+    return;
+  }
   else if (parts[0] == "save" && !m_server && parts.size() == 2)
   {
     if (from != 1)
@@ -1203,6 +1262,53 @@ void NetPlaySession::SetHostWiiSyncData(std::vector<u64> titles, std::string red
   // Same as NetPlayDialog: lets the host write synced Wii saves back after the session.
   if (m_client)
     m_client->SetWiiSyncData(nullptr, std::move(titles), std::move(redirect_folder));
+}
+
+LinkQuality NetPlaySession::QualityOf(NetPlay::PlayerId pid, u32 current_ping)
+{
+  std::vector<u32> samples;
+  {
+    std::lock_guard lk(m_quality_mutex);
+    if (const auto it = m_ping_samples.find(pid); it != m_ping_samples.end())
+      samples = it->second;
+  }
+  LinkQuality q;
+  if (samples.size() < 3)
+  {
+    q.rating = "measuring";
+    return q;
+  }
+  u32 total = 0;
+  for (size_t i = 1; i < samples.size(); ++i)
+    total += samples[i] > samples[i - 1] ? samples[i] - samples[i - 1] : samples[i - 1] - samples[i];
+  q.jitter_ms = static_cast<int>((total + (samples.size() - 1) / 2) / (samples.size() - 1));
+  const u32 peak = *std::ranges::max_element(samples);
+  // Thresholds for a 1-2 frame buffer fighting game: steady and low = good.
+  if (current_ping <= 80 && q.jitter_ms <= 8 && peak <= 120)
+    q.rating = "good";
+  else if (current_ping <= 150 && q.jitter_ms <= 20 && peak <= 250)
+    q.rating = "ok";
+  else
+    q.rating = "poor";
+  return q;
+}
+
+void NetPlaySession::PushHudPlayers()
+{
+  if (!m_client)
+    return;
+  std::array<std::string, 2> links{"unknown", "unknown"};
+  const auto& pad_map = m_client->GetPadMapping();
+  for (int i = 0; i < 2; ++i)
+    links[i] = LinkOf(pad_map[i]);
+  SetHudLinks(links);
+}
+
+std::string NetPlaySession::LinkOf(NetPlay::PlayerId pid)
+{
+  std::lock_guard lk(m_links_mutex);
+  const auto it = m_links.find(pid);
+  return it == m_links.end() ? std::string("unknown") : it->second;
 }
 
 }  // namespace Sparking

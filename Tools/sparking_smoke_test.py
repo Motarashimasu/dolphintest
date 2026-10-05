@@ -499,6 +499,7 @@ def main():
         host = Instance("host", [exe, *common, "-u", user_dir("host"), "--netplay-host", dol,
                                  "--state-dir", states["host"], "--nand", nands["host"],
                                  "--nickname", "Goku", "--automap", "gc", "--netplay-direct",
+                                 "--link", "wired",
                                  "--netplay-gecko", "1=Splitscreen Remover P1",
                                  "--netplay-gecko", "2=Splitscreen Remover P2"])
         host.send("hello")
@@ -510,6 +511,7 @@ def main():
         joiner = Instance("joiner", [exe, *common, "-u", user_dir("joiner"),
                                      "--netplay-join", "127.0.0.1:26262",
                                      "--netplay-game", dol, "--nickname", "Vegeta",
+                                     "--link", "wireless",
                                      "--state-dir", states["joiner"], "--nand", nands["joiner"],
                                      "--netplay-gecko", "1=Splitscreen Remover P1",
                                      "--netplay-gecko", "2=Splitscreen Remover P2"])
@@ -525,6 +527,17 @@ def main():
         check("automap put both players in GC slots " +
               str({p["name"]: p["gc_slot"] for p in both["players"]}), True)
         check("all_have_game", both["all_have_game"])
+
+        # Wired/Wi-Fi: each player reports its own link; everyone sees everyone's.
+        for inst in (host, joiner):
+            pl = inst.seen("players", lambda e: len(e["players"]) == 2 and
+                           {p["name"]: p["link"] for p in e["players"]} ==
+                           {"Goku": "wired", "Vegeta": "wireless"}, timeout=15)
+            check(f"{inst.name} sees both players' links {[(p['name'], p['link']) for p in pl['players']]}",
+                  True)
+        q = host.seen("players", lambda e: len(e["players"]) == 2)["players"][0]
+        check(f"players carry connection quality fields {q.get('quality')}/{q.get('jitter')}",
+              q.get("quality") in ("good", "ok", "poor", "measuring") and isinstance(q.get("jitter"), int))
 
         joiner.send("chat kakarot!")
         check("host receives chat", "kakarot!" in host.wait_for("chat")["text"])

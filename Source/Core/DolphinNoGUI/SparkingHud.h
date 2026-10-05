@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <array>
 #include <string>
 
 namespace Sparking
@@ -30,6 +31,12 @@ void SetHudLocalPort(int port);
 // Netplay connection info for the bottom bar (any thread). Pass -1 to clear a value, -2 to leave
 // it unchanged. The bar is only drawn while a ping is set (netplay).
 void SetHudNetplayStats(int ping_ms, int buffer);
+// Ping stability for the bottom bar: jitter in ms (-1 = not measured yet) and "good" / "ok" /
+// "poor" / "measuring" (colors the ping text). Any thread.
+void SetHudLinkQuality(int jitter_ms, const std::string& rating);
+// Wired/Wi-Fi status of the players on ports 1 and 2 ("wired", "wireless", "virtual",
+// "unknown"): an icon next to each name. Any thread.
+void SetHudLinks(const std::array<std::string, 2>& links);
 // When a game starts/ends: forget health values and scores.
 void ResetHud();
 // Scores back to 0-0.

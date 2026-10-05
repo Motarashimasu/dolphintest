@@ -719,6 +719,12 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .metavar("GAMEID")
       .help("Print the texture variant groups (@folders) for a game as JSON, then exit");
+  parser.add_option("--link")
+      .dest("link")
+      .action("store")
+      .choices({"auto", "wired", "wireless", "unknown"})
+      .set_default("auto")
+      .help("Netplay: this PC's connection type shown to everyone (default auto = detect)");
   parser.add_option("--hud")
       .dest("hud")
       .action("store")
@@ -945,6 +951,8 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
       np.game_paths.push_back(path);
   }
   np.state_dir = s_state_dir;
+  if (std::string link = static_cast<const char*>(options.get("link")); link != "auto")
+    np.link = std::move(link);
   np.gecko_defaults =
       std::string_view(static_cast<const char*>(options.get("netplay_gecko_defaults"))) != "off";
   if (options.is_set("netplay_gecko"))

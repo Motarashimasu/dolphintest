@@ -58,6 +58,16 @@ struct NetPlayOptions
   std::map<int, std::vector<std::string>> port_gecko;
   // Also run the game's default-on codes (ini [Gecko_Enabled]) for everyone.
   bool gecko_defaults = true;
+  // This PC's network link ("wired", "wireless", "virtual", "unknown"); empty = detect.
+  std::string link;
+};
+
+// Connection quality from ping samples (one per second): average change between consecutive
+// pings (jitter) plus the ping itself.
+struct LinkQuality
+{
+  int jitter_ms = -1;      // -1 until there are enough samples
+  std::string rating;      // "good", "ok", "poor", or "measuring"
 };
 
 // Name + SHA-1 of the battle state everyone should boot into.
@@ -208,6 +218,20 @@ private:
   std::string m_save_local_status;                       // client: ok|mismatch|missing
   std::map<NetPlay::PlayerId, std::string> m_save_acks;  // host: pid -> ok|mismatch|missing
   std::atomic<bool> m_rebroadcast_save{false};
+
+  // Wired/Wi-Fi: every player detects its own adapter and tells the others ("link <type>").
+  std::string m_local_link;
+  std::mutex m_links_mutex;
+  std::map<NetPlay::PlayerId, std::string> m_links;  // guarded by m_links_mutex
+  std::atomic<bool> m_rebroadcast_link{true};
+  void PushHudPlayers();  // any thread: names' link icons per GameCube port
+  std::string LinkOf(NetPlay::PlayerId pid);
+
+  // Ping stability, sampled on the netplay thread whenever pings update (throttled to 1/s).
+  std::mutex m_quality_mutex;
+  std::map<NetPlay::PlayerId, std::vector<u32>> m_ping_samples;
+  std::chrono::steady_clock::time_point m_last_ping_sample{};
+  LinkQuality QualityOf(NetPlay::PlayerId pid, u32 current_ping);
 
   std::string m_last_room_json;
   std::chrono::steady_clock::time_point m_last_player_emit{};
