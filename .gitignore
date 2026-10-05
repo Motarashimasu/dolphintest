@@ -48,3 +48,4 @@ CMakeLists.txt.user
 .cache/clangd
 # Ignore CMake user presets
 CMakeUserPresets.json
+__pycache__/
