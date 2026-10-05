@@ -9,12 +9,17 @@ config/name="DRAGON BALL Sparking! Collection PC"
 config/description="Test frontend for Dolphin-Sparking: menus, offline play and netplay for Budokai Tenkaichi 3."
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.3")
+boot_splash/bg_color=Color(0, 0, 0, 1)
+boot_splash/image="res://splash/splash.png"
+boot_splash/fullsize=true
+boot_splash/show_image=true
 
 [autoload]
 
 Settings="*res://scripts/settings.gd"
 Dolphin="*res://scripts/dolphin.gd"
 Demos="*res://scripts/demos.gd"
+Music="*res://scripts/music.gd"
 
 [display]
 

@@ -38,7 +38,7 @@ var defaults := {
 	"player": {"nickname": "Player", "region": "NA"},
 	"video": {"renderer": "Vulkan", "resolution": 3, "window": "1280x720", "borderless": false},
 	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9", "hud": true,
-		"show_fps": false, "minimize_while_playing": true},
+		"show_fps": false, "minimize_while_playing": true, "music_volume": 7},
 	"netplay": {"mode": "single", "find_mode": "any", "public": true, "traversal": true,
 		"buffer": 4, "public_address": ""},
 	"gecko": {"custom": false, "enabled": []},

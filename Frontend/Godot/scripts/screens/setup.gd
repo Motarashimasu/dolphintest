@@ -79,6 +79,8 @@ func on_press(key: String) -> void:
 
 func _set_path(path: String, key: String) -> void:
 	Settings.set_value("paths", key, path.replace("\\", "/"))
+	if key == "data":
+		Music.rescan()   # your music lives in the data folder
 	list.set_rows(build_rows(), key)
 
 

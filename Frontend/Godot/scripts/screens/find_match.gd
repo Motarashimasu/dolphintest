@@ -3,6 +3,10 @@ extends "res://scripts/screens/form_screen.gd"
 ## hosts a public one others will find).
 
 
+func screen_music() -> String:
+	return "netplay"
+
+
 func screen_title() -> String:
 	return "Find a Match"
 

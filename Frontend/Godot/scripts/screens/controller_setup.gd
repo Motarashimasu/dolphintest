@@ -8,6 +8,10 @@ const Controllers := preload("res://scripts/controllers.gd")
 var _presets: Array = []
 
 
+func screen_music() -> String:
+	return "game_menu"
+
+
 func screen_title() -> String:
 	return "Controller Setup"
 

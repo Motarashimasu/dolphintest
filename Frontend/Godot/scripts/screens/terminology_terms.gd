@@ -18,6 +18,10 @@ func setup(p_category: Dictionary) -> Node:
 	return self
 
 
+func screen_music() -> String:
+	return "terminology"
+
+
 func screen_title() -> String:
 	return String(category.get("name", "Terminology"))
 

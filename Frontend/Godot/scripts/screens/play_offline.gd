@@ -9,6 +9,10 @@ var _aspect := ""
 var _panel: Control
 
 
+func screen_music() -> String:
+	return "game_menu"
+
+
 func screen_title() -> String:
 	return "Play Offline"
 

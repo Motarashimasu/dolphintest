@@ -17,6 +17,9 @@ func build_rows() -> Array:
 		{"type": "choice", "key": "aspect", "label": "Aspect ratio", "values": ["16:9", "4:3"],
 			"names": ["16:9 widescreen", "4:3"], "value": Settings.get_value("options", "aspect"),
 			"desc": "The picture's shape when the game starts.\nF5 switches it during a game."},
+		{"type": "number", "key": "music_volume", "label": "Music volume", "min": 0, "max": 10, "step": 1,
+			"value": Settings.get_value("options", "music_volume"),
+			"desc": "Menu music (0 = off). It fades out while you play\nand comes back when the game closes."},
 		{"type": "toggle", "key": "hud", "label": "Match HUD", "value": Settings.get_value("options", "hud"),
 			"desc": "Round score with player names, health % and\nconnection info on top of the game."},
 		{"type": "toggle", "key": "show_fps", "label": "FPS counter", "value": Settings.get_value("options", "show_fps"),
@@ -32,6 +35,8 @@ func build_rows() -> Array:
 
 func on_value(key: String, value: Variant) -> void:
 	Settings.set_value("options", key, value)
+	if key == "music_volume":
+		Music.apply_volume()
 
 
 func on_press(key: String) -> void:

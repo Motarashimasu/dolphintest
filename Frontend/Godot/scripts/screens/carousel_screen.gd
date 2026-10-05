@@ -5,13 +5,15 @@ extends "res://scripts/screens/screen.gd"
 const Carousel := preload("res://scripts/ui/carousel.gd")
 
 var title := ""
+var music := ""
 var items: Array = []
 var carousel: Control
 var _start := 0
 
 
-func setup(p_title: String, p_items: Array, start := 0) -> Node:
+func setup(p_title: String, p_items: Array, start := 0, p_music := "") -> Node:
 	title = p_title
+	music = p_music
 	items = p_items
 	_start = start
 	return self
@@ -19,6 +21,10 @@ func setup(p_title: String, p_items: Array, start := 0) -> Node:
 
 func screen_title() -> String:
 	return title
+
+
+func screen_music() -> String:
+	return music
 
 
 func screen_desc() -> String:

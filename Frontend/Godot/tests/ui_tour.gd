@@ -20,6 +20,7 @@ func _ready() -> void:
 	for section in cfg.get("settings", {}):
 		for key in cfg["settings"][section]:
 			Settings.set_value(section, key, cfg["settings"][section][key])
+	Music.rescan()
 	_run.call_deferred()
 
 
@@ -138,6 +139,8 @@ func back() -> void:
 func _tour() -> void:
 	await frames(10)
 	check("main menu title", app._title.text == "Main Menu")
+	await frames(30)
+	check("main menu music playing", Music.current_track() == "main_menu" and Music.is_audible())
 	await shot("main_menu")
 	await press("ui_down")
 	check("Down moves the wheel", top().carousel.current().get("label") == "Video Settings")
@@ -179,6 +182,7 @@ func _tour() -> void:
 	await wait_for("lobby listed publicly", func(): return lobby._public.get("listed", false))
 	print("TOUR_EVENT host_ready")
 	await shot("lobby_waiting")
+	check("lobby music", Music.current_track() == "lobby" and Music.is_audible())
 	await wait_for("second player joined", func(): return lobby._players.size() == 2, 30)
 	await wait_for("chat from the joiner", func(): return "hello from Vegeta" in "\n".join(lobby._chat))
 	await type_into(lobby._actions, "chat", "Good luck!")
@@ -196,6 +200,7 @@ func _tour() -> void:
 	await pick("start", lobby._actions)
 	await wait_for("match running", func(): return lobby._phase == "playing", 30)
 	await shot("lobby_match_running")
+	await wait_for("music faded out while the match runs", func(): return Music.is_muted_for_game() and not Music.is_audible(), 5)
 
 	app.open_ingame_menu()
 	await frames(10)
@@ -205,6 +210,7 @@ func _tour() -> void:
 	await pick("stop", app._compact.list)
 	await wait_for("back in the lobby after Stop Match", func(): return lobby._phase == "lobby", 30)
 	check("in-game menu closed", not app.is_ingame_menu_open())
+	check("music back after the match", not Music.is_muted_for_game() and Music.is_audible())
 	check("window restored", get_window().content_scale_size == Vector2i(1280, 720))
 	await shot("lobby_after_match")
 	await back()  # B -> Leave Lobby row
@@ -263,6 +269,7 @@ func _tour() -> void:
 	await choose("Play Offline")
 	var play: Control = top()
 	await wait_for("offline game running", func(): return play._state == "running", 30)
+	await wait_for("music muted for the offline game", func(): return not Music.is_audible(), 5)
 	await shot("play_offline")
 	await pick("buttons", play.list)
 	# Dolphin cycles options alphabetically: PlayStation, Vanilla, Xbox.
@@ -276,6 +283,8 @@ func _tour() -> void:
 	await pick("stop", play.list)
 	await wait_for("offline game stopped", func(): return app.top() != play, 20)
 	await wait_for("Dolphin exited (solo)", func(): return not Dolphin.is_running(), 10)
+	await frames(10)
+	check("music resumes after the game closes", Music.is_audible() and Music.current_track() == "game_menu")
 
 	await choose("Modifications")
 	var mods: Control = top()
@@ -350,3 +359,11 @@ func _tour() -> void:
 	await shot("options")
 	await pick("files", top().list)
 	await shot("files_and_folders")
+
+	# Splash (skipped at startup for the tour): shows, and any button skips it.
+	app._show_splash()
+	await frames(5)
+	check("splash shows", app.is_splash_showing())
+	await shot("splash")
+	await press("ui_accept")
+	check("a button skips the splash", not app.is_splash_showing())

@@ -76,6 +76,28 @@ tutorial open it on A.
 - Godot can't play GIFs on its own, so `scripts/util/gif.gd` decodes them on a background
   thread.
 
+**Splash.** `splash/splash.png` is shown in two places: as Godot's boot splash while the
+engine starts, then for 2 s over the menu before fading out. Any button skips it. It's blank
+(black) for now: replace that file, keeping the name, with your own image. 1920×1080 works
+best; it's scaled to cover the window.
+
+**Music.** Each menu has a track:
+
+| Track | Plays on |
+|---|---|
+| `main_menu` | Main Menu, Video Settings, Options, Files & Folders. Also used for any track that has no file. |
+| `game_menu` | the Budokai Tenkaichi 3 menu, Controller Setup, Modifications |
+| `netplay` | Netplay, Player Match, Host, Find, Lobby Browser |
+| `lobby` | the lobby screen |
+| `terminology` | Tenkaichi Terminology |
+
+- Put files named after them in `music/` (`main_menu.ogg`, ...; ogg, mp3 or wav), or in
+  `SparkingData\music` (ogg or mp3; these override the ones in `music/` without re-exporting).
+- Moving between screens with the same track keeps it playing; a different track crossfades.
+- The music fades out when a game starts (offline or netplay) and resumes from the same spot
+  when the game closes.
+- Volume: Options > Music volume (0 = off).
+
 ## Tests
 
 `tests/run_ui_tour.py` walks every screen with a real `dolphin-emu-nogui`. It sets up a fake
@@ -93,7 +115,8 @@ Linux only (`xvfb-run`). The tour covers:
 - offline play and live texture switching;
 - the Gecko code list and the settings screens;
 - controller presets;
-- Terminology, with a fake doc server serving test GIFs.
+- Terminology, with a fake doc server serving test GIFs;
+- menu music (plays, switches per screen, mutes in game, resumes) and the splash.
 
 `tests/gif_check.gd` decodes a folder of GIFs to PNGs, to compare the decoder against PIL.
 
@@ -102,7 +125,7 @@ Linux only (`xvfb-run`). The tour covers:
 - Godot 4.3 on Linux/macOS closes the frontend's stdin when it frees a process pipe, and the
   next launch then dies with SIGPIPE. `scripts/dolphin.gd` keeps finished pipes open to avoid
   this. Windows is not affected.
-- Exporting a standalone .exe: add `*.ini, *.json` to the export preset's "Filters to export
+- Exporting a standalone .exe: add `*.ini, *.json, *.txt` to the export preset's "Filters to export
   non-resource files" so the controller presets and terminology data are included.
 - Fonts: drop `menu.ttf` (titles/menus) and `body.ttf` into `fonts/` to replace Godot's
   built-in font.

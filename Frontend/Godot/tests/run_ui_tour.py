@@ -157,6 +157,13 @@ def main():
         f.write("[GCPad1]\nDevice = XInput/0/Gamepad\nButtons/A = `Button X`\n"
                 "[GCPad2]\nDevice = XInput/1/Gamepad\nButtons/A = `Button X`\n")
 
+    # Menu music: main_menu (also the fallback) and lobby; game_menu falls back to main_menu.
+    os.makedirs(os.path.join(data, "music"), exist_ok=True)
+    for name, freq in (("main_menu", 440), ("lobby", 660)):
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        f"sine=frequency={freq}:duration=20", "-c:a", "libvorbis",
+                        os.path.join(data, "music", name + ".ogg")], check=True)
+
     config = os.path.join(work, "tour.json")
     with open(config, "w") as f:
         json.dump({

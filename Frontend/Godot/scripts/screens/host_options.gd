@@ -2,6 +2,10 @@ extends "res://scripts/screens/form_screen.gd"
 ## Player Match > Host: lobby options, then the lobby.
 
 
+func screen_music() -> String:
+	return "netplay"
+
+
 func screen_title() -> String:
 	return "Host a Lobby"
 

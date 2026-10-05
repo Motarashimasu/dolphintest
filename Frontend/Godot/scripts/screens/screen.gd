@@ -30,6 +30,11 @@ func screen_desc() -> String:
 	return ""
 
 
+## Menu music track (see scripts/music.gd); "" = the same as the screen below.
+func screen_music() -> String:
+	return ""
+
+
 ## Button hints in the description bar: [[key, color, text], ...].
 func screen_hints() -> Array:
 	return [["▲▼", Style.INK_LINE, "Move"], ["A", Style.GOOD, "Select"], ["B", Style.POOR, "Back"]]

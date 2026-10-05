@@ -7,6 +7,10 @@ var _loading := false
 var _error := ""
 
 
+func screen_music() -> String:
+	return "netplay"
+
+
 func screen_title() -> String:
 	return "Lobby Browser"
 

@@ -35,9 +35,11 @@ func _ready() -> void:
 	get_window().title = "DRAGON BALL Sparking! Collection PC"
 	_build_backdrop()
 	Dolphin.event.connect(_on_dolphin_event)
-	push(_main_menu())
 	var user_args := OS.get_cmdline_user_args()
 	var tour := user_args.find("--ui-tour")
+	if tour < 0 and not "--no-splash" in user_args:
+		_show_splash()
+	push(_main_menu())
 	if tour >= 0 and tour + 1 < user_args.size():
 		# Automated test: tests/ui_tour.gd drives the menus (see tests/run_ui_tour.py).
 		var t: Node = load("res://tests/ui_tour.gd").new()
@@ -97,10 +99,21 @@ func _apply_chrome(screen: Control) -> void:
 	_header.visible = screen.show_header
 	_desc_bar.visible = screen.show_desc_bar
 	set_desc(screen.screen_desc())
+	if not _splash:
+		Music.play(music_for_stack())
 	for c in _hints.get_children():
 		c.queue_free()
 	for h in screen.screen_hints():
 		_hints.add_child(_hint(h[0], h[1], h[2]))
+
+
+## The music of the top screen, or of the nearest screen below that names one.
+func music_for_stack() -> String:
+	for i in range(_stack.size() - 1, -1, -1):
+		var m: String = _stack[i].screen_music()
+		if m != "":
+			return m
+	return ""
 
 
 func set_title(text: String) -> void:
@@ -153,8 +166,8 @@ func require_setup() -> bool:
 
 # --- Menus -------------------------------------------------------------------------------
 
-func _menu(title: String, items: Array) -> Control:
-	return CarouselScreen.new().setup(title, items)
+func _menu(title: String, items: Array, music := "") -> Control:
+	return CarouselScreen.new().setup(title, items, 0, music)
 
 
 func _main_menu() -> Control:
@@ -170,7 +183,7 @@ func _main_menu() -> Control:
 			"action": func(): open("options")},
 		{"label": "Exit", "glyph": "X", "color": "#8a9bb0", "desc": "Close the collection.",
 			"action": quit_app},
-	])
+	], "main_menu")
 
 
 func _game_menu() -> Control:
@@ -192,7 +205,7 @@ func _game_menu() -> Control:
 			"action": func(): push(_terminology_menu())},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the main menu."},
-	])
+	], "game_menu")
 
 
 var _terminology: Dictionary = {}
@@ -217,7 +230,7 @@ func _terminology_menu() -> Control:
 		"desc": String(doc.get("contributors", ""))})
 	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 		"desc": "Back to the game menu."})
-	return _menu("Terminology", items)
+	return _menu("Terminology", items, "terminology")
 
 
 func _netplay_menu() -> Control:
@@ -233,7 +246,7 @@ func _netplay_menu() -> Control:
 			"desc": "Work in progress."},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the game menu."},
-	])
+	], "netplay")
 
 
 func _player_match_menu() -> Control:
@@ -246,7 +259,7 @@ func _player_match_menu() -> Control:
 			"action": open_checked.bind("find_match")},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the netplay menu."},
-	])
+	], "netplay")
 
 
 func quit_app() -> void:
@@ -270,6 +283,11 @@ func _input(event: InputEvent) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	# Controllers deliver events even when this window is in the background (game running).
 	if not get_window().has_focus() and not ignore_focus:
+		return
+	if _splash:
+		if event.is_pressed() and not event.is_echo() and not event is InputEventMouseMotion:
+			_end_splash()
+		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F12:
 		_toggle_log()
@@ -379,6 +397,52 @@ func close_ingame_menu(back_to_game := true) -> void:
 
 func is_ingame_menu_open() -> bool:
 	return _compact != null
+
+
+# --- Splash ------------------------------------------------------------------------------
+
+## Shown over the menu at startup: fade in, hold, fade out. Any button skips it. The picture is
+## res://splash/splash.png (also Godot's own boot splash, so the two join up seamlessly).
+const SPLASH_IMAGE := "res://splash/splash.png"
+const SPLASH_HOLD := 2.0
+
+var _splash: Control = null
+var _splash_tween: Tween
+
+
+func _show_splash() -> void:
+	_splash = ColorRect.new()
+	_splash.color = Color.BLACK
+	_splash.mouse_filter = Control.MOUSE_FILTER_STOP
+	Style.place(_splash, 0, 0, 1280, 720)
+	add_child(_splash)
+	if ResourceLoader.exists(SPLASH_IMAGE):
+		var pic := TextureRect.new()
+		pic.texture = load(SPLASH_IMAGE)
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		pic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_splash.add_child(pic)
+	# Godot's boot splash showed the same picture: hold it, then fade to the menu.
+	_splash_tween = create_tween()
+	_splash_tween.tween_interval(SPLASH_HOLD)
+	_splash_tween.tween_property(_splash, "modulate:a", 0.0, 0.5)
+	_splash_tween.tween_callback(_end_splash)
+
+
+func _end_splash() -> void:
+	if not _splash:
+		return
+	if _splash_tween and _splash_tween.is_valid():
+		_splash_tween.kill()
+	_splash.queue_free()
+	_splash = null
+	Music.play(music_for_stack())
+
+
+func is_splash_showing() -> bool:
+	return _splash != null
 
 
 # --- Backdrop ----------------------------------------------------------------------------
