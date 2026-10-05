@@ -90,6 +90,18 @@ if(USE_DISCORD_PRESENCE)
   target_compile_definitions(dolphin-nogui PRIVATE -DUSE_DISCORD_PRESENCE)
 endif()
 
+# Sparking: refresh Sys next to the executable on every build, also when only this target is
+# built (upstream only does it after building the Qt UI). Sys carries the game settings Sparking
+# reads at run time (Gecko codes, watches, the netplay battle states in [Sparking.Modes]).
+if (NOT APPLE AND NOT ANDROID)
+  add_custom_command(TARGET dolphin-nogui POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+      -Dtarget="${CMAKE_SOURCE_DIR}/Data/Sys"
+      -Dlink="${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Sys"
+      -P="${CMAKE_SOURCE_DIR}/CMake/DolphinSymlinkOrCopy.cmake"
+  )
+endif()
+
 set(CPACK_PACKAGE_EXECUTABLES ${CPACK_PACKAGE_EXECUTABLES} dolphin-nogui)
 if (NOT WIN32)
   install(TARGETS dolphin-nogui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
