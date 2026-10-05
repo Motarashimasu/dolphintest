@@ -11,6 +11,10 @@ add_executable(dolphin-nogui
   SparkingGecko.h
   SparkingIO.cpp
   SparkingIO.h
+  SparkingLobby.cpp
+  SparkingLobby.h
+  SparkingMenu.cpp
+  SparkingMenu.h
   SparkingNet.cpp
   SparkingNet.h
   SparkingNetPlay.cpp

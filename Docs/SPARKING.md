@@ -36,6 +36,13 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--textures <Group>=<Option>` (repeatable) | none | Texture variant to load, i.e. folder `@<Group>/<Option>` in the game's texture pack. Turns custom textures on. See *Texture variants*. |
 | `--textures-dir <dir>` | `<user>/Load/Textures` | Texture library folder (holds `<GAMEID>/` folders), shared by every profile. |
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
+| `--public` | off | Host: list the lobby on Dolphin's lobby server (browser + matchmaking). Name on the server: `SPK1\|<mode>\|<link>\|<nickname>`. |
+| `--mode single\|team\|any` | `any` | Host: lobby mode, shown in the browser; `single`/`team` also auto-select that battle state from the game ini's `[Sparking.Modes]`. |
+| `--region EA\|CN\|EU\|NA\|SA\|OC\|AF` | `NA` | Public lobby region; matchmaking prefers lobbies in the same region. |
+| `--public-address <ip>` | | Direct (non-traversal) public lobby only: the address others join. |
+| `--list-lobbies` [`--mode m`] | | Print the public Sparking lobbies for **this exact build** (`lobbies` event), then exit. Other builds, regular Dolphin rooms and passworded rooms are filtered out. |
+| `--netplay-find single\|team\|any` | | Matchmaking (needs `--netplay-game`): join the best open public lobby of a compatible mode for the same game (same region first, exact mode before "any"); if it's taken or none exist, host a public lobby of that mode and wait. `matchmaking` events report progress. |
+| `--menu-button <input>` (repeatable) / `--menu-hold-ms <ms>` | `Back`,`Select`,`Share` / `1000` | Holding that controller button sends `menu_request` (the frontend opens its in-game menu). `none` disables. |
 | `--link auto\|wired\|wireless\|unknown` | `auto` | Netplay: this PC's connection type, shown to everyone. `auto` asks the OS which adapter reaches the internet (Ethernet = wired, Wi-Fi/mobile = wireless, VPN/tunnel/virtual adapter = `virtual`). Only this PC's own adapter is visible: a cable into a Wi-Fi extender/powerline/mesh node reads as wired. Self-reported, so not for anything ranked. |
 | `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: a score bar in the centre of BT3's top HUD (`Name1  W1 | W2  Name2`; long names shrink, then get cut with "..."), health % in the window's top corners, and in netplay the ping + pad buffer at the bottom centre. Needs the game's `p1/p2_health_pct` watches. **For the Godot overlay this whole HUD is netplay-only.** |
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
@@ -113,6 +120,11 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `score` | `wins`, `rounds` | After `score reset` |
 | `hud` | `enabled` | After a `hud` command |
 | `poked` | `address`, `value` | Answer to `poke` |
+| `lobbies` | `lobbies[]` of `{host, mode, link, region, game, game_id, players, in_game, joinable, method, join}` | `--list-lobbies` result. `join` is what `--netplay-join` takes. No version field: it only filters. |
+| `public` | `listed`, `mode`, `region`, `name` / `error` | Host: the lobby is (or failed to be) on the public list |
+| `mode` | `mode`, `battle_state` | Host: the lobby mode selected this battle state |
+| `matchmaking` | `state` (`searching`, `candidates`+`count`, `joining`+`host`/`mode`/`region`/`link`, `retry`+`reason`, `hosting`, `matched`+`port`, `cancelled`, `lobby_server_unreachable`) | `--netplay-find` progress |
+| `menu_request` | `button`, `netplay` | The menu button was held: open the in-game menu |
 | `texture_groups` | `game_id`, `groups[]` of `{name, options[]}` | `--list-textures` result |
 | `textures` | `selection` (`{group: option}`, lowercase) | After a `textures` command |
 | `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
@@ -303,6 +315,34 @@ Rules:
 - Purely visual, so each netplay player can use their own.
 - Godot settings: `--list-textures RDSPAF` gives the groups and choices; launch with one
   `--textures Group=Choice` per group.
+
+## Netplay menu flow (Godot) → Dolphin
+
+```
+Play Game > Netplay
+  1. Lobby Browser   --list-lobbies [--mode m]  (refresh = run again)  -> lobbies[]
+                     join one: --netplay-join <lobby.join> --netplay-game <iso> --nickname N
+  2. Player Match
+     Host            options screen -> --netplay-host <iso> [--netplay-direct] --mode single|team
+                                       --nickname N [--public --region R] --state-dir <dir>
+     Find            pick Single/Team/Any -> --netplay-find <mode> --netplay-game <iso>
+                                              --nickname N --region R --state-dir <dir>
+  3. Ranked Match    (WIP)
+
+Lobby screen         events: room (code), players (name, ping, link, quality, slot), chat, buffer_changed
+                     commands: chat <text>, buffer <n> (host), start (host), quit
+In game (hold Select -> menu_request): same panel; chat, buffer, "stop match" = stop
+                     (back to the lobby screen), quit = leave entirely.
+```
+
+Notes:
+- The browser only lists lobbies of the same Sparking build: the lobby server's `version` field
+  (Dolphin's build string) is used as a filter and never shown.
+- Ping can't be known before connecting (the lobby server doesn't measure it); the browser shows
+  region and the host's wired/Wi-Fi status, and the lobby shows live ping once joined.
+- The lobby's mode picks the battle state (`[Sparking.Modes]` in the game ini, BT3: Single =
+  `RDSPAF-SingleBattle.sav`, Team = `RDSPAF-TeamBattle.sst`), so a "Team Battle" lobby boots
+  everyone straight into Team Battle.
 
 ## Overlay
 

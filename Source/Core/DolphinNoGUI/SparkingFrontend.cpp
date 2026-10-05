@@ -52,6 +52,8 @@
 #include "VideoCommon/TextureCacheBase.h"
 #include "DolphinNoGUI/SparkingNetPlay.h"
 #include "DolphinNoGUI/SparkingHud.h"
+#include "DolphinNoGUI/SparkingLobby.h"
+#include "DolphinNoGUI/SparkingMenu.h"
 #include "DolphinNoGUI/SparkingWatch.h"
 #include "UICommon/UICommon.h"
 
@@ -622,7 +624,11 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
   // Each player runs their own per-port Gecko codes (see --netplay-gecko), so the host's codes
   // must not be pushed onto everyone.
   if (netplay)
+  {
     layer->Set(Config::NETPLAY_SYNC_CODES, false);
+    // Public lobbies are listed by Sparking itself (tagged name), never by Dolphin's own code.
+    layer->Set(Config::NETPLAY_USE_INDEX, false);
+  }
 
   Config::OnConfigChanged();
 }
@@ -719,6 +725,46 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .metavar("GAMEID")
       .help("Print the texture variant groups (@folders) for a game as JSON, then exit");
+  parser.add_option("--menu-button")
+      .dest("menu_button")
+      .action("append")
+      .help("Controller input that opens the frontend's in-game menu when held (repeatable; "
+            "default Back = Select/Share/View on XInput and SDL pads; \"none\" disables)");
+  parser.add_option("--menu-hold-ms")
+      .dest("menu_hold_ms")
+      .action("store")
+      .set_default("1000")
+      .help("How long the menu button must be held, in ms (default 1000)");
+  parser.add_option("--public")
+      .dest("public")
+      .action("store_true")
+      .help("Netplay host: list the lobby on Dolphin's lobby server (browser / matchmaking)");
+  parser.add_option("--mode")
+      .dest("mode")
+      .action("store")
+      .choices({"single", "team", "any"})
+      .set_default("any")
+      .help("Netplay: lobby mode (host) or wanted mode (--netplay-find): single, team, any");
+  parser.add_option("--region")
+      .dest("region")
+      .action("store")
+      .choices({"EA", "CN", "EU", "NA", "SA", "OC", "AF"})
+      .set_default("NA")
+      .help("Netplay: lobby server region of a public lobby (default NA)");
+  parser.add_option("--public-address")
+      .dest("public_address")
+      .action("store")
+      .help("Netplay host, direct (non-traversal) public lobby: the address others join");
+  parser.add_option("--list-lobbies")
+      .dest("list_lobbies")
+      .action("store_true")
+      .help("Print the public Sparking lobbies for this build (\"lobbies\" event), then exit");
+  parser.add_option("--netplay-find")
+      .dest("netplay_find")
+      .action("store")
+      .choices({"single", "team", "any"})
+      .metavar("MODE")
+      .help("Matchmaking: join an open public lobby of this mode, or host one and wait");
   parser.add_option("--link")
       .dest("link")
       .action("store")
@@ -777,12 +823,14 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
 
 static bool IsNetPlayMode(const optparse::Values& options)
 {
-  return options.is_set("netplay_host") || options.is_set("netplay_join");
+  return options.is_set("netplay_host") || options.is_set("netplay_join") ||
+         options.is_set("netplay_find");
 }
 
 bool OwnsMain(const optparse::Values& options)
 {
-  return IsNetPlayMode(options) || options.is_set("list_gecko") || options.is_set("list_textures");
+  return IsNetPlayMode(options) || options.is_set("list_gecko") || options.is_set("list_textures") ||
+         options.is_set_by_user("list_lobbies");
 }
 
 static int RunListGecko(const optparse::Values& options)
@@ -840,6 +888,36 @@ static int RunListTextures(const optparse::Values& options)
   return 0;
 }
 
+static int RunListLobbies(const optparse::Values& options)
+{
+  std::string user_directory;
+  if (options.is_set("user"))
+    user_directory = static_cast<const char*>(options.get("user"));
+  UICommon::SetUserDirectory(user_directory);
+  UICommon::Init();
+  Common::ScopeGuard guard([] { UICommon::Shutdown(); });
+
+  const std::string mode = static_cast<const char*>(options.get("mode"));
+  std::string error;
+  const auto lobbies = ListLobbies(&error);
+  if (!lobbies)
+  {
+    Emit("error", Json().Add("code", "lobby_server_unreachable").Add("reason", error));
+    Emit("exit", Json().Add("code", 1));
+    return 1;
+  }
+  std::vector<std::string> list;
+  for (const LobbyInfo& lobby : *lobbies)
+  {
+    if (options.is_set_by_user("mode") && !LobbyModesMatch(mode, lobby.mode))
+      continue;
+    list.push_back(LobbyJson(lobby));
+  }
+  Emit("lobbies", Json().AddRaw("lobbies", JsonArray(list)));
+  Emit("exit", Json().Add("code", 0));
+  return 0;
+}
+
 static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hooks);
 
 int RunMain(const optparse::Values& options, const FrontendHooks& hooks)
@@ -848,13 +926,16 @@ int RunMain(const optparse::Values& options, const FrontendHooks& hooks)
     return RunListGecko(options);
   if (options.is_set("list_textures"))
     return RunListTextures(options);
+  if (options.is_set_by_user("list_lobbies"))
+    return RunListLobbies(options);
   return RunNetPlay(options, hooks);
 }
 
 void InitFromOptions(const optparse::Values& options)
 {
   const bool netplay = IsNetPlayMode(options);
-  const bool listing = options.is_set("list_gecko") || options.is_set("list_textures");
+  const bool listing = options.is_set("list_gecko") || options.is_set("list_textures") ||
+                       options.is_set_by_user("list_lobbies");
   SetEnabled(netplay || options.is_set_by_user("sparking") || listing);
   if (options.is_set("state_dir"))
     s_state_dir = static_cast<const char*>(options.get("state_dir"));
@@ -865,6 +946,21 @@ void InitFromOptions(const optparse::Values& options)
     OSD::SetMessageObserver(ForwardOsdMessage);
     InitWatcher();
     InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off");
+    {
+      // XInput / SDL "Back" (Xbox View/Back), "Select", "Share" (PlayStation Create/Share)
+      std::vector<std::string> buttons{"Back", "Select", "Share"};
+      if (options.is_set("menu_button"))
+      {
+        buttons.clear();
+        for (const std::string& b : options.all("menu_button"))
+        {
+          if (b != "none")
+            buttons.push_back(b);
+        }
+      }
+      InitMenuButton(std::move(buttons),
+                     std::atoi(static_cast<const char*>(options.get("menu_hold_ms"))));
+    }
     State::SetOnAfterLoadCallback([] {
       if (State::LastLoadSucceeded())
         Emit("state_applied");
@@ -930,13 +1026,96 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
        Json().Add("port", 0).AddRaw("codes", JsonArray(active)).AddRaw("missing", JsonArray(miss)));
 }
 
+namespace
+{
+enum class SessionEnd
+{
+  Quit,    // the player/frontend ended it
+  Failed,  // couldn't start
+  Retry,   // matchmaking: this lobby didn't work out, try the next
+};
+enum class MatchRole
+{
+  None,
+  Joiner,  // matchmaking join: give up if we don't get a GameCube slot in time
+  Host,    // matchmaking host: announce when an opponent arrives
+};
+NetPlaySession* s_active_session = nullptr;  // host thread only
+
+SessionEnd RunSession(const NetPlayOptions& np, const FrontendHooks& hooks, MatchRole role)
+{
+  auto& system = Core::System::GetInstance();
+  NetPlaySession session;
+  // Netplay may ask us to stop from its own thread; hop to the host thread to touch the window.
+  session.SetStopGameCallback([&platform = hooks.platform] {
+    Core::QueueHostJob(
+        [&platform](Core::System&) {
+          if (platform)
+            platform->Stop();
+        },
+        /*run_during_stop=*/true);
+  });
+
+  s_active_session = &session;
+  Common::ScopeGuard clear_active([] { s_active_session = nullptr; });
+  if (!session.Start(np))
+    return role == MatchRole::Joiner ? SessionEnd::Retry : SessionEnd::Failed;
+
+  // Matchmaking joiner: the lobby may have been taken a moment ago (we'd only be a spectator).
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(12);
+  bool matched = role == MatchRole::None;
+
+  while (!session.WantsQuit() && !s_quit_requested)
+  {
+    Core::HostDispatchJobs(system);
+
+    if (auto boot = session.TakePendingBoot())
+    {
+      RunNetPlayGame(hooks, std::move(boot));
+      session.OnGameEnded();
+      continue;
+    }
+
+    session.Pump();
+
+    if (!matched)
+    {
+      if (session.PlayerCount() >= 2 && session.LocalGcPort() > 0)
+      {
+        matched = true;
+        Emit("matchmaking", Json().Add("state", "matched").Add("port", session.LocalGcPort()));
+      }
+      else if (role == MatchRole::Joiner && std::chrono::steady_clock::now() > deadline)
+      {
+        Emit("matchmaking", Json().Add("state", "retry").Add("reason", "no_slot"));
+        session.Shutdown();
+        return SessionEnd::Retry;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+
+  session.Shutdown();
+  // Lost the connection before the match was even set up: try the next lobby.
+  if (role == MatchRole::Joiner && !matched && !s_quit_requested)
+    return SessionEnd::Retry;
+  return SessionEnd::Quit;
+}
+}  // namespace
+
 static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hooks)
 {
   NetPlayOptions np;
   if (options.is_set("netplay_host"))
     np.host_game_path = static_cast<const char*>(options.get("netplay_host"));
-  else
+  else if (options.is_set("netplay_join"))
     np.join_target = static_cast<const char*>(options.get("netplay_join"));
+  const bool find = options.is_set("netplay_find");
+  np.is_public = options.is_set_by_user("public");
+  np.mode = static_cast<const char*>(find ? options.get("netplay_find") : options.get("mode"));
+  np.region = static_cast<const char*>(options.get("region"));
+  if (options.is_set("public_address"))
+    np.public_address = static_cast<const char*>(options.get("public_address"));
   if (options.is_set("nickname"))
     np.nickname = static_cast<const char*>(options.get("nickname"));
   // Values::all() const dereferences find() unchecked, so only call it for options that are set.
@@ -996,51 +1175,115 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
   hooks.install_signal_handlers();
   DolphinAnalytics::Instance().ReportDolphinStart("nogui-sparking");
 
-  auto& system = Core::System::GetInstance();
-  NetPlaySession session;
-
-  // Netplay may ask us to stop from its own thread; hop to the host thread to touch the window.
-  session.SetStopGameCallback([&platform = hooks.platform] {
-    Core::QueueHostJob(
-        [&platform](Core::System&) {
-          if (platform)
-            platform->Stop();
-        },
-        /*run_during_stop=*/true);
-  });
-
   StartSparkingHotkeys();
-  StartCommandReader([&session, &platform = hooks.platform](const Command& cmd) {
-    if (!session.HandleCommand(cmd))
+  // Commands go to whichever session is live (matchmaking runs several in a row). Host thread.
+  StartCommandReader([&platform = hooks.platform](const Command& cmd) {
+    NetPlaySession* session = s_active_session;
+    if (!session)
+    {
+      if (cmd.name == "quit" || cmd.name == "eof" || cmd.name == "stop")
+        s_quit_requested = true;  // e.g. cancel a matchmaking search
+      else
+        Emit("error", Json().Add("code", "not_in_session").Add("command", cmd.name));
+      return;
+    }
+    if (!session->HandleCommand(cmd))
       HandleGameCommand(cmd, platform);
     else if ((cmd.name == "quit" || cmd.name == "eof") && platform)
       platform->Stop();  // spectators have no pad mapped, so also stop locally
   });
 
-  if (!session.Start(np))
+  if (!find)
   {
+    const SessionEnd end = RunSession(np, hooks, MatchRole::None);
+    Emit("exit", Json().Add("code", end == SessionEnd::Failed ? 1 : 0));
+    return end == SessionEnd::Failed ? 1 : 0;
+  }
+
+  // Matchmaking: join an open public lobby of a compatible mode for the same game and build;
+  // if none works out, host a public one in our mode and wait for an opponent.
+  std::set<std::string> my_games;
+  std::string host_path;
+  for (const std::string& path : np.game_paths)
+  {
+    const UICommon::GameFile game(path);
+    if (!game.IsValid())
+      continue;
+    my_games.insert(game.GetGameID());
+    if (host_path.empty())
+      host_path = path;
+  }
+  if (host_path.empty())
+  {
+    Emit("error", Json().Add("code", "no_game").Add("hint", "pass the game with --netplay-game"));
     Emit("exit", Json().Add("code", 1));
     return 1;
   }
 
-  while (!session.WantsQuit() && !s_quit_requested)
+  Emit("matchmaking", Json().Add("state", "searching").Add("mode", np.mode));
+  std::string error;
+  const auto lobbies = ListLobbies(&error);
+  if (!lobbies)
+    Emit("matchmaking", Json().Add("state", "lobby_server_unreachable").Add("reason", error));
+  std::vector<LobbyInfo> candidates;
+  if (lobbies)
   {
-    Core::HostDispatchJobs(system);
-
-    if (auto boot = session.TakePendingBoot())
+    for (const LobbyInfo& lobby : *lobbies)
     {
-      RunNetPlayGame(hooks, std::move(boot));
-      session.OnGameEnded();
-      continue;
+      const bool same_game = std::ranges::any_of(my_games, [&](const std::string& id) {
+        return lobby.game_id == id || lobby.game.find(id) != std::string::npos;
+      });
+      if (!lobby.in_game && lobby.players < 2 && LobbyModesMatch(np.mode, lobby.mode) && same_game)
+      {
+        candidates.push_back(lobby);
+      }
     }
+    // Same region first, then exact mode before "any" lobbies.
+    std::ranges::stable_sort(candidates, [&](const LobbyInfo& x, const LobbyInfo& y) {
+      const auto rank = [&](const LobbyInfo& l) {
+        return (l.region == np.region ? 0 : 2) + (l.mode == np.mode ? 0 : 1);
+      };
+      return rank(x) < rank(y);
+    });
+  }
+  Emit("matchmaking", Json().Add("state", "candidates").Add("count", static_cast<int>(candidates.size())));
 
-    session.Pump();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  constexpr size_t MAX_ATTEMPTS = 5;
+  for (size_t i = 0; i < candidates.size() && i < MAX_ATTEMPTS && !s_quit_requested; ++i)
+  {
+    const LobbyInfo& lobby = candidates[i];
+    Emit("matchmaking", Json()
+                            .Add("state", "joining")
+                            .Add("host", lobby.host)
+                            .Add("mode", lobby.mode)
+                            .Add("region", lobby.region)
+                            .Add("link", lobby.link));
+    NetPlayOptions join = np;
+    join.host_game_path.reset();
+    join.join_target = lobby.join;
+    join.is_public = false;
+    const SessionEnd end = RunSession(join, hooks, MatchRole::Joiner);
+    if (end != SessionEnd::Retry)
+    {
+      Emit("exit", Json().Add("code", 0));
+      return 0;
+    }
+  }
+  if (s_quit_requested)
+  {
+    Emit("matchmaking", Json().Add("state", "cancelled"));
+    Emit("exit", Json().Add("code", 0));
+    return 0;
   }
 
-  session.Shutdown();
-  Emit("exit", Json().Add("code", 0));
-  return 0;
+  Emit("matchmaking", Json().Add("state", "hosting").Add("mode", np.mode));
+  NetPlayOptions host = np;
+  host.join_target.reset();
+  host.host_game_path = host_path;
+  host.is_public = true;
+  const SessionEnd end = RunSession(host, hooks, MatchRole::Host);
+  Emit("exit", Json().Add("code", end == SessionEnd::Failed ? 1 : 0));
+  return end == SessionEnd::Failed ? 1 : 0;
 }
 
 }  // namespace Sparking

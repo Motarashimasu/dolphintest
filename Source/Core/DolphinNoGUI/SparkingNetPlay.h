@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "Core/NetPlayClient.h"
+#include "UICommon/NetPlayIndex.h"
 #include "Core/NetPlayProto.h"
 #include "Core/NetPlayServer.h"
 #include "DolphinNoGUI/SparkingIO.h"
@@ -60,6 +61,12 @@ struct NetPlayOptions
   bool gecko_defaults = true;
   // This PC's network link ("wired", "wireless", "virtual", "unknown"); empty = detect.
   std::string link;
+  // Host: list the lobby publicly on Dolphin's lobby server (see SparkingLobby.h).
+  bool is_public = false;
+  std::string mode = "any";       // "single", "team", "any": shown in the browser, and picks the
+                                  // battle state from the game ini's [Sparking.Modes]
+  std::string region = "NA";      // lobby server region: EA CN EU NA SA OC AF
+  std::string public_address;     // direct hosting only: address others join (traversal: room code)
 };
 
 // Connection quality from ping samples (one per second): average change between consecutive
@@ -108,6 +115,9 @@ public:
   void OnGameEnded();
 
   bool WantsQuit() const { return m_quit; }
+  // Host thread. Players in the lobby, and this player's GameCube port (0 = none / spectator).
+  int PlayerCount();
+  int LocalGcPort();
 
   // Set by the frontend so netplay can stop a running game from any thread.
   void SetStopGameCallback(std::function<void()> cb) { m_stop_game_callback = std::move(cb); }
@@ -232,6 +242,19 @@ private:
   std::map<NetPlay::PlayerId, std::vector<u32>> m_ping_samples;
   std::chrono::steady_clock::time_point m_last_ping_sample{};
   LinkQuality QualityOf(NetPlay::PlayerId pid, u32 current_ping);
+
+  // Public lobby (Dolphin lobby server).
+  void UpdatePublicListing();  // host thread
+  void ApplyModeBattleState();  // host thread, once
+  bool m_public = false;
+  std::string m_mode = "any";
+  std::string m_region = "NA";
+  std::string m_public_address;
+  std::unique_ptr<NetPlayIndex> m_index;
+  bool m_index_added = false;
+  std::string m_host_game_name;  // host: netplay name of the game it opened with
+  bool m_index_failed = false;
+  bool m_mode_state_applied = false;
 
   std::string m_last_room_json;
   std::chrono::steady_clock::time_point m_last_player_emit{};

@@ -6,6 +6,7 @@
 #include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingGecko.h"
 #include "DolphinNoGUI/SparkingHud.h"
+#include "DolphinNoGUI/SparkingLobby.h"
 #include "DolphinNoGUI/SparkingNet.h"
 #include "DolphinNoGUI/SparkingWatch.h"
 
@@ -20,6 +21,8 @@
 #include "Common/Crypto/SHA1.h"
 #include "Common/FileUtil.h"
 #include "Common/IOFile.h"
+#include "Common/IniFile.h"
+#include "Core/ConfigManager.h"
 #include "Common/NandPaths.h"
 #include "Common/StringUtil.h"
 #include "Common/TraversalClient.h"
@@ -189,6 +192,10 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
   m_local_link = options.link.empty() ? DetectLinkType() : options.link;
   Emit("link", Json().Add("type", m_local_link));
   SetHudNetplayStats(-2, static_cast<int>(Config::Get(Config::NETPLAY_BUFFER_SIZE)));
+  m_public = options.is_public && options.host_game_path.has_value();
+  m_mode = IsValidLobbyMode(options.mode) ? options.mode : "any";
+  m_region = options.region.empty() ? "NA" : options.region;
+  m_public_address = options.public_address;
   m_automap = options.automap;
   m_state_dir = options.state_dir;
   m_port_gecko = options.port_gecko;
@@ -251,7 +258,8 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
     }
 
     const Core::TitleDatabase title_db;
-    m_server->ChangeGame(game->GetSyncIdentifier(), game->GetNetPlayName(title_db));
+    m_host_game_name = game->GetNetPlayName(title_db);
+    m_server->ChangeGame(game->GetSyncIdentifier(), m_host_game_name);
 
     const std::string network_mode = Config::Get(Config::NETPLAY_NETWORK_MODE);
     m_server->SetHostInputAuthority(network_mode == "hostinputauthority" ||
@@ -320,6 +328,12 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
 
 void NetPlaySession::Shutdown()
 {
+  if (m_index)
+  {
+    m_index->Remove();  // take the lobby off the public list first
+    m_index.reset();
+    m_index_added = false;
+  }
   // Same order as the Qt frontend: client first, then server.
   m_client.reset();
   m_server.reset();
@@ -336,6 +350,11 @@ void NetPlaySession::Pump()
     BroadcastBattleState();
   if (m_server && m_rebroadcast_save.exchange(false))
     BroadcastSaveCheck();
+  if (m_server)
+  {
+    ApplyModeBattleState();
+    UpdatePublicListing();
+  }
   if (m_rebroadcast_link.exchange(false))
   {
     {
@@ -453,6 +472,7 @@ void NetPlaySession::EmitRoom()
         .AddRaw("addresses", JsonArray(addrs));
   }
 
+  room.Add("public", m_public).Add("mode", m_mode);
   std::string json = room.Str();
   if (json == m_last_room_json)
     return;
@@ -639,6 +659,8 @@ void NetPlaySession::OnGameEnded()
 
   m_game_running = false;
   m_got_stop_request = false;
+  if (m_index && m_index_added)
+    m_index->SetInGame(false);
   m_players_dirty = true;
   Emit("game_stopped");
 }
@@ -650,6 +672,8 @@ void NetPlaySession::OnGameEnded()
 void NetPlaySession::BootGame(const std::string& filename,
                               std::unique_ptr<BootSessionData> boot_session_data)
 {
+  if (m_index && m_index_added)
+    m_index->SetInGame(true);
   m_got_stop_request = false;
   m_game_running = true;
   m_pending_boot = BootParameters::GenerateFromFile(
@@ -1309,6 +1333,118 @@ std::string NetPlaySession::LinkOf(NetPlay::PlayerId pid)
   std::lock_guard lk(m_links_mutex);
   const auto it = m_links.find(pid);
   return it == m_links.end() ? std::string("unknown") : it->second;
+}
+
+int NetPlaySession::PlayerCount()
+{
+  return m_client ? static_cast<int>(m_client->GetPlayers().size()) : 0;
+}
+
+int NetPlaySession::LocalGcPort()
+{
+  if (!m_client)
+    return 0;
+  const auto& pad_map = m_client->GetPadMapping();
+  for (int i = 0; i < 4; ++i)
+  {
+    if (pad_map[i] == m_client->GetLocalPlayerId())
+      return i + 1;
+  }
+  return 0;
+}
+
+void NetPlaySession::UpdatePublicListing()
+{
+  if (!m_public || !m_server || m_index_failed)
+    return;
+
+  if (!m_index_added)
+  {
+    // What others use to join: the traversal room code, or (direct hosting) an address.
+    std::string server_id;
+    if (m_use_traversal)
+    {
+      if (!Common::g_TraversalClient ||
+          Common::g_TraversalClient->GetState() != Common::TraversalClient::State::Connected)
+      {
+        return;  // try again on the next pump
+      }
+      const auto host_id = Common::g_TraversalClient->GetHostID();
+      server_id.assign(host_id.begin(), host_id.end());
+    }
+    else
+    {
+      server_id = m_public_address;
+      if (server_id.empty())
+      {
+        m_index_failed = true;
+        Emit("public", Json().Add("listed", false).Add("error", "no_public_address"));
+        return;
+      }
+    }
+
+    ::NetPlaySession listing;
+    listing.name = MakeLobbyName(m_mode, m_local_link, m_nickname);
+    listing.region = m_region;
+    listing.method = m_use_traversal ? "traversal" : "direct";
+    listing.server_id = server_id;
+    {
+      std::lock_guard lk(m_game_mutex);
+      listing.game_id = !m_current_game_name.empty() ? m_current_game_name :
+                        !m_host_game_name.empty()    ? m_host_game_name :
+                                                       "UNKNOWN";
+    }
+    listing.player_count = PlayerCount();
+    listing.port = m_server->GetPort();
+    listing.in_game = m_game_running;
+
+    m_index = std::make_unique<NetPlayIndex>();
+    if (!m_index->Add(listing))
+    {
+      m_index_failed = true;
+      Emit("public", Json().Add("listed", false).Add("error", m_index->GetLastError()));
+      m_index.reset();
+      return;
+    }
+    m_index->SetErrorCallback([] { Emit("public", Json().Add("listed", false).Add("error", "lost")); });
+    m_index_added = true;
+    Emit("public", Json()
+                       .Add("listed", true)
+                       .Add("mode", m_mode)
+                       .Add("region", m_region)
+                       .Add("name", listing.name));
+    return;
+  }
+
+  // Kept fresh by NetPlayIndex's own 5-second heartbeat.
+  m_index->SetPlayerCount(PlayerCount());
+  std::lock_guard lk(m_game_mutex);
+  if (!m_current_game_name.empty())
+    m_index->SetGame(m_current_game_name);
+}
+
+void NetPlaySession::ApplyModeBattleState()
+{
+  if (m_mode_state_applied || m_mode == "any" || m_state_dir.empty())
+    return;
+  const auto game = CurrentGame();
+  if (!game)
+    return;
+  m_mode_state_applied = true;
+  // [Sparking.Modes] in the game ini: Single = <state file>, Team = <state file>
+  std::string file;
+  for (const Common::IniFile& ini : {SConfig::LoadLocalGameIni(game->GetGameID(), game->GetRevision()),
+                                     SConfig::LoadDefaultGameIni(game->GetGameID(), game->GetRevision())})
+  {
+    const Common::IniFile::Section* section = ini.GetSection("Sparking.Modes");
+    if (section && section->Get(m_mode == "single" ? "Single" : "Team", &file) && !file.empty())
+      break;
+    file.clear();
+  }
+  if (file.empty())
+    return;
+  Emit("mode", Json().Add("mode", m_mode).Add("battle_state", file));
+  CmdBattleState(file);
 }
 
 }  // namespace Sparking

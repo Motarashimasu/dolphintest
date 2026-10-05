@@ -658,6 +658,7 @@ def main():
         check("host exits on stdin EOF", host.wait_for("exit")["code"] == 0)
         for inst in (host, joiner):
             inst.proc.wait(timeout=20)
+        lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         print("ALL PASSED")
     finally:
@@ -665,6 +666,174 @@ def main():
             if inst.proc.poll() is None:
                 inst.proc.kill()
         shutil.rmtree(work, ignore_errors=True)
+
+
+class FakeLobbyServer:
+    """Speaks the NetPlay index protocol (lobby.dolphin-emu.org) on localhost."""
+
+    def __init__(self):
+        import http.server
+        import urllib.parse
+        self.sessions = {}  # secret -> dict
+        self.next = 1
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                url = urllib.parse.urlparse(self.path)
+                q = {k: v[0] for k, v in urllib.parse.parse_qs(url.query).items()}
+                if url.path == "/v0/session/add":
+                    secret = f"s{outer.next}"
+                    outer.next += 1
+                    outer.sessions[secret] = {
+                        "name": q["name"], "region": q["region"], "game": q["game"],
+                        "password": q["password"] == "1", "method": q["method"],
+                        "server_id": q["server_id"], "in_game": q["in_game"] == "1",
+                        "port": int(q["port"]), "player_count": int(q["player_count"]),
+                        "version": q["version"]}
+                    body = {"status": "OK", "secret": secret}
+                elif url.path == "/v0/session/active":
+                    sess = outer.sessions.get(q.get("secret"))
+                    if sess:
+                        sess["player_count"] = int(q["player_count"])
+                        sess["in_game"] = q["in_game"] == "1"
+                        sess["game"] = q["game"]
+                    body = {"status": "OK" if sess else "BAD_SECRET"}
+                elif url.path == "/v0/session/remove":
+                    outer.sessions.pop(q.get("secret"), None)
+                    body = {"status": "OK"}
+                elif url.path == "/v0/list":
+                    out = []
+                    for sess in outer.sessions.values():
+                        if "version" in q and sess["version"] != q["version"]:
+                            continue
+                        if "password" in q and sess["password"] != (q["password"] == "1"):
+                            continue
+                        if "in_game" in q and sess["in_game"] != (q["in_game"] == "1"):
+                            continue
+                        out.append(sess)
+                    body = {"status": "OK", "sessions": out}
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                data = json.dumps(body).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def names(self):
+        return sorted(s["name"] for s in self.sessions.values())
+
+
+def lobby_check(exe, dol, work, game_id):
+    print("public lobbies + matchmaking (fake lobby server)")
+    server = FakeLobbyServer()
+    common = ["-p", "headless", "-v", "Null"]
+
+    def user(name, port):
+        d = os.path.join(work, "lobby-" + name)
+        os.makedirs(os.path.join(d, "Config"), exist_ok=True)
+        with open(os.path.join(d, "Config", "Dolphin.ini"), "w") as f:
+            f.write(f"[NetPlay]\nTraversalChoice = direct\nHostPort = {port}\n"
+                    f"IndexServer = {server.url}\nSyncSaves = False\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        return d
+
+    # Lobbies that must never show up: a regular Dolphin user, and a Sparking lobby on another
+    # build.
+    server.sessions["x1"] = {"name": "Bob's room", "region": "NA", "game": "Something (GXXE01)",
+                             "password": False, "method": "traversal", "server_id": "AAAAAAAA",
+                             "in_game": False, "port": 2626, "player_count": 1,
+                             "version": "whatever"}
+    # Lobby mode -> battle state: the game ini maps "Single" to a state file in --state-dir.
+    host_dir = user("host", 26281)
+    os.makedirs(os.path.join(host_dir, "GameSettings"), exist_ok=True)
+    with open(os.path.join(host_dir, "GameSettings", f"{game_id}.ini"), "w") as f:
+        f.write("[Sparking.Modes]\nSingle = single.sst\nTeam = team.sst\n")
+    host_states = os.path.join(work, "lobby-states")
+    os.makedirs(host_states, exist_ok=True)
+    with open(os.path.join(host_states, "single.sst"), "wb") as f:
+        f.write(b"fake state")
+    host = Instance("pub-host", [exe, *common, "-u", host_dir, "--state-dir", host_states,
+                                 "--netplay-host", dol,
+                                 "--netplay-direct", "--public", "--mode", "single",
+                                 "--region", "EU", "--public-address", "127.0.0.1",
+                                 "--link", "wired", "--nickname", "Goku"])
+    host.send("hello")
+    listed = host.wait_for("public", timeout=30)
+    check(f"host listed publicly {listed}", listed["listed"] is True)
+    version = next(iter(v["version"] for v in server.sessions.values()
+                        if v["name"].startswith("SPK1|")))
+    server.sessions["x2"] = dict(server.sessions["x1"], name="SPK1|single|wired|OtherBuild",
+                                 version=version + "-other")
+    check(f"lobby name carries mode + link + host {server.names()}",
+          "SPK1|single|wired|Goku" in server.names())
+    mode_ev = host.seen("mode")
+    bs = host.seen("battle_state", lambda e: e.get("name") == "single.sst")
+    check(f"single-mode lobby auto-selects the Single battle state {mode_ev}",
+          mode_ev["battle_state"] == "single.sst" and bs["active"] is True)
+    room = host.seen("room", lambda e: e.get("public") is True)
+    check(f"room event shows public + mode {room}", room["mode"] == "single")
+
+    def list_lobbies(*extra):
+        inst = Instance("list", [exe, "-u", user("list", 26282), "--list-lobbies", *extra])
+        ev = inst.wait_for("lobbies")
+        inst.proc.wait(timeout=20)
+        return ev["lobbies"]
+
+    lob = list_lobbies()
+    check(f"--list-lobbies: only Sparking lobbies of this build {[l['host'] for l in lob]}",
+          [l["host"] for l in lob] == ["Goku"])
+    g = lob[0]
+    check(f"lobby entry {g}",
+          g["mode"] == "single" and g["link"] == "wired" and g["region"] == "EU"
+          and g["players"] == 1 and g["joinable"] is True and g["join"] == "127.0.0.1:26281"
+          and "version" not in g)
+    check("--list-lobbies --mode team hides single lobbies", list_lobbies("--mode", "team") == [])
+    check("--list-lobbies --mode any shows them", len(list_lobbies("--mode", "any")) == 1)
+
+    finder = Instance("finder", [exe, *common, "-u", user("finder", 26283), "--netplay-find",
+                                 "single", "--netplay-game", dol, "--link", "wireless",
+                                 "--nickname", "Vegeta"])
+    finder.send("hello")
+    j = finder.wait_for("matchmaking", lambda e: e["state"] == "joining", timeout=30)
+    check(f"finder joins the open single lobby {j}", j["host"] == "Goku")
+    m = finder.wait_for("matchmaking", lambda e: e["state"] == "matched", timeout=30)
+    check(f"matched, on GameCube port {m['port']}", m["port"] == 2)
+    time.sleep(6)  # index heartbeat (5 s) updates the player count
+    lob = list_lobbies()
+    check(f"full lobby no longer joinable {[(l['players'], l['joinable']) for l in lob]}",
+          lob and lob[0]["players"] == 2 and lob[0]["joinable"] is False)
+
+    # Nobody hosting a team lobby: the finder hosts one and waits.
+    solo = Instance("finder2", [exe, *common, "-u", user("finder2", 26284), "--netplay-find",
+                                "team", "--netplay-game", dol, "--netplay-direct",
+                                "--public-address", "127.0.0.1", "--nickname", "Trunks"])
+    solo.send("hello")
+    hs = solo.wait_for("matchmaking", lambda e: e["state"] == "hosting", timeout=30)
+    check(f"no open team lobby -> hosts one {hs}", hs["mode"] == "team")
+    check("...listed publicly as a team lobby",
+          solo.wait_for("public", timeout=30)["listed"] is True
+          and any(n.startswith("SPK1|team|") and n.endswith("|Trunks") for n in server.names()))
+
+    for inst in (finder, solo, host):
+        inst.send("quit")
+        inst.wait_for("exit", timeout=30)
+        inst.proc.wait(timeout=20)
+    time.sleep(0.5)
+    check(f"lobbies removed from the server when hosts quit {server.names()}",
+          not any(n.startswith("SPK1|") and ("Goku" in n or "Trunks" in n) for n in server.names()))
+    server.httpd.shutdown()
 
 
 def discord_check(exe, dol):
