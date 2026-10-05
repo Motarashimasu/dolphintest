@@ -186,6 +186,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `hud_health on\|off` | any | Show/hide the health % in the corners |
 | `score reset` | any | Set the round score back to 0-0 |
 | `background_input on\|off` | any | Controllers work (`on`) or are ignored (`off`) while the game window isn't focused. The frontend turns it off while its in-game menu is open (`background_input` event confirms). |
+| `focus_game` | any | Brings the game window to the front with the keyboard focus (Windows). The frontend sends it when its in-game menu closes; `focus_game` event confirms. |
 | `poke <hex address> <hex value>` | solo | Debug: write a 32-bit word of game memory |
 | `peek <hex address>` | solo | Debug: read a 32-bit word of game memory |
 | `quit` | any | Stop any game and exit |

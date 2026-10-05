@@ -342,6 +342,8 @@ func _tour() -> void:
 	await shot("ingame_menu_offline")
 	await pick("resume", app._compact.list)
 	check("Back to the game closes it", not app.is_ingame_menu_open())
+	await wait_for("Back to the game hands the focus to Dolphin", func():
+		return "\n".join(Dolphin.log_lines).contains('"event":"focus_game"'), 5)
 	await pick("stop", play.list)
 	await wait_for("offline game stopped", func(): return app.top() != play, 20)
 	await wait_for("Dolphin exited (solo)", func(): return not Dolphin.is_running(), 10)

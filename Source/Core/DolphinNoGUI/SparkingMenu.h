@@ -22,4 +22,10 @@ void InitMenuButton(std::vector<std::string> buttons, int hold_ms);
 // (Host_UIBlocksControllerState), which closes Dolphin's input gate whatever the window focus.
 void SetPadBlocked(bool blocked);
 bool IsPadBlocked();
+
+// "focus_game": the frontend's in-game menu closed, so the game window should take the
+// keyboard/foreground back. Set from the command thread, consumed by the platform's main loop
+// (the thread that owns the window).
+void RequestGameFocus();
+bool TakeGameFocusRequest();
 }  // namespace Sparking

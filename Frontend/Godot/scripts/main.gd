@@ -473,9 +473,14 @@ func close_ingame_menu(back_to_game := true) -> void:
 	var t := top()
 	if t:
 		_apply_chrome(t)
-	# Minimising hands the focus back to the game window.
 	if back_to_game and Dolphin.is_running():
-		w.mode = Window.MODE_MINIMIZED
+		# Windows won't give the focus back by itself: Dolphin raises its own window (it can,
+		# while we're still the foreground app), then this one gets out of the way.
+		Dolphin.send("focus_game")
+		await get_tree().create_timer(0.12).timeout
+		if not _compact and Dolphin.is_running():
+			w.mode = Window.MODE_MINIMIZED
+			Dolphin.send("focus_game")   # in case minimising activated something else
 	elif not Dolphin.is_running():
 		w.mode = menu_window_mode()
 

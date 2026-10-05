@@ -15,6 +15,7 @@
 
 #include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingIO.h"
+#include "DolphinNoGUI/SparkingMenu.h"
 #include "VideoCommon/Present.h"
 #include "resource.h"
 
@@ -28,6 +29,7 @@ public:
   bool Init() override;
   void SetTitle(const std::string& string) override;
   void MainLoop() override;
+  void FocusGameWindow();
 
   WindowSystemInfo GetWindowSystemInfo() const override;
 
@@ -172,9 +174,48 @@ void PlatformWin32::MainLoop()
     ProcessEvents();
     UpdateWindowPosition();
     ReportWindowState();
+    if (Sparking::TakeGameFocusRequest())
+      FocusGameWindow();
 
     // TODO: Is this sleep appropriate?
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+}
+
+// Windows only lets the foreground app give the foreground away. At this point that's the
+// frontend (its in-game menu just closed), so join its input queue for the call: then the
+// foreground change is ours to make. If Windows still refuses, a synthetic Alt tap lifts the
+// foreground lock (the documented "last input" rule), then try once more.
+void PlatformWin32::FocusGameWindow()
+{
+  if (!m_hwnd)
+    return;
+  if (IsIconic(m_hwnd))
+    ShowWindow(m_hwnd, SW_RESTORE);
+  const HWND fg = GetForegroundWindow();
+  if (fg == m_hwnd)
+  {
+    SetFocus(m_hwnd);
+    return;
+  }
+  const DWORD self = GetCurrentThreadId();
+  const DWORD other = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+  const bool attached = other && other != self && AttachThreadInput(self, other, TRUE);
+  BringWindowToTop(m_hwnd);
+  bool ok = SetForegroundWindow(m_hwnd) != 0;
+  SetFocus(m_hwnd);
+  SetActiveWindow(m_hwnd);
+  if (attached)
+    AttachThreadInput(self, other, FALSE);
+  if (!ok || GetForegroundWindow() != m_hwnd)
+  {
+    INPUT alt[2] = {};
+    alt[0].type = alt[1].type = INPUT_KEYBOARD;
+    alt[0].ki.wVk = alt[1].ki.wVk = VK_MENU;
+    alt[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(2, alt, sizeof(INPUT));
+    SetForegroundWindow(m_hwnd);
+    SetFocus(m_hwnd);
   }
 }
 

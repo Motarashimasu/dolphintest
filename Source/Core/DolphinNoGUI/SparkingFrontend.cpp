@@ -352,6 +352,14 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     Emit("background_input", Json().Add("enabled", cmd.arg == "on"));
     return;
   }
+  // "focus_game": the in-game menu closed; bring the game window back to the front with the
+  // keyboard focus (Windows; elsewhere the window manager does it when the menu window goes).
+  if (cmd.name == "focus_game")
+  {
+    RequestGameFocus();
+    Emit("focus_game", Json());
+    return;
+  }
   if (cmd.name == "score")  // "score reset" = back to 0-0
   {
     if (cmd.arg != "reset")

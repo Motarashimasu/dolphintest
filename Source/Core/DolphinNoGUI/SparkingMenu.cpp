@@ -88,6 +88,18 @@ bool IsPadBlocked()
   return s_pad_blocked;
 }
 
+static std::atomic<bool> s_focus_request{false};
+
+void RequestGameFocus()
+{
+  s_focus_request = true;
+}
+
+bool TakeGameFocusRequest()
+{
+  return s_focus_request.exchange(false);
+}
+
 void InitMenuButton(std::vector<std::string> buttons, int hold_ms)
 {
   s_buttons = std::move(buttons);
