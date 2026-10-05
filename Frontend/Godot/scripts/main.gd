@@ -179,7 +179,7 @@ func _main_menu() -> Control:
 			"desc": "Renderer (OpenGL or Vulkan), resolution,\nand windowed or borderless.",
 			"action": func(): open("video_settings")},
 		{"label": "Options", "glyph": "O", "color": "#2ec4c4",
-			"desc": "Button layout, HD textures, aspect ratio,\nyour files and other preferences.",
+			"desc": "Aspect ratio, music, HUD, your files\nand other preferences.",
 			"action": func(): open("options")},
 		{"label": "Exit", "glyph": "X", "color": "#8a9bb0", "desc": "Close the collection.",
 			"action": quit_app},
@@ -198,8 +198,8 @@ func _game_menu() -> Control:
 			"desc": "Set up your controller for this game.",
 			"action": func(): open("controller_setup")},
 		{"label": "Modifications", "glyph": "M", "color": "#e8663d",
-			"desc": "Turn this game's Gecko codes on or off\nfor offline play.",
-			"action": open_checked.bind("modifications")},
+			"desc": "Graphics (Enhanced / Legacy), button prompts\n(GameCube / PlayStation / Xbox) and Gecko codes.",
+			"action": func(): push(_modifications_menu())},
 		{"label": "Tenkaichi Terminology", "glyph": "T", "color": "#ffd23f",
 			"desc": "What every mechanic and tech is called, what it does,\nand a demo of each. By the BT3 community.",
 			"action": func(): push(_terminology_menu())},
@@ -231,6 +231,22 @@ func _terminology_menu() -> Control:
 	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 		"desc": "Back to the game menu."})
 	return _menu("Terminology", items, "terminology")
+
+
+func _modifications_menu() -> Control:
+	return _menu("Modifications", [
+		{"label": "Graphics", "glyph": "G", "color": "#9b6be6",
+			"desc": func(): return "Enhanced (HD textures) or Legacy (original textures).\nNow: %s" % Settings.get_value("options", "graphics"),
+			"action": func(): push(load(SCREENS % "variant_picker").new().setup("graphics"))},
+		{"label": "Button Prompts", "glyph": "B", "color": "#3fa9f5",
+			"desc": func(): return "GameCube, PlayStation or Xbox buttons in the game.\nNow: %s" % Settings.option_name("buttons", Settings.get_value("options", "buttons")),
+			"action": func(): push(load(SCREENS % "variant_picker").new().setup("buttons"))},
+		{"label": "Gecko Codes", "glyph": "C", "color": "#e8663d",
+			"desc": "Turn this game's Gecko codes on or off\nfor offline play.",
+			"action": open_checked.bind("modifications")},
+		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
+			"desc": "Back to the game menu."},
+	], "game_menu")
 
 
 func _netplay_menu() -> Control:

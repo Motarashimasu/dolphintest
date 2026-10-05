@@ -28,7 +28,10 @@ func screen_music() -> String:
 
 
 func screen_desc() -> String:
-	return String(carousel.current().get("desc", "")) if carousel else ""
+	if not carousel:
+		return ""
+	var d = carousel.current().get("desc", "")
+	return String(d.call()) if d is Callable else String(d)   # a Callable = text that can change
 
 
 func on_enter() -> void:

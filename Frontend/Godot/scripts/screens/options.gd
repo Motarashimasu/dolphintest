@@ -8,12 +8,6 @@ func screen_title() -> String:
 
 func build_rows() -> Array:
 	return [
-		{"type": "choice", "key": "graphics", "label": "Graphics", "values": Settings.GRAPHICS,
-			"names": ["Enhanced (HD)", "Legacy (original)"], "value": Settings.get_value("options", "graphics"),
-			"desc": "Enhanced loads the HD texture pack; Legacy keeps the original\ntextures. F3 switches it during a game."},
-		{"type": "choice", "key": "buttons", "label": "Button prompts", "values": Settings.BUTTONS,
-			"value": Settings.get_value("options", "buttons"),
-			"desc": "Which buttons the game shows: GameCube (Vanilla),\nPlayStation or Xbox. F4 switches it during a game."},
 		{"type": "choice", "key": "aspect", "label": "Aspect ratio", "values": ["16:9", "4:3"],
 			"names": ["16:9 widescreen", "4:3"], "value": Settings.get_value("options", "aspect"),
 			"desc": "The picture's shape when the game starts.\nF5 switches it during a game."},

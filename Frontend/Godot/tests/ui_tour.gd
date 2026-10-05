@@ -287,6 +287,24 @@ func _tour() -> void:
 	check("music resumes after the game closes", Music.is_audible() and Music.current_track() == "game_menu")
 
 	await choose("Modifications")
+	check("modifications submenu", app._title.text == "Modifications")
+	await shot("modifications_menu")
+	await choose("Button Prompts")
+	var bp: Control = top()
+	check("button prompts named GameCube/PlayStation/Xbox", bp.list.row("Vanilla").get("label") == "GameCube"
+			and bp.list.row("PlayStation").get("label") == "PlayStation" and bp.list.row("Xbox").get("label") == "Xbox")
+	await pick("PlayStation", bp.list)
+	check("button prompts set to PlayStation", Settings.get_value("options", "buttons") == "PlayStation")
+	await shot("button_prompts")
+	await back()
+	check("menu shows the new choice", "Now: PlayStation" in app._desc.text)
+	await choose("Graphics")
+	var gr: Control = top()
+	await pick("Legacy", gr.list)
+	check("graphics set to Legacy", Settings.get_value("options", "graphics") == "Legacy")
+	await shot("graphics")
+	await back()
+	await choose("Gecko Codes")
 	var mods: Control = top()
 	await wait_for("gecko codes loaded", func(): return not mods._loading, 20)
 	check("gecko codes listed", mods._codes.size() > 0)
@@ -294,6 +312,7 @@ func _tour() -> void:
 	check("custom code selection on", Settings.get_value("gecko", "custom") == true)
 	await shot("modifications")
 	await back()
+	await back()   # Modifications -> game menu
 	# --- Controller presets: scroll with Right, applied to GCPadNew.ini [GCPad1] ----------
 	await choose("Controller Setup")
 	var pads: Control = top()

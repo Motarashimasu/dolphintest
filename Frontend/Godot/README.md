@@ -28,10 +28,12 @@ Main Menu   Budokai Tenkaichi 3 > Play Offline
                                                            Find  (Single / Team / Any > Lobby)
                                             Ranked Match (work in progress)
                                   Controller Setup (presets)
-                                  Modifications (Gecko codes, offline)
+                                  Modifications > Graphics (Enhanced / Legacy)
+                                                  Button Prompts (GameCube / PlayStation / Xbox)
+                                                  Gecko Codes (offline)
                                   Tenkaichi Terminology > Movement / Offense / ... / Tech
             Video Settings  (renderer, resolution, window size / borderless)
-            Options         (graphics, button prompts, aspect, HUD, FPS, Files & Folders)
+            Options         (aspect, music volume, HUD, FPS, Files & Folders)
             Exit
 ```
 
@@ -50,6 +52,11 @@ on top of the game:
 - Offline: graphics, button prompts, aspect ratio, and Stop Game.
 
 While that menu is open, the game ignores the controller. "Back to the game" (or B) returns.
+
+**Modifications.** Graphics and Button Prompts each list their options; the current one is
+marked "Selected". A choice is saved for the next game, and switched live if a game is running.
+The GameCube prompts are the `@Buttons/Vanilla` texture folder; the folder keeps that name, only
+the menus call it GameCube.
 
 **Controller Setup.** Scroll through presets with Left/Right. The one you pick is written into
 `SparkingData\user\Config\GCPadNew.ini` as `[GCPad1]` right away, and again before every

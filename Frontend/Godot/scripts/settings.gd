@@ -179,6 +179,13 @@ func list_gecko_args() -> PackedStringArray:
 		GAME["id"]])
 
 
+## How a texture option is shown: the "Vanilla" button folder is the GameCube prompts.
+func option_name(group: String, option: String) -> String:
+	if group == "buttons" and option == "Vanilla":
+		return "GameCube"
+	return option
+
+
 ## Dolphin's `textures` event reports the selection in lowercase; store the proper names.
 func remember_textures(selection: Dictionary) -> void:
 	for pair in [["graphics", GRAPHICS], ["buttons", BUTTONS]]:

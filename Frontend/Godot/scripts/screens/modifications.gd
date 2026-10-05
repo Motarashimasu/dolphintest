@@ -11,7 +11,7 @@ func screen_music() -> String:
 
 
 func screen_title() -> String:
-	return "Modifications"
+	return "Gecko Codes"
 
 
 func screen_desc() -> String:
@@ -60,7 +60,7 @@ func build_rows() -> Array:
 		rows.append({"type": "toggle", "key": "code:%d" % i, "label": name,
 			"value": (name in enabled) if custom else bool(c.get("default_enabled", false)),
 			"disabled": not custom, "desc": desc})
-	rows.append({"type": "action", "key": "back", "label": "Back", "desc": "Back to the game menu."})
+	rows.append({"type": "action", "key": "back", "label": "Back", "desc": "Back to Modifications."})
 	return rows
 
 
