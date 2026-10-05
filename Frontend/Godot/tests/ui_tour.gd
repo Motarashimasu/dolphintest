@@ -460,6 +460,15 @@ func _tour() -> void:
 	await wait_for("no-demo message", func(): return "No demo" in df._status.text, 10)
 	await shot("terminology_long_name")
 	await back()
+	var cats: Control = top().carousel
+	for i in cats.items.size():
+		if cats.current().get("label") == "Contributors":
+			break
+		await press("ui_down")
+	await frames(10)
+	check("contributors list the writers", "Tecchan" in app._desc.text
+			and "Creatful_Chaos" in app._desc.text)
+	await shot("terminology_contributors")
 	await back()   # categories -> game menu
 	await back()   # game menu -> main menu
 	await choose("Video Settings")

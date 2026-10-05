@@ -5,6 +5,7 @@
 //  - score bar in the centre of the game's top HUD: "[icon] Name1  W1 | W2  Name2 [icon]" (names
 //    shrunk/cut so the bar never reaches the health bars; icons = wired/Wi-Fi in netplay),
 //    health % in the window's top corners, and (netplay) ping ± jitter + buffer at the bottom.
+//  - a see-through "PRE-ALPHA" watermark in the window's bottom-right corner, always shown.
 // Driven by the memory watcher's "p1_health_pct" / "p2_health_pct" watches (see SparkingWatch.h).
 //
 // Round counting (for now, from health alone):

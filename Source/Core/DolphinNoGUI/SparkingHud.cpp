@@ -158,7 +158,7 @@ struct Box
 //  - names: under each health bar, P1 left / P2 right          (relative to the game picture)
 //  - health %: the very top corners of the window              (relative to the window)
 //  - ping + buffer: bottom centre of the window, netplay only  (relative to the window)
-void Draw()
+void DrawHud()
 {
   const bool hud = s_enabled, health = s_health_enabled;
   if (!hud && !health)
@@ -313,6 +313,29 @@ std::string ScoreJson()
   for (const auto& [name, wins] : s_wins)
     json.Add(name, wins);
   return json.Str();
+}
+
+// "PRE-ALPHA" in the bottom-right corner of the window, see-through, always (test builds).
+void DrawWatermark()
+{
+  ImDrawList* dl = ImGui::GetForegroundDrawList();
+  ImFont* font = ImGui::GetFont();
+  const ImVec2 screen = ImGui::GetIO().DisplaySize;
+  if (screen.x <= 0 || screen.y <= 0)
+    return;
+  static const std::string text = "PRE-ALPHA";
+  const float size = std::max(14.0f, screen.y * 0.035f);
+  const ImVec2 t = TextSize(font, size, text);
+  const float margin = screen.y * 0.02f;
+  const ImVec2 pos(screen.x - t.x - margin, screen.y - t.y - margin);
+  dl->AddText(font, size, ImVec2(pos.x + 1.5f, pos.y + 1.5f), IM_COL32(0, 0, 0, 70), text.c_str());
+  dl->AddText(font, size, pos, IM_COL32(255, 255, 255, 90), text.c_str());
+}
+
+void Draw()
+{
+  DrawHud();
+  DrawWatermark();
 }
 }  // namespace
 

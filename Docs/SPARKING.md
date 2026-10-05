@@ -49,6 +49,9 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--link auto\|wired\|wireless\|unknown` | `auto` | Netplay: this PC's connection type, shown to everyone. `auto` asks the OS which adapter reaches the internet (Ethernet = wired, Wi-Fi/mobile = wireless, VPN/tunnel/virtual adapter = `virtual`). Only this PC's own adapter is visible: a cable into a Wi-Fi extender/powerline/mesh node reads as wired. Self-reported, so not for anything ranked. |
 | `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: a score bar in the centre of BT3's top HUD (`Name1  W1 | W2  Name2`; long names shrink, then get cut with "..."), and in netplay the ping + pad buffer at the bottom centre. Needs the game's `p1/p2_health_pct` watches. The Godot frontend turns it on for netplay and leaves it to the player offline. |
 | `--hud-health on\|off` | `on` | Health % in the window's top corners (separate from `--hud`). |
+
+Pre-alpha builds always draw a see-through "PRE-ALPHA" watermark in the game window's bottom-right corner.
+
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
