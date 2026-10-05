@@ -201,45 +201,63 @@ void Draw()
   const ImU32 white = IM_COL32(240, 240, 245, 255);
   const ImU32 panel = IM_COL32(12, 12, 22, 120);  // score panel: see-through
 
-  // Score (blue box): "W1  W2" on a small dark panel in the centre of the top HUD.
+  // Score bar, centre of the game's top HUD: "[icon] Name1  W1 | W2  Name2 [icon]" on one
+  // see-through panel. The scores stay centred; names grow outwards, shrink to fit their slot and
+  // get cut with "..." so the bar never reaches the health bars. Netplay: wired/Wi-Fi icons on the
+  // outer ends.
   {
-    Box box = in_pic(0.479f, 0.0f, 0.521f, 0.058f);
-    const std::string w1 = fmt::format("{}", wins[0]), w2 = fmt::format("{}", wins[1]);
-    const float size = box.h() * 0.82f;
-    const float gap = box.h() * 0.45f;
-    const float text_w = TextSize(font, size, w1).x + gap + TextSize(font, size, w2).x;
-    const float pad = box.h() * 0.35f;
-    if (text_w + 2 * pad > box.w())  // grow for double digits
-    {
-      const float c = (box.x0 + box.x1) / 2, half = text_w / 2 + pad;
-      box.x0 = c - half;
-      box.x1 = c + half;
-    }
-    dl->AddRectFilled(ImVec2(box.x0, box.y0), ImVec2(box.x1, box.y1), panel, box.h() * 0.2f);
-    const float c = (box.x0 + box.x1) / 2;
-    const float ty = box.y0 + (box.h() - size) / 2;
-    const ImU32 score = IM_COL32(90, 225, 150, 255);
-    dl->AddText(font, size, ImVec2(c - gap / 2 - TextSize(font, size, w1).x, ty), score, w1.c_str());
-    dl->AddText(font, size, ImVec2(c + gap / 2, ty), score, w2.c_str());
-  }
+    const Box row = in_pic(0.479f, 0.0f, 0.521f, 0.050f);
+    const float h = row.h();
+    const float c = (row.x0 + row.x1) / 2;
+    const float score_size = h * 0.82f, name_size = h * 0.62f;
+    const ImU32 score_col = IM_COL32(90, 225, 150, 255);
+    const ImU32 sep_col = IM_COL32(200, 200, 210, 200);
 
-  // Names (red boxes): P1 left-aligned on the left, P2 right-aligned on the right.
-  for (int i = 0; i < 2; ++i)
-  {
-    const Box box = i == 0 ? in_pic(0.141f, 0.124f, 0.262f, 0.178f) :
-                             in_pic(0.762f, 0.124f, 0.865f, 0.178f);
-    // Netplay: wired/Wi-Fi icon on the outer side (P1: before the name, P2: after it).
-    const float icon = links[i].empty() ? 0.0f : box.h();
-    const float icon_gap = icon > 0 ? box.h() * 0.2f : 0.0f;
-    const float text_w = box.w() - icon - icon_gap;
-    const auto [name, size] = FitName(font, DisplayName(sides[i], i + 1), text_w, box.h());
-    const float w = TextSize(font, size, name).x;
-    const float x = i == 0 ? box.x0 + icon + icon_gap : box.x1 - icon - icon_gap - w;
-    OutlinedText(dl, font, size, ImVec2(x, box.y0 + (box.h() - size) / 2), white, name);
-    if (icon > 0)
+    // Centre: "W1 | W2"
+    const std::string w1 = fmt::format("{}", wins[0]), w2 = fmt::format("{}", wins[1]);
+    const float sep_gap = h * 0.28f;
+    const float bar_w = TextSize(font, score_size, "|").x;
+    const float half_center =
+        std::max(TextSize(font, score_size, w1).x, TextSize(font, score_size, w2).x) + sep_gap +
+        bar_w / 2;
+
+    // Name slots: at most 12% of the picture width each, outside the scores.
+    const float name_gap = h * 0.45f;
+    const float icon = links[0].empty() && links[1].empty() ? 0.0f : h * 0.8f;
+    const float icon_gap = icon > 0 ? h * 0.2f : 0.0f;
+    const float slot = pic.w() * 0.12f;
+    std::array<std::pair<std::string, float>, 2> names;
+    std::array<float, 2> name_w{};
+    for (int i = 0; i < 2; ++i)
     {
-      const float icon_x = i == 0 ? box.x0 + icon / 2 : box.x1 - icon / 2;
-      DrawLinkIcon(dl, font, ImVec2(icon_x, box.y0 + box.h() / 2), icon, links[i]);
+      names[i] = FitName(font, DisplayName(sides[i], i + 1), slot, name_size);
+      name_w[i] = TextSize(font, names[i].second, names[i].first).x;
+    }
+    const float left_w = name_gap + name_w[0] + (links[0].empty() ? 0 : icon_gap + icon);
+    const float right_w = name_gap + name_w[1] + (links[1].empty() ? 0 : icon_gap + icon);
+    const float pad = h * 0.35f;
+    const float x0 = c - half_center - left_w - pad, x1 = c + half_center + right_w + pad;
+    dl->AddRectFilled(ImVec2(x0, row.y0), ImVec2(x1, row.y1), panel, h * 0.2f);
+
+    const float score_y = row.y0 + (h - score_size) / 2;
+    dl->AddText(font, score_size,
+                ImVec2(c - bar_w / 2 - sep_gap - TextSize(font, score_size, w1).x, score_y),
+                score_col, w1.c_str());
+    dl->AddText(font, score_size, ImVec2(c - bar_w / 2, score_y), sep_col, "|");
+    dl->AddText(font, score_size, ImVec2(c + bar_w / 2 + sep_gap, score_y), score_col, w2.c_str());
+
+    for (int i = 0; i < 2; ++i)
+    {
+      const auto& [name, size] = names[i];
+      const float y = row.y0 + (h - size) / 2;
+      const float x = i == 0 ? c - half_center - name_gap - name_w[0] : c + half_center + name_gap;
+      dl->AddText(font, size, ImVec2(x, y), white, name.c_str());
+      if (!links[i].empty())
+      {
+        const float icon_x =
+            i == 0 ? x - icon_gap - icon / 2 : x + name_w[1] + icon_gap + icon / 2;
+        DrawLinkIcon(dl, font, ImVec2(icon_x, row.y0 + h / 2), icon, links[i]);
+      }
     }
   }
 

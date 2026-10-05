@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Temporary in-game HUD (drawn by Dolphin itself, until the Godot overlay exists):
-//  - round score in the centre of the game's top HUD, player names under each health bar
-//    (P1 left, P2 right, shrunk/cut so they never run into the HUD), health % in the window's top
-//    corners, and (netplay) ping + buffer at the bottom centre.
+//  - score bar in the centre of the game's top HUD: "[icon] Name1  W1 | W2  Name2 [icon]" (names
+//    shrunk/cut so the bar never reaches the health bars; icons = wired/Wi-Fi in netplay),
+//    health % in the window's top corners, and (netplay) ping ± jitter + buffer at the bottom.
 // Driven by the memory watcher's "p1_health_pct" / "p2_health_pct" watches (see SparkingWatch.h).
 //
 // Round counting (for now, from health alone):
