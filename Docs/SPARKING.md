@@ -381,6 +381,26 @@ Still to check:
 - that both addresses are the same in every new battle (MEM1, so likely);
 - time-out wins (no one reaches 0): compare the two percentages when the timer ends.
 
+## Memory notes for other games (not active yet)
+
+Addresses found so far for games that don't have a `[Sparking.Watch]` section yet. When a game
+is added to the collection, confirm them, then move them into that game's ini.
+
+**BT2 — Budokai Tenkaichi 2 / Sparking! NEO** (game ID not recorded yet; check the title bar or
+`game_info.game_id` when it runs)
+
+| Name | Address | Type | Status |
+|---|---|---|---|
+| `p2_health?` | `0x804ECECC` | f32 | **Unconfirmed.** Found by memory search; changed 1428.37 → 493.13 as P2 took damage. Not 0-100 like BT3's percentages, so probably P2's raw HP (float) or a health-bar value. To check: note P2's max at full health, then see whether value / max × 100 tracks the bar. P1's value is likely a few bytes before it. |
+
+When confirmed, a BT2 ini would look like (percentage computed by the game or not):
+```ini
+[Sparking.Watch]
+p2_health = f32 0x804ECECC
+```
+The round counter / HUD currently need `p1_health_pct` / `p2_health_pct` in 0-100; for a raw-HP
+game they'll need a "max" (e.g. `p2_health_max`) or an equivalent percentage address.
+
 ## Controllers
 
 With `--pads gc` (default) the game sees GameCube controllers only; Wii Remotes are off. The
