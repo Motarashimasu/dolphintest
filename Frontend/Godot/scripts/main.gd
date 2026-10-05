@@ -41,6 +41,9 @@ func _ready() -> void:
 	if tour < 0 and not "--no-splash" in user_args:
 		_show_splash()
 	push(_main_menu())
+	if "--pad-check" in user_args:
+		add_child(load("res://tests/pad_check.gd").new())
+		return
 	if tour >= 0 and tour + 1 < user_args.size():
 		# Automated test: tests/ui_tour.gd drives the menus (see tests/run_ui_tour.py).
 		var t: Node = load("res://tests/ui_tour.gd").new()
@@ -306,7 +309,7 @@ func _input(event: InputEvent) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	# Controllers deliver events even when this window is in the background (game running).
-	if not get_window().has_focus() and not ignore_focus:
+	if not get_window().has_focus() and not ignore_focus and Dolphin.is_running():
 		return
 	if _splash:
 		if event.is_pressed() and not event.is_echo() and not event is InputEventMouseMotion:
@@ -572,4 +575,9 @@ func _hint(key: String, color: Color, text: String) -> Control:
 func _toggle_log() -> void:
 	_log_panel.visible = not _log_panel.visible
 	if _log_panel.visible:
-		_log_text.text = "Dolphin events (F12 to close)\n" + "\n".join(Dolphin.log_lines)
+		var pads := PackedStringArray()
+		for id in Input.get_connected_joypads():
+			pads.append("%d: %s" % [id, Input.get_joy_name(id)])
+		_log_text.text = "Controllers: %s\nWindow focused: %s\nController presses:\n  %s\n\nDolphin events (F12 to close)\n%s" % [
+			", ".join(pads) if not pads.is_empty() else "none", get_window().has_focus(),
+			"\n  ".join(Pad.press_log) if not Pad.press_log.is_empty() else "(none yet)", "\n".join(Dolphin.log_lines)]

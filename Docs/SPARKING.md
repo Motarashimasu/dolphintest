@@ -37,6 +37,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--list-gecko <GAMEID>[:<rev>]` | | Print every Gecko code Dolphin knows for the game (`gecko_codes` event), then exit. Starts no game. |
 | `--textures <Group>=<Option>` (repeatable) | none | Texture variant to load, i.e. folder `@<Group>/<Option>` in the game's texture pack. Turns custom textures on. See *Texture variants*. |
 | `--textures-dir <dir>` | `<user>/Load/Textures` | Texture library folder (holds `<GAMEID>/` folders), shared by every profile. |
+| `--input-test` | | Controller tester: prints the input devices Dolphin sees (`devices` event, again on every change) and every button/axis pressed or released (`input` events: `device`, `input`, `pressed`), with Dolphin's own names, until `quit` / stdin closes. The Godot controller config editor binds buttons with it. Starts no game. |
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
 | `--public` | off | Host: list the lobby on Dolphin's lobby server (browser + matchmaking). Name on the server: `SPK1\|<mode>\|<link>\|<nickname>`. |
 | `--mode single\|team\|any` | `any` | Host: lobby mode, shown in the browser; `single`/`team` also auto-select that battle state from the game ini's `[Sparking.Modes]`. |

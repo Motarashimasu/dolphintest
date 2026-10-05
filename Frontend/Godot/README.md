@@ -96,8 +96,14 @@ game. It's used offline and in netplay.
   matches, it leaves the mapping alone.
 - Built-in presets: Xbox (your current mapping) and PlayStation 4/5 (the same layout through
   SDL; their device names aren't confirmed yet).
-- Add your own: "Save current mapping as", or drop Dolphin GameCube pad profiles (`.ini`) into
-  `SparkingData\controllers`.
+- **Create New Config / Edit This Config:** pick a GameCube button, press A, then press the
+  button you want for it. The selection then moves to the next one.
+  - The strip at the top shows live what the menus see and what Dolphin sees from your
+    controller. If Dolphin sees nothing, the game won't either.
+  - Bindings use Dolphin's own names (from `DolphinNoGUI --input-test`). Configs are saved to
+    `SparkingData\controllers` and selected right away.
+- You can also drop Dolphin GameCube pad profiles (`.ini`) into `SparkingData\controllers`.
+- F12 shows the controllers Godot sees and each press it received (and whether it was ignored).
 - An optional `[Sparking]` section with `Match = word, word` tells Auto when to pick a preset.
 
 Gecko codes always come from the build's own `Sys\GameSettings\RDSPAF.ini`. Nothing is taken

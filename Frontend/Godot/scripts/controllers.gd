@@ -163,7 +163,11 @@ static func current_keys() -> Array:
 
 ## Saves the current [GCPad1] mapping as <SparkingData>/controllers/<name>.ini.
 static func save_current_as(name: String) -> String:
-	var keys := current_keys()
+	return save_preset(name, current_keys())
+
+
+## Writes <SparkingData>/controllers/<name>.ini ([Profile] = keys). Returns the saved name or "".
+static func save_preset(name: String, keys: Array) -> String:
 	if keys.is_empty():
 		return ""
 	var clean := name.strip_edges().validate_filename()

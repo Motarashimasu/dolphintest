@@ -241,6 +241,13 @@ func list_lobbies_args() -> PackedStringArray:
 	return a
 
 
+## Controller tester / binding helper (Dolphin's own device and input names).
+func input_test_args() -> PackedStringArray:
+	var a := PackedStringArray(["-u", data_path(get_value("paths", "profile")), "--input-test"])
+	a.append_array(_extra_args())
+	return a
+
+
 func list_gecko_args() -> PackedStringArray:
 	return PackedStringArray(["-u", data_path(get_value("paths", "profile")), "--list-gecko",
 		GAME["id"]])

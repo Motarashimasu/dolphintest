@@ -108,10 +108,14 @@ func choose(label: String) -> void:
 func pick(key: String, list: Control = null) -> void:
 	if list == null:
 		list = top().list if "list" in top() else top()._actions
+	var seen: Array = []
 	for i in list.rows.size() + 1:
 		if list.current_key() == key:
 			break
+		seen.append(list.current_key())
 		await press("ui_down")
+	if list.current_key() != key:
+		print("    visited: ", seen)
 	check("row '%s' reachable" % key, list.current_key() == key)
 	await press("ui_accept")
 	await frames(4)
@@ -367,9 +371,37 @@ func _tour() -> void:
 	check("preset '%s' written to GCPadNew.ini" % chosen, ("[GCPad1]\nDevice = " + want_dev) in gc)
 	check("other ports kept", "[GCPad2]" in gc)
 	await shot("controller_setup")
-	await type_into(pads.list, "save_as", "Tour Pad")
-	check("current mapping saved as preset", FileAccess.file_exists(
-			pads.Controllers.user_dir().path_join("Tour Pad.ini")) and Settings.get_value("controller", "preset") == "Tour Pad")
+	# Create a config by "pressing" buttons (Dolphin's input test, fed fake events here).
+	await pick("new", pads.list)
+	var ed: Control = top()
+	check("config editor open", app._title.text == "New Config")
+	await wait_for("Dolphin input test running", func(): return ed._helper_state == "ready", 20)
+	ed._on_helper({"event": "devices", "devices": [{"name": "XInput/0/Gamepad", "source": "XInput", "title": "Gamepad"}]})
+	await frames(5)
+	check("controller picked from Dolphin's list", ed._device == "XInput/0/Gamepad")
+	await pick("Buttons/A", ed.list)          # A on the row: wait for a press
+	check("listening for a press", ed._listen_key == "Buttons/A")
+	ed._on_helper({"event": "input", "device": "XInput/0/Gamepad", "input": "Button A", "pressed": true})
+	check("the press that started listening isn't bound", ed._keys.get("Buttons/A", "") == "")
+	await get_tree().create_timer(0.4).timeout
+	ed._on_helper({"event": "input", "device": "XInput/0/Gamepad", "input": "Button X", "pressed": true})
+	check("next press bound to A", ed._keys.get("Buttons/A") == "`Button X`")
+	check("moved on to B", ed.list.current_key() == "Buttons/B")
+	check("Dolphin sees shows the press", "Button X" in ed._live_dolphin.text)
+	await frames(40)
+	await pick("Triggers/L", ed.list)
+	await get_tree().create_timer(0.4).timeout
+	ed._on_helper({"event": "input", "device": "XInput/0/Gamepad", "input": "Trigger R", "pressed": true})
+	check("L bound, analog too", ed._keys.get("Triggers/L") == "`Trigger R`" and ed._keys.get("Triggers/L-Analog") == "`Trigger R`")
+	await frames(40)
+	await shot("controller_editor")
+	await type_into(ed.list, "name", "Tour Pad")
+	await pick("save", ed.list)
+	var saved := FileAccess.get_file_as_string(pads.Controllers.user_dir().path_join("Tour Pad.ini"))
+	check("config saved", "Device = XInput/0/Gamepad" in saved and "Buttons/A = `Button X`" in saved
+			and "Triggers/L-Analog = `Trigger R`" in saved)
+	check("saved config selected", Settings.get_value("controller", "preset") == "Tour Pad" and app.top() == pads)
+	await wait_for("helper Dolphin stopped", func(): return Dolphin._helpers.is_empty(), 10)
 	await back()
 
 	# --- Tenkaichi Terminology -------------------------------------------------------------

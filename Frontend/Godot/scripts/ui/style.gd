@@ -96,6 +96,9 @@ static func place(c: Control, x: float, y: float, w: float, h: float) -> Control
 ## Text field styled for the dark panels.
 static func line_edit(placeholder := "", max_len := 0) -> LineEdit:
 	var e := LineEdit.new()
+	# Only a click or the menu (OptionList) opens a text field: Godot 4.5+ would otherwise jump
+	# to it on any D-pad / arrow press when nothing has focus, hijacking the menu's own selection.
+	e.focus_mode = Control.FOCUS_CLICK
 	e.placeholder_text = placeholder
 	if max_len > 0:
 		e.max_length = max_len

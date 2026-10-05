@@ -17,6 +17,8 @@ const DPAD := {JOY_BUTTON_DPAD_UP: "up", JOY_BUTTON_DPAD_DOWN: "down",
 	JOY_BUTTON_DPAD_LEFT: "left", JOY_BUTTON_DPAD_RIGHT: "right"}
 
 var kind := "keyboard"
+var last_press := ""        # "Xbox Controller: A" - shown by the controller tester
+var press_log: PackedStringArray = []   # recent pad presses, for the F12 log
 var ignore_focus := false   # tests: accept input without window focus
 
 var _stick := ""            # direction the left stick is held in ("" = neutral)
@@ -73,14 +75,21 @@ func _set_kind(k: String) -> void:
 		kind_changed.emit(k)
 
 
+## Controllers also reach a background window: only ignore them while a game is running (so
+## presses meant for the game don't move the menus).
 func _focused() -> bool:
-	return ignore_focus or get_window().has_focus()
+	return ignore_focus or get_window().has_focus() or not Dolphin.is_running()
 
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
 		_set_kind("keyboard")
 	elif event is InputEventJoypadButton:
+		if event.pressed:
+			last_press = "%s: %s" % [Input.get_joy_name(event.device), button_name(event.button_index)]
+			press_log.append(last_press + ("" if _focused() else "  (ignored: game running, menu not focused)"))
+			if press_log.size() > 40:
+				press_log = press_log.slice(press_log.size() - 40)
 		if not _focused():
 			return
 		if event.pressed:
@@ -115,6 +124,16 @@ func _input(event: InputEvent) -> void:
 			_set_kind(_kind_of(event.device))
 			_start_hold(dir, event.device)
 			_send(dir)   # D-pad presses arrive as real events; stick presses we send
+
+
+static func button_name(b: int) -> String:
+	return {JOY_BUTTON_A: "A / Cross", JOY_BUTTON_B: "B / Circle", JOY_BUTTON_X: "X / Square",
+		JOY_BUTTON_Y: "Y / Triangle", JOY_BUTTON_BACK: "Back / Share", JOY_BUTTON_GUIDE: "Guide",
+		JOY_BUTTON_START: "Start / Options", JOY_BUTTON_LEFT_STICK: "Left stick click",
+		JOY_BUTTON_RIGHT_STICK: "Right stick click", JOY_BUTTON_LEFT_SHOULDER: "LB / L1",
+		JOY_BUTTON_RIGHT_SHOULDER: "RB / R1", JOY_BUTTON_DPAD_UP: "D-pad up",
+		JOY_BUTTON_DPAD_DOWN: "D-pad down", JOY_BUTTON_DPAD_LEFT: "D-pad left",
+		JOY_BUTTON_DPAD_RIGHT: "D-pad right"}.get(b, "button %d" % b)
 
 
 func _start_hold(dir: String, device: int) -> void:

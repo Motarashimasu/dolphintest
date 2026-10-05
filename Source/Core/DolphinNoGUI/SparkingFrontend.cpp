@@ -43,6 +43,7 @@
 #include "DolphinNoGUI/Platform.h"
 #include "Core/GeckoCode.h"
 #include "DolphinNoGUI/SparkingDisplay.h"
+#include "DolphinNoGUI/SparkingInput.h"
 #include "DolphinNoGUI/SparkingGecko.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "UICommon/GameFile.h"
@@ -738,6 +739,11 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .help("Sparking mode: custom texture folder (holds <GAMEID>/ folders) instead of "
             "<user>/Load/Textures, so several profiles can share one texture library");
+  parser.add_option("--input-test")
+      .dest("input_test")
+      .action("store_true")
+      .help("Controller tester: print the input devices and every button/axis pressed, as JSON, "
+            "until \"quit\"");
   parser.add_option("--list-textures")
       .dest("list_textures")
       .action("store")
@@ -855,7 +861,7 @@ static bool IsNetPlayMode(const optparse::Values& options)
 bool OwnsMain(const optparse::Values& options)
 {
   return IsNetPlayMode(options) || options.is_set("list_gecko") || options.is_set("list_textures") ||
-         options.is_set_by_user("list_lobbies");
+         options.is_set_by_user("list_lobbies") || options.is_set_by_user("input_test");
 }
 
 static int RunListGecko(const optparse::Values& options)
@@ -953,6 +959,8 @@ int RunMain(const optparse::Values& options, const FrontendHooks& hooks)
     return RunListTextures(options);
   if (options.is_set_by_user("list_lobbies"))
     return RunListLobbies(options);
+  if (options.is_set_by_user("input_test"))
+    return RunInputTest(options);
   return RunNetPlay(options, hooks);
 }
 
@@ -960,7 +968,8 @@ void InitFromOptions(const optparse::Values& options)
 {
   const bool netplay = IsNetPlayMode(options);
   const bool listing = options.is_set("list_gecko") || options.is_set("list_textures") ||
-                       options.is_set_by_user("list_lobbies");
+                       options.is_set_by_user("list_lobbies") ||
+                       options.is_set_by_user("input_test");
   SetEnabled(netplay || options.is_set_by_user("sparking") || listing);
   if (options.is_set("state_dir"))
     s_state_dir = static_cast<const char*>(options.get("state_dir"));

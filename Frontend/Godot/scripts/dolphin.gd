@@ -94,6 +94,7 @@ class Proc:
 
 var _session: Proc
 var _queries: Array = []  # [{proc, callback, events}]
+var _helpers: Array = []  # [{proc, callback}] long-running helpers (start_helper)
 var log_lines: PackedStringArray = []  # last events, for the debug panel
 
 
@@ -146,7 +147,46 @@ func query(args: PackedStringArray, callback: Callable) -> bool:
 	return true
 
 
+## Starts a helper Dolphin that runs alongside everything else (e.g. --input-test) and calls
+## `on_event(event: Dictionary)` for each event it prints (on the main thread), then
+## {"event": "process_exited"} when it ends. Returns a handle for stop_helper(), or null.
+func start_helper(args: PackedStringArray, on_event: Callable) -> Object:
+	var p := Proc.new()
+	if not p.start(Settings.dolphin_path(), args):
+		return null
+	p.send("hello")   # from now on, closing this frontend also ends the helper
+	_helpers.append({"proc": p, "callback": on_event})
+	return p
+
+
+func helper_send(handle: Object, line: String) -> void:
+	if handle:
+		handle.send(line)
+
+
+func stop_helper(handle: Object) -> void:
+	if handle == null:
+		return
+	var p: Proc = handle
+	p.send("quit")
+	await get_tree().create_timer(1.5).timeout
+	if OS.is_process_running(p.pid):
+		OS.kill(p.pid)
+
+
 func _process(_delta: float) -> void:
+	for h in _helpers.duplicate():
+		var hp: Proc = h["proc"]
+		for raw in hp.take_lines():
+			var data = JSON.parse_string(raw)
+			if data is Dictionary and h["callback"].is_valid():
+				h["callback"].call(data)
+		if hp.is_finished():
+			_helpers.erase(h)
+			hp.close()
+			if h["callback"].is_valid():
+				h["callback"].call({"event": "process_exited"})
+
 	if _session:
 		for raw in _session.take_lines():
 			var data = JSON.parse_string(raw)
@@ -181,6 +221,9 @@ func _log(line: String) -> void:
 
 
 func _exit_tree() -> void:
+	for h in _helpers:
+		if OS.is_process_running(h["proc"].pid):
+			OS.kill(h["proc"].pid)
 	if _session and OS.is_process_running(_session.pid):
 		_session.send("quit")
 		OS.delay_msec(300)

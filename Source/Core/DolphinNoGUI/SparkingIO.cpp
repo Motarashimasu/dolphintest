@@ -213,6 +213,30 @@ void Emit(std::string_view event, const Json& fields)
   std::fflush(stdout);
 }
 
+void StartLineReader(std::function<void(const Command&)> handler, std::function<void()> on_eof)
+{
+  std::thread([handler = std::move(handler), on_eof = std::move(on_eof)] {
+    RawLineReader reader;
+    std::string line;
+    bool attached = false;
+    while (reader.ReadLine(&line))
+    {
+      Command cmd = ParseCommand(line);
+      if (cmd.name.empty())
+        continue;
+      if (cmd.name == "hello")
+      {
+        attached = true;
+        Emit("hello", Json().Add("protocol", PROTOCOL_VERSION));
+        continue;
+      }
+      handler(cmd);
+    }
+    if (attached)
+      on_eof();
+  }).detach();
+}
+
 void StartCommandReader(std::function<void(const Command&)> handler)
 {
   std::thread([handler = std::move(handler)] {

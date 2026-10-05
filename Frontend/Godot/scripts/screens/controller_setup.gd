@@ -58,9 +58,10 @@ func build_rows() -> Array:
 			"value": choice, "desc": _preset_desc(sel)},
 		{"type": "info", "key": "device", "label": "Controller",
 			"value": sel.get("device", "from GCPadNew.ini: " + _current_device())},
-		{"type": "text", "key": "save_as", "label": "Save current mapping as", "value": "",
-			"placeholder": "preset name", "max_length": 40,
-			"desc": "Saves the mapping in GCPadNew.ini as a new preset\nin SparkingData\\controllers (e.g. after mapping it in Dolphin)."},
+		{"type": "action", "key": "edit", "label": "Edit This Config",
+			"desc": "Change the buttons of the config above by pressing them\n(saved as your own copy if it's a built-in one)."},
+		{"type": "action", "key": "new", "label": "Create New Config",
+			"desc": "Map every GameCube button yourself by pressing it on your controller.\nAlso shows live what the menus and Dolphin see from your controller."},
 		{"type": "action", "key": "folder", "label": "Open presets folder",
 			"desc": "SparkingData\\controllers: drop Dolphin GameCube pad profiles (.ini) here\nto add them to the list."},
 		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the game menu."},
@@ -110,6 +111,14 @@ func on_value(key: String, value: Variant) -> void:
 
 
 func on_press(key: String) -> void:
+	if key == "new" or key == "edit":
+		var base := {}
+		if key == "edit":
+			base = _resolved()
+			if base.is_empty():
+				base = {"name": "My Controller", "keys": Controllers.current_keys()}
+		app.push(load("res://scripts/screens/controller_editor.gd").new().setup(base))
+		return
 	if key == "folder":
 		DirAccess.make_dir_recursive_absolute(Controllers.user_dir())
 		OS.shell_open(Controllers.user_dir())

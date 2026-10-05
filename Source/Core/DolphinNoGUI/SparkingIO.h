@@ -75,4 +75,8 @@ struct Command
 // that, EOF on stdin (frontend exited/crashed) delivers a synthetic "eof" command.
 void StartCommandReader(std::function<void(const Command&)> handler);
 
+// Like StartCommandReader, but for modes without a running core: `handler` is called directly on
+// the reader thread, and `on_eof` when stdin closes after a "hello".
+void StartLineReader(std::function<void(const Command&)> handler, std::function<void()> on_eof);
+
 }  // namespace Sparking
