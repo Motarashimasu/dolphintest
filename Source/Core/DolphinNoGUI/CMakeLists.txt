@@ -97,7 +97,19 @@ endif()
 # Sparking: refresh Sys next to the executable on every build, also when only this target is
 # built (upstream only does it after building the Qt UI). Sys carries the game settings Sparking
 # reads at run time (Gecko codes, watches, the netplay battle states in [Sparking.Modes]).
-if (NOT APPLE AND NOT ANDROID)
+if (WIN32)
+  # Windows only makes symlinks in Developer Mode, and can't replace an existing Sys folder with
+  # one (the "Symlink failed ... Access is denied" warning): just copy the files that changed.
+  if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.26)
+    set(_sparking_copy copy_directory_if_different)
+  else()
+    set(_sparking_copy copy_directory)
+  endif()
+  add_custom_command(TARGET dolphin-nogui POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E ${_sparking_copy}
+      "${CMAKE_SOURCE_DIR}/Data/Sys" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Sys"
+  )
+elseif (NOT APPLE AND NOT ANDROID)
   add_custom_command(TARGET dolphin-nogui POST_BUILD
     COMMAND ${CMAKE_COMMAND}
       -Dtarget="${CMAKE_SOURCE_DIR}/Data/Sys"
