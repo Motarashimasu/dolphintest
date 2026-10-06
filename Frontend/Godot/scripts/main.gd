@@ -51,6 +51,14 @@ func _ready() -> void:
 	if tour < 0 and not "--no-splash" in user_args and not reloading:
 		_show_splash()
 	push(_main_menu())
+	var lang_check := user_args.find("--lang-check")
+	if lang_check >= 0 and not reloading:
+		Settings.use_file(user_args[lang_check + 1])
+		Pad.ignore_focus = true
+		ignore_focus = true
+		get_tree().root.add_child.call_deferred(load("res://tests/lang_check.gd").new())
+	elif lang_check >= 0:
+		ignore_focus = true
 	if "--pad-check" in user_args:
 		add_child(load("res://tests/pad_check.gd").new())
 		return
@@ -92,7 +100,8 @@ func choose_language(code: String, reopen := "") -> void:
 	Lang.set_language(code)
 	Engine.set_meta("skin_reload", true)
 	Engine.set_meta("reopen", reopen)
-	get_tree().reload_current_scene()
+	# After this input event is done (the scene it belongs to is about to go away).
+	get_tree().reload_current_scene.call_deferred()
 
 
 # --- Screen stack ------------------------------------------------------------------------
@@ -362,6 +371,12 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+## Marks the event as used, unless this screen just left the tree (e.g. a language switch).
+func _handled() -> void:
+	if is_inside_tree():
+		get_viewport().set_input_as_handled()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	# Controllers deliver events even when this window is in the background (game running).
 	if not get_window().has_focus() and not ignore_focus and Dolphin.is_running() and not _compact:
@@ -369,7 +384,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _splash:
 		if event.is_pressed() and not event.is_echo() and not event is InputEventMouseMotion:
 			_end_splash()
-		get_viewport().set_input_as_handled()
+		_handled()
 		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F9:
 		# After saving look/menu_look.tres or Backdrop.tscn in the editor: reload and rebuild.
@@ -377,29 +392,29 @@ func _unhandled_input(event: InputEvent) -> void:
 		Sfx.reload()
 		Engine.set_meta("skin_reload", true)
 		get_tree().reload_current_scene()
-		get_viewport().set_input_as_handled()
+		_handled()
 		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F12:
 		_toggle_log()
-		get_viewport().set_input_as_handled()
+		_handled()
 		return
 	if _compact:
 		if _compact.has_method("handle_input") and _compact.handle_input(event):
-			get_viewport().set_input_as_handled()
+			_handled()
 		elif event.is_action_pressed("ui_cancel"):
 			Sfx.play("back")
 			close_ingame_menu()
-			get_viewport().set_input_as_handled()
+			_handled()
 		return
 	var t := top()
 	if t == null:
 		return
 	if t.on_input(event):
-		get_viewport().set_input_as_handled()
+		_handled()
 	elif event.is_action_pressed("ui_cancel"):
 		Sfx.play("back")
 		t.on_back()
-		get_viewport().set_input_as_handled()
+		_handled()
 
 
 # --- Running game: window handling -------------------------------------------------------
