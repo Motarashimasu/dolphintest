@@ -460,9 +460,27 @@ their assigned slot. The frontend writes that profile from its controller settin
 ## Discord Rich Presence
 
 The frontend owns presence with its own Discord application ID (it runs across menus, the lobby
-and matches; Dolphin only runs during the latter two). Useful inputs: `game_info.title`,
-`room.code` (join secret for "Ask to Join"), `players` count/max, `battle_state.name`
-(Single/Team Battle), `game_started`/`game_stopped` for timestamps.
+and matches; a game session only exists during the latter two). It keeps one helper process
+running for that:
+
+```
+DolphinNoGUI --discord-presence <application id>
+```
+
+The helper talks to the Discord app on the same PC through the bundled discord-rpc library
+(local IPC only). After `hello` it takes:
+
+| Command | |
+|---|---|
+| `presence {json}` | Show this. Keys (all optional): `details`, `state`, `large_image`, `large_text`, `small_image`, `small_text` (image = an Art Asset key or an https URL), `start` / `end` (unix seconds: elapsed / remaining timer), `party_id`, `party_size`, `party_max`, `join_secret` (adds "Ask to Join"), `match_secret` |
+| `clear` | Show nothing |
+| `respond <user id> yes\|no\|ignore` | Answer an "Ask to Join" request |
+| `quit` | Clear and exit (closing stdin does the same) |
+
+Events: `ready` (`mode: "discord"`, `enabled`: false when built without Discord support),
+`connected` (`user_id`, `username`), `disconnected`, `presence`, `join` (`secret`: the joiner's
+side, after their request was accepted), `join_request` (`user_id`, `username`: the host's side),
+`error`.
 
 ## Godot side (sketch)
 

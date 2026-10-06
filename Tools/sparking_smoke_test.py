@@ -660,6 +660,7 @@ def main():
             inst.proc.wait(timeout=20)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
+        discord_presence_check(exe)
         print("ALL PASSED")
     finally:
         for inst in [v for v in locals().values() if isinstance(v, Instance)]:
@@ -834,6 +835,107 @@ def lobby_check(exe, dol, work, game_id):
     check(f"lobbies removed from the server when hosts quit {server.names()}",
           not any(n.startswith("SPK1|") and ("Goku" in n or "Trunks" in n) for n in server.names()))
     server.httpd.shutdown()
+
+
+def discord_presence_check(exe):
+    """--discord-presence: a fake Discord app on the IPC socket; the helper must hand-shake with
+    our application ID, report the user, forward presence (SET_ACTIVITY) and clear it on quit."""
+    import socket, struct, threading
+    print("discord: presence helper")
+    work = tempfile.mkdtemp(prefix="sparking-rpc-")
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(os.path.join(work, "discord-ipc-0"))
+    srv.listen(1)
+    srv.settimeout(10)
+    frames, lock = [], threading.Lock()
+
+    def serve():
+        try:
+            c, _ = srv.accept()
+        except socket.timeout:
+            return
+        c.settimeout(10)
+        def recv(n):
+            b = b""
+            while len(b) < n:
+                chunk = c.recv(n - len(b))
+                if not chunk:
+                    raise EOFError
+                b += chunk
+            return b
+        try:
+            while True:
+                op, ln = struct.unpack("<II", recv(8))
+                body = json.loads(recv(ln))
+                with lock:
+                    frames.append((op, body))
+                if op == 0:   # handshake -> READY
+                    ready = json.dumps({"cmd": "DISPATCH", "evt": "READY", "data": {"v": 1, "user": {
+                        "id": "1234", "username": "Tester", "discriminator": "0", "avatar": ""}}}).encode()
+                    c.sendall(struct.pack("<II", 1, len(ready)) + ready)
+                elif op == 1 and body.get("nonce"):
+                    reply = json.dumps({"cmd": body.get("cmd"), "nonce": body["nonce"], "data": {}, "evt": None}).encode()
+                    c.sendall(struct.pack("<II", 1, len(reply)) + reply)
+        except (EOFError, OSError, socket.timeout):
+            pass
+
+    t = threading.Thread(target=serve, daemon=True)
+    t.start()
+    env = dict(os.environ, XDG_RUNTIME_DIR=work, TMPDIR=work)
+    p = subprocess.Popen([exe, "--discord-presence", "111122223333444455"], env=env,
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    events = []
+    def read():
+        for line in p.stdout:
+            if line.startswith("[SPARKING] "):
+                events.append(json.loads(line[11:]))
+    threading.Thread(target=read, daemon=True).start()
+
+    def wait(pred, secs=8):
+        end = time.time() + secs
+        while time.time() < end:
+            if pred():
+                return True
+            time.sleep(0.05)
+        return False
+
+    def send(line):
+        p.stdin.write(line + "\n")
+        p.stdin.flush()
+
+    try:
+        send("hello")
+        check("helper ready", wait(lambda: any(e["event"] == "ready" and e.get("mode") == "discord" for e in events)))
+        check("handshake carries our application ID", wait(lambda: any(
+            op == 0 and b.get("client_id") == "111122223333444455" for op, b in list(frames))))
+        check("connected event names the Discord user", wait(lambda: any(
+            e["event"] == "connected" and e.get("username") == "Tester" for e in events)))
+        send('presence ' + json.dumps({"details": "Budokai Tenkaichi 3", "state": "Single Battle lobby",
+             "large_image": "bt3", "large_text": "BT3", "small_image": "single", "start": 1700000000,
+             "party_id": "room-ABCD", "party_size": 1, "party_max": 2, "join_secret": "join-ABCD"}))
+        def activity():
+            for op, b in list(frames):
+                if b.get("cmd") == "SET_ACTIVITY" and b.get("args", {}).get("activity"):
+                    return b["args"]["activity"]
+            return None
+        check("presence reaches Discord", wait(lambda: activity() is not None))
+        a = activity() or {}
+        check("details / state", a.get("details") == "Budokai Tenkaichi 3" and a.get("state") == "Single Battle lobby")
+        check("images", a.get("assets", {}).get("large_image") == "bt3" and a.get("assets", {}).get("small_image") == "single")
+        check("party and join secret", a.get("party", {}).get("size") == [1, 2] and a.get("secrets", {}).get("join") == "join-ABCD")
+        check("elapsed timer", a.get("timestamps", {}).get("start") == 1700000000)
+        send("presence {broken")
+        check("bad presence is refused", wait(lambda: any(e["event"] == "error" and e.get("code") == "bad_argument" for e in events)))
+        n = len(frames)
+        send("quit")
+        p.wait(timeout=10)
+        check("quits cleanly", p.returncode == 0)
+        check("presence cleared on quit", any(b.get("cmd") == "SET_ACTIVITY" and not b.get("args", {}).get("activity")
+                                              for op, b in frames[n - 1:]))
+    finally:
+        if p.poll() is None:
+            p.kill()
+        srv.close()
 
 
 def discord_check(exe, dol):

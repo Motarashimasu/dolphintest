@@ -41,6 +41,7 @@ func _ready() -> void:
 		get_window().mode = menu_window_mode()
 	_build_backdrop()
 	Dolphin.event.connect(_on_dolphin_event)
+	Presence.joined_from_discord.connect(_on_discord_join)
 	Pad.kind_changed.connect(func(_k): _refresh_hints())
 	var user_args := OS.get_cmdline_user_args()
 	var tour := user_args.find("--ui-tour")
@@ -384,6 +385,16 @@ func _on_dolphin_event(name: String, data: Dictionary) -> void:
 			show_window()
 		"menu_request":
 			open_ingame_menu()
+
+
+## "Ask to Join" accepted in Discord: open that lobby (unless something is already running).
+func _on_discord_join(target: String) -> void:
+	show_window()
+	if Dolphin.is_running():
+		toast("Leave the current lobby or game first, then join from Discord again.", 4.0)
+		return
+	var lobby: Control = load(SCREENS % "lobby").new()
+	push(lobby.setup("join", Settings.join_args(target), "any"))
 
 
 ## Brings the menus back (after a game): in the player's chosen display mode.

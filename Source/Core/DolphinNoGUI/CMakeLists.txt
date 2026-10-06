@@ -11,6 +11,8 @@ add_executable(dolphin-nogui
   SparkingGecko.h
   SparkingIO.cpp
   SparkingIO.h
+  SparkingDiscord.cpp
+  SparkingDiscord.h
   SparkingInput.cpp
   SparkingInput.h
   SparkingLobby.cpp
@@ -88,6 +90,8 @@ endif()
 
 if(USE_DISCORD_PRESENCE)
   target_compile_definitions(dolphin-nogui PRIVATE -DUSE_DISCORD_PRESENCE)
+  # Sparking: --discord-presence talks to discord-rpc directly.
+  target_link_libraries(dolphin-nogui PRIVATE discord-rpc)
 endif()
 
 # Sparking: refresh Sys next to the executable on every build, also when only this target is

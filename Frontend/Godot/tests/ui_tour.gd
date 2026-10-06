@@ -434,7 +434,8 @@ func _tour() -> void:
 	check("config saved", "Device = XInput/0/Gamepad" in saved and "Buttons/A = `Button X`" in saved
 			and "Triggers/L-Analog = `Trigger R`" in saved)
 	check("saved config selected", Settings.get_value("controller", "preset") == "Tour Pad" and app.top() == pads)
-	await wait_for("helper Dolphin stopped", func(): return Dolphin._helpers.is_empty(), 10)
+	await wait_for("helper Dolphin stopped", func():
+		return Dolphin._helpers.all(func(h): return h["proc"] == Presence._helper), 10)
 	await back()
 
 	# --- Tenkaichi Terminology -------------------------------------------------------------

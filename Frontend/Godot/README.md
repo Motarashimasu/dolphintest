@@ -142,6 +142,16 @@ tutorial open it on A.
 The menus take controller and keyboard only: the mouse is hidden and ignored, so it can't
 steal the selection.
 
+**Discord status.** With the Discord app running, your profile shows what you're doing: in the
+menus, playing offline, waiting in a Single/Team Battle lobby (1 of 2), or "vs <opponent>" in a
+netplay match, with a timer. A public lobby you host also gets **Ask to Join**: a friend presses
+it in Discord and their launcher opens your lobby (the request is accepted automatically, the
+lobby is public anyway). Private lobbies never show a way in.
+- Application ID and image names: `data/discord.json` (cover = large image, logo = small icon).
+- Options > Discord status turns it off.
+- `scripts/presence.gd` decides what's shown; Dolphin-Sparking's `--discord-presence` helper sends
+  it to Discord.
+
 **Splash.** `splash/splash.png` is shown in two places: as Godot's boot splash while the
 engine starts, then for 2 s over the menu before fading out. Any button skips it. It's blank
 (black) for now: replace that file, keeping the name, with your own image. 1920×1080 works

@@ -52,6 +52,7 @@
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/TextureCacheBase.h"
 #include "DolphinNoGUI/SparkingNetPlay.h"
+#include "DolphinNoGUI/SparkingDiscord.h"
 #include "DolphinNoGUI/SparkingHud.h"
 #include "DolphinNoGUI/SparkingLobby.h"
 #include "DolphinNoGUI/SparkingMenu.h"
@@ -750,6 +751,12 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .help("Sparking mode: custom texture folder (holds <GAMEID>/ folders) instead of "
             "<user>/Load/Textures, so several profiles can share one texture library");
+  parser.add_option("--discord-presence")
+      .dest("discord_presence")
+      .action("store")
+      .metavar("APP_ID")
+      .help("Discord Rich Presence helper for the frontend: shows what it sends (\"presence "
+            "{json}\") under this Discord application, until \"quit\"");
   parser.add_option("--input-test")
       .dest("input_test")
       .action("store_true")
@@ -872,7 +879,8 @@ static bool IsNetPlayMode(const optparse::Values& options)
 bool OwnsMain(const optparse::Values& options)
 {
   return IsNetPlayMode(options) || options.is_set("list_gecko") || options.is_set("list_textures") ||
-         options.is_set_by_user("list_lobbies") || options.is_set_by_user("input_test");
+         options.is_set_by_user("list_lobbies") || options.is_set_by_user("input_test") ||
+         options.is_set("discord_presence");
 }
 
 static int RunListGecko(const optparse::Values& options)
@@ -972,6 +980,8 @@ int RunMain(const optparse::Values& options, const FrontendHooks& hooks)
     return RunListLobbies(options);
   if (options.is_set_by_user("input_test"))
     return RunInputTest(options);
+  if (options.is_set("discord_presence"))
+    return RunDiscordPresence(options);
   return RunNetPlay(options, hooks);
 }
 
@@ -980,7 +990,8 @@ void InitFromOptions(const optparse::Values& options)
   const bool netplay = IsNetPlayMode(options);
   const bool listing = options.is_set("list_gecko") || options.is_set("list_textures") ||
                        options.is_set_by_user("list_lobbies") ||
-                       options.is_set_by_user("input_test");
+                       options.is_set_by_user("input_test") ||
+                       options.is_set("discord_presence");
   SetEnabled(netplay || options.is_set_by_user("sparking") || listing);
   if (options.is_set("state_dir"))
     s_state_dir = static_cast<const char*>(options.get("state_dir"));

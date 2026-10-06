@@ -25,6 +25,45 @@ FAKE_GAME = "Dragon Ball Z Budokai Tenkaichi 3 (RDSPAF)"
 COMMON = ["-p", "headless", "-v", "Null"]
 
 
+def fake_discord(path, activities):
+    """Minimal Discord IPC server: handshake -> READY, then record SET_ACTIVITY payloads."""
+    import socket
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(path)
+    srv.listen(4)
+    while True:
+        c, _ = srv.accept()
+        threading.Thread(target=_discord_client, args=(c, activities), daemon=True).start()
+
+
+def _discord_client(c, activities):
+    import struct
+    def recv(n):
+        b = b""
+        while len(b) < n:
+            chunk = c.recv(n - len(b))
+            if not chunk:
+                raise EOFError
+            b += chunk
+        return b
+    try:
+        while True:
+            op, ln = struct.unpack("<II", recv(8))
+            body = json.loads(recv(ln))
+            if op == 0:
+                ready = json.dumps({"cmd": "DISPATCH", "evt": "READY", "data": {"v": 1, "user": {
+                    "id": "42", "username": "TourTester", "discriminator": "0", "avatar": ""}}}).encode()
+                c.sendall(struct.pack("<II", 1, len(ready)) + ready)
+            elif op == 1:
+                if body.get("cmd") == "SET_ACTIVITY":
+                    activities.append(body.get("args", {}).get("activity"))
+                if body.get("nonce"):
+                    reply = json.dumps({"cmd": body.get("cmd"), "nonce": body["nonce"], "data": {}, "evt": None}).encode()
+                    c.sendall(struct.pack("<II", 1, len(reply)) + reply)
+    except (EOFError, OSError):
+        pass
+
+
 def main():
     exe = os.path.abspath(sys.argv[1])
     godot = os.path.abspath(sys.argv[2])
@@ -181,13 +220,22 @@ def main():
             },
         }, f)
 
+    # A fake Discord app (Rich Presence IPC on $XDG_RUNTIME_DIR/discord-ipc-0): records every
+    # activity the frontend's presence helper sends.
+    activities = []
+    discord_dir = os.path.join(work, "discord")
+    os.makedirs(discord_dir)
+    threading.Thread(target=fake_discord, args=(os.path.join(discord_dir, "discord-ipc-0"), activities),
+                     daemon=True).start()
+    env = dict(os.environ, XDG_RUNTIME_DIR=discord_dir)
+
     cmd = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", *os.environ.get("TOUR_WRAP", "").split(), godot, "--path",
            os.path.join(ROOT, "Frontend", "Godot"), "--rendering-driver", "opengl3",
            "--", "--ui-tour", config]
     # stdin must be open: on Linux, Godot 4.3's execute_with_pipe breaks the child's stdin when
     # the frontend's own fd 0 is closed (the pipe lands on fd 0 and gets closed in the child).
     tour = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, bufsize=1)
+                            stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
     joiner = None
     result = None
     # Watchdog: a broken script leaves Godot open; don't wait forever.
@@ -221,6 +269,25 @@ def main():
                 inst.proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 inst.proc.kill()
+    print("discord presence seen:")
+    for a in activities:
+        print("   ", json.dumps(a))
+    def seen(pred):
+        return any(pred(a) for a in activities if a)
+    discord_ok = True
+    for label, pred in [
+        ("menus", lambda a: a.get("details") == "In the menus" and a.get("assets", {}).get("large_image") == "sparklaunchpadbackround"
+            and a.get("assets", {}).get("small_image") == "dbzsparkhdbackup" and a.get("timestamps", {}).get("start")),
+        ("hosted public lobby with Ask to Join", lambda a: a.get("details") == "Single Battle lobby"
+            and str(a.get("secrets", {}).get("join", "")).startswith("spk1:") and a.get("party", {}).get("size")),
+        ("netplay match vs the other player", lambda a: a.get("details") == "Netplay: Single Battle" and a.get("state") == "vs Vegeta"),
+        ("offline game", lambda a: a.get("state") == "Playing offline"),
+    ]:
+        ok = seen(pred)
+        discord_ok = discord_ok and ok
+        print(f"  {'ok  ' if ok else 'FAIL'} discord presence: {label}")
+    if not discord_ok:
+        result = "discord_failed"
     print("godot exit code:", tour.returncode)
     print("screenshots:", out_dir)
     print("UI TOUR", "PASSED" if result == "ok" and tour.returncode == 0 else "FAILED")

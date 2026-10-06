@@ -28,6 +28,7 @@ Dolphin="*res://scripts/dolphin.gd"
 Demos="*res://scripts/demos.gd"
 Music="*res://scripts/music.gd"
 Pad="*res://scripts/pad.gd"
+Presence="*res://scripts/presence.gd"
 
 [display]
 

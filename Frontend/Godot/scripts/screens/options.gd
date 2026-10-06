@@ -23,6 +23,8 @@ func build_rows() -> Array:
 		{"type": "toggle", "key": "minimize_while_playing", "label": "Hide menu while playing",
 			"value": Settings.get_value("options", "minimize_while_playing"),
 			"desc": "Minimise this window while a game runs.\nHold Select in game for the in-game menu."},
+		{"type": "toggle", "key": "discord", "label": "Discord status", "value": Settings.get_value("options", "discord"),
+			"desc": "Show what you're doing on your Discord profile (menus, lobby, match).\nFriends can join a public lobby you host from there."},
 		{"type": "choice", "key": "profile", "label": "Profile", "values": ["user", "user2"],
 			"names": ["user (primary)", "user2 (secondary)"], "value": Settings.get_value("paths", "profile"),
 			"desc": "Primary and secondary user profiles for online play.\nOnly change to user2 for LAN testing."},
