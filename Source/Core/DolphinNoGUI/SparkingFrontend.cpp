@@ -193,12 +193,23 @@ bool EventMsgAlertHandler(const char* caption, const char* text, bool yes_no, Co
     severity = "critical";
   else if (style == Common::MsgType::Question)
     severity = "question";
+  // Yes/No alerts are answered "yes" (usually "try again?"). If the same one keeps coming back
+  // (e.g. a file that can't be written because the folder is read-only), answering "yes" forever
+  // would hang the boot: after a few attempts the answer is "no".
+  bool answer = true;
+  if (yes_no)
+  {
+    static std::mutex mutex;
+    static std::map<std::string, int> asked;
+    std::lock_guard lk(mutex);
+    answer = ++asked[text ? text : ""] <= 3;
+  }
   Emit("alert", Json()
                     .Add("severity", severity)
                     .Add("caption", caption ? caption : "")
                     .Add("text", text ? text : "")
-                    .Add("auto_answer", yes_no ? "yes" : "ok"));
-  return true;
+                    .Add("auto_answer", yes_no ? (answer ? "yes" : "no") : "ok"));
+  return answer;
 }
 
 // Every Dolphin on-screen message, as an "osd" event for the frontend's overlay. Repeated

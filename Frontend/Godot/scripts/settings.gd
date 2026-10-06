@@ -148,6 +148,26 @@ func needs_setup() -> bool:
 	return not get_value("paths", "setup_done") or not FileAccess.file_exists(get_value("paths", "game"))
 
 
+## Can the launcher and Dolphin write into SparkingData? Not when it's under C:\Program Files (or
+## another protected folder) without admin rights: Dolphin then can't create its Wii system
+## files, saves or settings, and the boot hangs. Checked by writing a small test file.
+func data_writable() -> bool:
+	if data_dir() == "" or not DirAccess.dir_exists_absolute(data_dir()):
+		return true   # reported as missing instead
+	for sub in ["", get_value("paths", "profile")]:
+		var dir := data_dir().path_join(sub)
+		if not DirAccess.dir_exists_absolute(dir) and DirAccess.make_dir_recursive_absolute(dir) != OK:
+			return false
+		var probe := dir.path_join(".write_test")
+		var f := FileAccess.open(probe, FileAccess.WRITE)
+		if f == null:
+			return false
+		f.store_string("ok")
+		f.close()
+		DirAccess.remove_absolute(probe)
+	return true
+
+
 func missing_paths() -> PackedStringArray:
 	var out := PackedStringArray()
 	if dolphin_path() == "" or not FileAccess.file_exists(dolphin_path()):

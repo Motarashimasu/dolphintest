@@ -72,10 +72,27 @@ func _ready() -> void:
 	Engine.set_meta("reopen", "")
 	if reopen != "":
 		open(reopen)   # e.g. Options, after switching the language
-	if not Lang.chosen():
+	if not Settings.data_writable():
+		push(_read_only_screen())
+	elif not Lang.chosen():
 		push(_language_menu(true))
 	elif Settings.needs_setup():
 		push(load(SCREENS % "setup").new())
+
+
+## SparkingData can't be written (installed under Program Files...): nothing would be saved and
+## Dolphin would hang at boot. Say so plainly instead.
+func _read_only_screen() -> Control:
+	var where := Settings.data_dir().replace("/", "\\")
+	var s := _menu("Can't save here", [
+		{"label": "Exit", "glyph": "X", "color": "#e8663d",
+			"desc": tr("This folder is read-only for the launcher:\n%s\nMove the whole game folder somewhere like Documents or C:\\Games (not Program Files),\nor run the launcher as administrator.") % where,
+			"action": func(): get_tree().quit()},
+		{"label": "Continue anyway", "glyph": "C", "color": "#8a9bb0",
+			"desc": tr("Settings won't be saved and games may not start."),
+			"back": true},
+	])
+	return s
 
 
 ## First launch (and Options > Language): pick the menus' language. Each item speaks its own
@@ -222,6 +239,9 @@ func open(script_name: String) -> Control:
 
 ## Every launch goes through here: missing paths open the Setup screen instead.
 func require_setup() -> bool:
+	if not Settings.data_writable():
+		toast(tr("The game folder is read-only (Program Files?). Move it, or run as administrator."), 5.0)
+		return false
 	if Settings.is_configured():
 		return true
 	toast(tr("Missing: %s") % ", ".join(Settings.missing_paths()))
@@ -434,6 +454,11 @@ func _on_dolphin_event(name: String, data: Dictionary) -> void:
 			show_window()
 		"menu_request":
 			open_ingame_menu()
+		"alert":
+			# Dolphin's own warnings and errors (it answers them itself): show them here too.
+			if String(data.get("severity", "")) in ["warning", "critical"]:
+				var text := String(data.get("text", "")).split("\n")[0]
+				toast("Dolphin: " + text.left(160), 6.0)
 
 
 ## "Ask to Join" accepted in Discord: open that lobby (unless something is already running).

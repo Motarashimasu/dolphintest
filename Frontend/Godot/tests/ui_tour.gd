@@ -568,6 +568,14 @@ func _tour() -> void:
 	check("sound file from SparkingData\\sounds", Sfx.stream_for("select") is AudioStreamWAV)
 	check("empty sound slot is silent", Sfx.stream_for("player_leave") == null)
 
+	# A read-only game folder (installed under Program Files): explained instead of hanging.
+	check("this test's data folder is writable", Settings.data_writable())
+	app.push(app._read_only_screen())
+	await frames(5)
+	await shot("read_only_folder")
+	check("read-only screen offers Exit", top().carousel.current().get("label") == "Exit")
+	app.pop()
+
 	# Languages: the first-launch picker, then a few menus in Spanish and Italian.
 	TranslationServer.remove_translation(recorder)   # (Godot falls back to "en" for missing texts)
 	app.push(app._language_menu(true))
