@@ -17,7 +17,7 @@ func screen_title() -> String:
 
 
 func screen_desc() -> String:
-	return "Pick a controller preset with Left / Right.\nIt's used offline and in netplay."
+	return "Pick a controller preset with Left / Right.\nIt's used offline and on DRAGON NET."
 
 
 func on_enter() -> void:
@@ -43,7 +43,7 @@ func build_rows() -> Array:
 	_presets = Controllers.list()
 	var values: Array = [Controllers.AUTO, Controllers.KEEP]
 	var auto := Controllers.auto_pick()
-	var names: Array = ["Auto" + (" (%s)" % auto["name"] if not auto.is_empty() else " (no match: keep)"),
+	var names: Array = [tr("Auto (%s)") % auto["name"] if not auto.is_empty() else tr("Auto (no match: keep)"),
 		"Keep current mapping"]
 	for p in _presets:
 		values.append(p["name"])
@@ -57,7 +57,7 @@ func build_rows() -> Array:
 		{"type": "choice", "key": "preset", "label": "Preset", "values": values, "names": names,
 			"value": choice, "desc": _preset_desc(sel)},
 		{"type": "info", "key": "device", "label": "Controller",
-			"value": sel.get("device", "from GCPadNew.ini: " + _current_device())},
+			"value": sel.get("device", tr("from GCPadNew.ini: %s") % _current_device())},
 		{"type": "action", "key": "edit", "label": "Edit This Config",
 			"desc": "Change the buttons of the config above by pressing them\n(saved as your own copy if it's a built-in one)."},
 		{"type": "action", "key": "new", "label": "Create New Config",
@@ -77,10 +77,10 @@ func _current_device() -> String:
 
 func _preset_desc(p: Dictionary) -> String:
 	if p.is_empty():
-		return "Uses the mapping already in GCPadNew.ini (%s)." % _current_device()
+		return tr("Uses the mapping already in GCPadNew.ini (%s).") % _current_device()
 	var first := String(p.get("notes", ""))
 	if first == "":
-		first = "Controller: " + String(p["device"])
+		first = tr("Controller: %s") % String(p["device"])
 	return first
 
 
@@ -94,8 +94,8 @@ func on_value(key: String, value: Variant) -> void:
 			Settings.set_value("controller", "preset", value)
 			var p := _resolved()
 			if Controllers.apply(p):
-				app.toast("Controller: " + p["name"], 1.5)
-			list.update_row("device", {"value": p.get("device", "from GCPadNew.ini: " + _current_device())})
+				app.toast(tr("Controller: %s") % p["name"], 1.5)
+			list.update_row("device", {"value": p.get("device", tr("from GCPadNew.ini: %s") % _current_device())})
 			list.update_row("preset", {"desc": _preset_desc(p)})
 		"save_as":
 			if String(value) == "":
@@ -107,7 +107,7 @@ func on_value(key: String, value: Variant) -> void:
 				return
 			Settings.set_value("controller", "preset", saved)
 			list.set_rows(build_rows(), "preset")
-			app.toast("Saved preset: " + saved)
+			app.toast(tr("Saved preset: %s") % saved)
 
 
 func on_press(key: String) -> void:

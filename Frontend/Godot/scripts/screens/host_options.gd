@@ -22,7 +22,7 @@ func build_rows() -> Array:
 		{"type": "choice", "key": "mode", "label": "Mode", "values": ["single", "team"],
 			"names": ["Single Battle", "Team Battle"], "value": Settings.get_value("netplay", "mode"),
 			"desc": "Everyone boots straight into this mode when the match starts.\nShown in the Lobby Browser."},
-		{"type": "text", "key": "nickname", "label": "Netplay name", "max_length": 24,
+		{"type": "text", "key": "nickname", "label": "DRAGON NET name", "max_length": 24,
 			"value": Settings.get_value("player", "nickname"),
 			"desc": "The name other players see."},
 		{"type": "toggle", "key": "public", "label": "Appear in Lobby Browser",

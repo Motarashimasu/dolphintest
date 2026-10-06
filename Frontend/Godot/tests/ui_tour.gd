@@ -11,6 +11,7 @@ var app: Control
 var out_dir := ""
 var failures: PackedStringArray = []
 var shots := 0
+var recorder: Translation
 
 
 func _ready() -> void:
@@ -24,11 +25,17 @@ func _ready() -> void:
 		for key in cfg["settings"][section]:
 			Settings.set_value(section, key, cfg["settings"][section][key])
 	Music.rescan()
+	Lang.apply()
+	# Record every text the menus show (English run), to check the Spanish / Italian tables.
+	recorder = load("res://tests/string_recorder.gd").new()
+	recorder.locale = "en"
+	TranslationServer.add_translation(recorder)
 	_run.call_deferred()
 
 
 func _run() -> void:
 	await _tour()
+	_check_translations()
 	print("TOUR_RESULT ", "ok" if failures.is_empty() else "fail")
 	for f in failures:
 		print("TOUR_FAIL ", f)
@@ -40,6 +47,51 @@ func _run() -> void:
 		Dolphin.quit_session(1500)
 		await _wait(func(): return not Dolphin.is_running(), 5.0)
 	get_tree().quit(0 if failures.is_empty() else 1)
+
+
+## Every text shown during the (English) tour must be in the Spanish and Italian tables, unless
+## it has no words to translate (names, numbers, codes...).
+func _check_translations() -> void:
+	TranslationServer.remove_translation(recorder)
+	var seen: Array = recorder.seen.keys()
+	seen.sort()
+	var f := FileAccess.open(out_dir.path_join("strings_seen.json"), FileAccess.WRITE)
+	f.store_string(JSON.stringify(seen, "  "))
+	f.close()
+	var ignore: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/untranslated_ok.json"))["texts"]
+	# Terminology content comes from the community doc and stays in English.
+	var term_text := FileAccess.get_file_as_string("res://data/terminology.json")
+	for code in ["es", "it"]:
+		var table: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/translations/%s.json" % code))
+		# Text built from a translated template ("Pad buffer: 5" from "Pad buffer: %d") is fine.
+		var templates: Array[RegEx] = []
+		for k in table:
+			if "%s" in k or "%d" in k:
+				var rx := "(?s)^" + _regex_escape(k).replace("%s", ".*?").replace("%d", "-?\\d+") + "$"
+				templates.append(RegEx.create_from_string(rx))
+		var missing: Array = []
+		for s in seen:
+			if s in ignore or not RegEx.create_from_string("[A-Za-z]{2}").search(s):
+				continue
+			if JSON.stringify(s).trim_prefix("\"").trim_suffix("\"") in term_text:
+				continue
+			if s.begins_with("◀") or s.begins_with("★") or s.begins_with("[b]") or "   ·   " in s \
+					or RegEx.create_from_string("^\\d+ ms|^[A-Z]{2}$|Sparking Standard|^Tecbox layout").search(s):
+				continue   # composed from translated pieces
+			if templates.any(func(rx): return rx.search(s) != null):
+				continue
+			if String(table.get(s, "")) == "":
+				missing.append(s)
+		if not missing.is_empty():
+			print("    missing in %s.json: %s" % [code, JSON.stringify(missing)])
+		check("every text shown has a %s translation (%d missing)" % [code, missing.size()], missing.is_empty())
+
+
+func _regex_escape(t: String) -> String:
+	var out := ""
+	for ch in t:
+		out += ("\\" + ch) if ch in ".^$*+?()[]{}|\\" else ch
+	return out
 
 
 # --- helpers -----------------------------------------------------------------------------
@@ -204,8 +256,8 @@ func _tour() -> void:
 	await choose("Budokai Tenkaichi 3")
 	check("game menu", app._title.text == "Tenkaichi 3")
 	await shot("game_menu")
-	await choose("Netplay")
-	check("netplay menu", app._title.text == "Netplay")
+	await choose("DRAGON NET")
+	check("DRAGON NET menu", app._title.text == "DRAGON NET")
 	# Fast presses: rows must end up where the wheel says, whatever was still animating.
 	for i in 3:
 		await press("ui_down")
@@ -417,6 +469,7 @@ func _tour() -> void:
 	check("controller picked from Dolphin's list", ed._device == "XInput/0/Gamepad")
 	await pick("Buttons/A", ed.list)          # A on the row: wait for a press
 	check("listening for a press", ed._listen_key == "Buttons/A")
+	ed._listen_since = Time.get_ticks_msec()   # "right after": the frames above can take a while on a slow test machine
 	ed._on_helper({"event": "input", "device": "XInput/0/Gamepad", "input": "Button A", "pressed": true})
 	check("the press that started listening isn't bound", ed._keys.get("Buttons/A", "") == "")
 	await get_tree().create_timer(0.4).timeout
@@ -514,3 +567,32 @@ func _tour() -> void:
 		check("sound effect played: " + s, s in Sfx.played)
 	check("sound file from SparkingData\\sounds", Sfx.stream_for("select") is AudioStreamWAV)
 	check("empty sound slot is silent", Sfx.stream_for("player_leave") == null)
+
+	# Languages: the first-launch picker, then a few menus in Spanish and Italian.
+	TranslationServer.remove_translation(recorder)   # (Godot falls back to "en" for missing texts)
+	app.push(app._language_menu(true))
+	await frames(5)
+	await shot("language_picker")
+	check("language picker lists three", top().carousel.items.size() == 3)
+	app.pop()
+	for code in ["es", "it"]:
+		Lang.set_language(code)
+		app.push(app._main_menu())
+		await frames(5)
+		await shot("main_menu_" + code)
+		check("main menu in " + code, app._title.get_text() == "Main Menu" and app._title.label_settings != null)
+		app.push(app._game_menu())
+		await frames(5)
+		await shot("game_menu_" + code)
+		app.open("options")
+		await frames(5)
+		await shot("options_" + code)
+		app.pop()
+		app.open("host_options")
+		await frames(5)
+		await shot("host_options_" + code)
+		app.pop()
+		app.pop()
+		app.pop()
+	Lang.set_language("en")
+	check("the shown title is translated", TranslationServer.translate("Main Menu") == "Main Menu")

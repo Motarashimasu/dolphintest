@@ -11,7 +11,8 @@ Dolphin-Sparking build (`DolphinNoGUI.exe`) through its `[SPARKING]` stdin/stdou
    "controller paused while the menu is open" need the new `DolphinNoGUI.exe`.
 3. In Godot, use **Import** and pick `Frontend/Godot/project.godot`, then press **Run** (F5).
    - A newer Godot asks to convert the project once; say yes.
-4. The first time only, **Welcome** asks for your BT3 game file, netplay name and region.
+4. The first time only, the launcher asks for the menus' language (English, Español, Italiano),
+   then **Welcome** asks for your BT3 game file, DRAGON NET name and region.
 
 Dolphin-Sparking and SparkingData are found automatically: next to the launcher, or up to 4
 folders above it. In the development layout that's
@@ -43,7 +44,7 @@ itself (it's a separate program with its own files), so it ships beside it in th
 
 ```
 Main Menu   Budokai Tenkaichi 3 > Play Offline
-                                  Netplay > Lobby Browser
+                                  DRAGON NET > Lobby Browser
                                             Player Match > Host  (lobby options > Lobby)
                                                            Find  (Single / Team / Any > Lobby)
                                             Ranked Match (work in progress)
@@ -145,6 +146,15 @@ tutorial open it on A.
 
 The menus take controller and keyboard only: the mouse is hidden and ignored, so it can't
 steal the selection.
+
+**Languages.** English, Spanish and Italian. Picked at the first launch; Options > Language
+changes it any time. Netplay is called **DRAGON NET** in the menus and on Discord.
+- Every menu text is written in English in the scripts. The translations are
+  `data/translations/es.json` and `it.json`: `"English text": "translated text"`. Edit them in any
+  text editor; a missing or empty entry shows in English. Keep `%s` / `%d` in the same order.
+- Not translated: Tenkaichi Terminology (it comes from the community doc), Gecko code names,
+  player and controller names.
+- The UI tour records every text it shows and fails if one is missing from either table.
 
 **Sound effects.** Seven sounds, all empty for now (silent until you add them):
 

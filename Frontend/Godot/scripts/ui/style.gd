@@ -276,7 +276,7 @@ static func quality_color(q: String) -> Color:
 static func link_name(link: String) -> String:
 	match link:
 		"wired":
-			return "Wired"
+			return TranslationServer.translate("Wired")
 		"wireless":
 			return "Wi-Fi"
 		"virtual":
@@ -287,7 +287,7 @@ static func link_name(link: String) -> String:
 static func mode_name(mode: String) -> String:
 	match mode:
 		"single":
-			return "Single Battle"
+			return TranslationServer.translate("Single Battle")
 		"team":
-			return "Team Battle"
-	return "Any Mode"
+			return TranslationServer.translate("Team Battle")
+	return TranslationServer.translate("Any Mode")

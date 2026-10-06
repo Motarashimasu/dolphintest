@@ -23,7 +23,7 @@ func build_rows() -> Array:
 		{"type": "choice", "key": "region", "label": "Region", "values": Settings.REGIONS,
 			"names": Settings.REGION_NAMES, "value": Settings.get_value("player", "region"),
 			"desc": "Lobbies in your region are tried first."},
-		{"type": "text", "key": "nickname", "label": "Netplay name", "max_length": 24,
+		{"type": "text", "key": "nickname", "label": "DRAGON NET name", "max_length": 24,
 			"value": Settings.get_value("player", "nickname"), "desc": "The name other players see."},
 		{"type": "action", "key": "search", "label": "Search", "color": "#3fbf6b",
 			"desc": "Look for an open lobby. If none is free, a public lobby\nof this mode is opened for you and others can join it."},

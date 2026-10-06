@@ -68,7 +68,7 @@ func on_enter() -> void:
 	_build()
 	Dolphin.event.connect(_on_event)
 	_phase = "searching" if kind == "find" else "connecting"
-	_status = "Looking for a %s lobby..." % Style.mode_name(mode) if kind == "find" else "Connecting..."
+	_status = tr("Looking for a %s lobby...") % Style.mode_name(mode) if kind == "find" else "Connecting..."
 	if not Dolphin.launch(_args):
 		app.toast("Couldn't start Dolphin-Sparking (is the Dolphin folder next to the launcher?).")
 		app.pop.call_deferred()
@@ -151,7 +151,7 @@ func _refresh_info() -> void:
 		match _room.get("state", ""):
 			"ready":
 				if _room.get("type") == "traversal":
-					left = "Room code:  " + String(_room.get("code", ""))
+					left = tr("Room code:  %s") % String(_room.get("code", ""))
 				else:
 					var addrs: Array = _room.get("addresses", [])
 					var addr := String(addrs[0]) if not addrs.is_empty() else "?"
@@ -159,24 +159,24 @@ func _refresh_info() -> void:
 						addr += ":%d" % int(_room.get("port", 2626))
 					if Settings.get_value("netplay", "public_address") != "" and _room.get("public", false):
 						addr = "%s:%d" % [Settings.get_value("netplay", "public_address"), int(_room.get("port", 2626))]
-					left = "Address:  " + addr
+					left = tr("Address:  %s") % addr
 			"failed":
 				left = "Room code server unreachable"
 			"connecting":
 				left = "Getting a room code..."
 	if left == "":
 		left = _status if _phase in ["connecting", "searching"] else ("Hosting" if _role == "host" else "Joined lobby")
-	_info.text = left
+	_info.text = tr(left)
 	var right: Array = [Style.mode_name(mode)]
 	if _role == "host":
 		if _public.get("listed", false):
-			right.append("Public · " + String(_public.get("region", Settings.get_value("player", "region"))))
+			right.append(tr("Public · %s") % String(_public.get("region", Settings.get_value("player", "region"))))
 		elif _public.has("error"):
-			right.append("Not listed (lobby server)")
+			right.append(tr("Not listed (lobby server)"))
 		elif _room.get("public", false):
-			right.append("Public · listing...")
+			right.append(tr("Public · listing..."))
 		else:
-			right.append("Private")
+			right.append(tr("Private"))
 	_info_right.text = "   ·   ".join(right)
 
 
@@ -244,7 +244,7 @@ func _player_row(p: Dictionary) -> Control:
 	row.add_child(dot)
 	var status := String(p.get("status", "ok"))
 	if status != "ok" and status != "":
-		nl.text += "  (" + status.replace("_", " ") + ")"
+		nl.text += "  (" + tr(status.replace("_", " ")) + ")"
 	return row
 
 
@@ -258,7 +258,7 @@ func _action_rows(in_game_menu: bool) -> Array:
 	elif host:
 		rows.append({"type": "action", "key": "start", "label": "Start Match", "color": "#3fbf6b",
 			"disabled": _phase == "playing" or _players.size() < 2})
-	rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": "Press %s to type" % Pad.prompt("accept")["key"],
+	rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": tr("Press %s to type") % Pad.prompt("accept")["key"],
 		"max_length": 200})
 	if host:
 		rows.append({"type": "number", "key": "buffer", "label": "Pad buffer", "min": 1, "max": 20, "step": 1,
@@ -384,7 +384,7 @@ func _esc(s: Variant) -> String:
 
 
 func _system(text: String, color := "#cfe9ee") -> void:
-	_add_chat("[color=%s]%s[/color]" % [color, _esc(text)])
+	_add_chat("[color=%s]%s[/color]" % [color, _esc(tr(text))])
 
 
 func _add_chat(line: String) -> void:
@@ -419,7 +419,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 		"public":
 			_public = data
 			if data.has("error"):
-				_system("Couldn't list the lobby publicly (%s)." % data["error"], "#e8663d")
+				_system(tr("Couldn't list the lobby publicly (%s).") % data["error"], "#e8663d")
 		"players":
 			_players = data.get("players", [])
 			if _phase == "lobby":
@@ -427,10 +427,10 @@ func _on_event(name: String, data: Dictionary) -> void:
 					_status = "Ready to start" if _players.size() >= 2 else "Waiting for players..."
 		"player_joined":
 			Sfx.play("player_join")
-			_system("%s joined." % data.get("name", "?"))
+			_system(tr("%s joined.") % data.get("name", "?"))
 		"player_left":
 			Sfx.play("player_leave")
-			_system("%s left." % data.get("name", "?"))
+			_system(tr("%s left.") % data.get("name", "?"))
 		"chat":
 			if data.get("self", false):
 				_add_chat("[color=#f2b531][b]%s:[/b][/color] %s" % [_esc(data.get("from", "You")), _esc(data.get("text", ""))])
@@ -446,7 +446,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 		"buffer_changed":
 			var b := int(data.get("buffer", _buffer))
 			if b != _logged_buffer:
-				_system("Pad buffer: %d" % b)
+				_system(tr("Pad buffer: %d") % b)
 				_logged_buffer = b
 			_buffer = b
 		"battle_state":
@@ -469,9 +469,9 @@ func _on_event(name: String, data: Dictionary) -> void:
 			var parts: Array = []
 			for n in wins:
 				parts.append("%s %d" % [n, int(wins[n])])
-			_system("Round %d: %s wins.  (%s)" % [int(data.get("round", 0)), data.get("winner", "?"), " - ".join(parts)], "#f2b531")
+			_system(tr("Round %d: %s wins.  (%s)") % [int(data.get("round", 0)), data.get("winner", "?"), " - ".join(parts)], "#f2b531")
 		"desync":
-			_system("Desync detected at frame %s." % str(data.get("frame", "?")), "#e8663d")
+			_system(tr("Desync detected at frame %s.") % str(data.get("frame", "?")), "#e8663d")
 		"connection_lost":
 			_system("Connection lost.", "#e8663d")
 			app.toast("Connection lost")
@@ -500,12 +500,12 @@ func _on_matchmaking(d: Dictionary) -> void:
 	match String(d.get("state", "")):
 		"searching":
 			_phase = "searching"
-			_status = "Looking for a %s lobby..." % m
+			_status = tr("Looking for a %s lobby...") % m
 		"candidates":
-			_status = "Found %d open lobbies..." % int(d.get("count", 0)) if int(d.get("count", 0)) > 0 else "No open lobby found..."
+			_status = tr("Found %d open lobbies...") % int(d.get("count", 0)) if int(d.get("count", 0)) > 0 else "No open lobby found..."
 		"joining":
 			_phase = "searching"
-			_status = "Joining %s (%s, %s)..." % [d.get("host", "?"), d.get("region", "?"), Style.link_name(d.get("link", ""))]
+			_status = tr("Joining %s (%s, %s)...") % [d.get("host", "?"), d.get("region", "?"), Style.link_name(d.get("link", ""))]
 		"retry":
 			_phase = "searching"
 			_status = "That lobby didn't work out. Trying the next..."
@@ -513,11 +513,11 @@ func _on_matchmaking(d: Dictionary) -> void:
 			_role = ""
 			_room = {}
 		"hosting":
-			_status = "No open lobby: hosting a public %s lobby.\nWaiting for an opponent..." % m
-			_system("Hosting a public %s lobby; others searching will find it." % m)
+			_status = tr("No open lobby: hosting a public %s lobby.\nWaiting for an opponent...") % m
+			_system(tr("Hosting a public %s lobby; others searching will find it.") % m)
 		"matched":
 			_status = "Opponent found!"
-			_system("Opponent found! You're P%d." % int(d.get("port", 0)), "#3fbf6b")
+			_system(tr("Opponent found! You're P%d.") % int(d.get("port", 0)), "#3fbf6b")
 		"cancelled":
 			_status = "Search cancelled"
 		"lobby_server_unreachable":

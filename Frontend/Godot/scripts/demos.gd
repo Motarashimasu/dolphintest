@@ -325,7 +325,7 @@ func _on_image(result: int, code: int, _headers: PackedStringArray, body: Packed
 		demo_ready.emit(_current[0])
 	_busy = false
 	var left := _queue.size()
-	_set_status("" if left == 0 else "Downloading demos: %d left" % left)
+	_set_status("" if left == 0 else tr("Downloading demos: %d left") % left)
 	_next()
 
 

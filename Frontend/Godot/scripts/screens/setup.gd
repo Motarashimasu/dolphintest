@@ -15,21 +15,21 @@ func screen_title() -> String:
 
 
 func screen_desc() -> String:
-	return "One-time setup: pick your %s game file,\nyour netplay name and your region." % Settings.GAME["title"]
+	return tr("One-time setup: pick your %s game file,\nyour DRAGON NET name and your region.") % Settings.GAME["title"]
 
 
 func _file_text(path: String) -> String:
 	if path == "":
 		return "Not set"
-	return path.get_file() if FileAccess.file_exists(path) else "(missing) " + path.get_file()
+	return path.get_file() if FileAccess.file_exists(path) else tr("(missing) %s") % path.get_file()
 
 
 func build_rows() -> Array:
 	var rows: Array = [
 		{"type": "action", "key": "game", "label": "Game file",
 			"value": _file_text(Settings.get_value("paths", "game")),
-			"desc": "Your %s disc image (%s)." % [Settings.GAME["full_title"], Settings.GAME["id"]]},
-		{"type": "text", "key": "nickname", "label": "Netplay name",
+			"desc": tr("Your %s disc image (%s).") % [Settings.GAME["full_title"], Settings.GAME["id"]]},
+		{"type": "text", "key": "nickname", "label": "DRAGON NET name",
 			"value": Settings.get_value("player", "nickname"), "max_length": 24,
 			"desc": "The name other players see in lobbies and on the score bar."},
 		{"type": "choice", "key": "region", "label": "Region", "values": Settings.REGIONS,
@@ -82,7 +82,7 @@ func _set_path(path: String, key: String) -> void:
 func _finish() -> void:
 	var missing := Settings.missing_paths()
 	if not missing.is_empty():
-		app.toast("Still missing: " + ", ".join(missing))
+		app.toast(tr("Still missing: %s") % ", ".join(missing))
 		list.focus_key("game" if "game file" in missing else list.rows[list.rows.size() - 2]["key"])
 		return
 	Settings.set_value("paths", "setup_done", true)
@@ -92,7 +92,7 @@ func _finish() -> void:
 func on_back() -> void:
 	# Leaving early is fine; setup comes back next time until it's finished.
 	if not Settings.missing_paths().is_empty():
-		app.toast("Setup isn't finished: " + ", ".join(Settings.missing_paths()))
+		app.toast(tr("Setup isn't finished: %s") % ", ".join(Settings.missing_paths()))
 	else:
 		Settings.set_value("paths", "setup_done", true)
 	app.pop()

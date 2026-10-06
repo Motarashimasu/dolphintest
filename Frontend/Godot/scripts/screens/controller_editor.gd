@@ -104,7 +104,7 @@ func build_rows() -> Array:
 	]
 	for c in CONTROLS:
 		rows.append({"type": "action", "key": c[0], "label": c[1], "value": _text(_keys.get(c[0], "")),
-			"desc": "GameCube %s. Press %s, then the button you want for it." % [c[1], Pad.prompt("accept")["key"]]})
+			"desc": tr("GameCube %s. Press %s, then the button you want for it.") % [c[1], Pad.prompt("accept")["key"]]})
 	rows.append_array([
 		{"type": "text", "key": "name", "label": "Save as", "value": String(base.get("name", "")) if not base.get("builtin", false) else "",
 			"placeholder": "config name", "max_length": 40,
@@ -135,8 +135,8 @@ func _dolphin_text() -> String:
 
 func _refresh_live() -> void:
 	if _live_menu:
-		_live_menu.text = "Menu sees:  " + _menu_sees()
-		_live_dolphin.text = "Dolphin sees:  " + _dolphin_text()
+		_live_menu.text = tr("Menu sees:  %s") % _menu_sees()
+		_live_dolphin.text = tr("Dolphin sees:  %s") % _dolphin_text()
 
 
 ## The live readout stays above the list (it doesn't scroll away).
@@ -147,14 +147,14 @@ func list_rect() -> Rect2:
 func _process(delta: float) -> void:
 	if list == null:
 		return
-	if _live_menu and _live_menu.text != "Menu sees:  " + _menu_sees():
+	if _live_menu and _live_menu.text != tr("Menu sees:  %s") % _menu_sees():
 		_refresh_live()
 	if _listen_key != "":
 		_listen_left -= delta
 		if _listen_left <= 0.0:
 			_stop_listening("Nothing pressed.")
 		else:
-			list.update_row(_listen_key, {"value": "Press a button...  %d" % ceili(_listen_left)})
+			list.update_row(_listen_key, {"value": tr("Press a button...  %d") % ceili(_listen_left)})
 
 
 func _on_helper(e: Dictionary) -> void:
@@ -202,7 +202,7 @@ func _bind(dev: String, inp: String) -> void:
 			if _keys.get(c[0], "") != "":
 				any_bound = true
 		if any_bound and _device != "":
-			app.toast("That press came from another controller (%s)." % dev)
+			app.toast(tr("That press came from another controller (%s).") % dev)
 			return
 		_device = dev
 		list.update_row("device", {"value": dev})
@@ -225,7 +225,7 @@ func _bind(dev: String, inp: String) -> void:
 
 func _listen(key: String) -> void:
 	if _helper_state != "ready":
-		app.toast("Dolphin isn't reading controllers (%s)." % _dolphin_text())
+		app.toast(tr("Dolphin isn't reading controllers (%s).") % _dolphin_text())
 		return
 	_listen_key = key
 	_listen_since = Time.get_ticks_msec()
@@ -306,5 +306,5 @@ func _save() -> void:
 		return
 	Settings.set_value("controller", "preset", saved)
 	Controllers.apply(Controllers.find(saved))
-	app.toast("Saved and selected: " + saved)
+	app.toast(tr("Saved and selected: %s") % saved)
 	app.pop()

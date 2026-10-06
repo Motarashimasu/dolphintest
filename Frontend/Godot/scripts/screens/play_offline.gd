@@ -117,6 +117,6 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_aspect = String(data.get("mode", _aspect))
 			_refresh()
 		"error":
-			app.toast("Dolphin: " + String(data.get("code", "error")).replace("_", " "))
+			app.toast(tr("Dolphin: %s") % String(data.get("code", "error")).replace("_", " "))
 		"process_exited":
 			app.pop_to(func(s): return s != self)

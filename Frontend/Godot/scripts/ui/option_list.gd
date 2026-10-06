@@ -331,9 +331,9 @@ func _value_text(r: Dictionary) -> String:
 			var values: Array = r.get("values", [])
 			var names: Array = r.get("names", values)
 			var at := values.find(v)
-			return "◀   %s   ▶" % (String(names[at]) if at >= 0 and at < names.size() else str(v))
+			return "◀   %s   ▶" % (tr(String(names[at])) if at >= 0 and at < names.size() else tr(str(v)))
 		"toggle":
-			return "◀   %s   ▶" % (r.get("on_text", "On") if v else r.get("off_text", "Off"))
+			return "◀   %s   ▶" % tr(r.get("on_text", "On") if v else r.get("off_text", "Off"))
 		"number":
 			return "◀   %s   ▶" % str(v)
 		"text":

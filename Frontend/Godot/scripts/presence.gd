@@ -97,7 +97,7 @@ func _on_event(data: Dictionary) -> void:
 			Dolphin.helper_send(_helper, "respond %s yes" % String(data.get("user_id", "")))
 			var app := _app()
 			if app and app.has_method("toast"):
-				app.toast("%s is joining from Discord." % String(data.get("username", "Someone")))
+				app.toast(tr("%s is joining from Discord.") % String(data.get("username", "Someone")))
 		"process_exited":
 			_helper = null
 			connected = false
@@ -135,22 +135,22 @@ func current() -> Dictionary:
 		match String(lobby._phase):
 			"playing":
 				key = "match"
-				p["details"] = "Netplay: " + mode_name if lobby.mode != "any" else "Netplay match"
+				p["details"] = tr("DRAGON NET: %s") % mode_name if lobby.mode != "any" else tr("DRAGON NET match")
 				var me := String(Settings.get_value("player", "nickname"))
 				var others: Array = []
 				for pl in players:
 					var n := String(pl.get("name", ""))
 					if n != "" and n != me:
 						others.append(n)
-				p["state"] = "vs " + ", ".join(others) if not others.is_empty() else "Match in progress"
+				p["state"] = tr("vs %s") % ", ".join(others) if not others.is_empty() else tr("Match in progress")
 			"searching":
 				key = "searching"
-				p["details"] = "Netplay"
-				p["state"] = "Looking for a %s lobby" % mode_name if lobby.mode != "any" else "Looking for a lobby"
+				p["details"] = tr("DRAGON NET")
+				p["state"] = tr("Looking for a %s lobby") % mode_name if lobby.mode != "any" else tr("Looking for a lobby")
 			_:
 				key = "lobby"
-				p["details"] = ("%s lobby" % mode_name) if lobby.mode != "any" else "Netplay lobby"
-				p["state"] = "Waiting for players" if count < 2 else "In the lobby"
+				p["details"] = (tr("%s lobby") % mode_name) if lobby.mode != "any" else tr("DRAGON NET lobby")
+				p["state"] = tr("Waiting for players") if count < 2 else tr("In the lobby")
 				p["party_size"] = count
 				p["party_max"] = 2
 				var target := _join_target(lobby)
@@ -161,9 +161,9 @@ func current() -> Dictionary:
 	elif Dolphin.in_game:
 		key = "offline"
 		p["details"] = "Budokai Tenkaichi 3"
-		p["state"] = "Playing offline"
+		p["state"] = tr("Playing offline")
 	else:
-		p["details"] = "In the menus"
+		p["details"] = tr("In the menus")
 	if key != _phase_key:
 		_phase_key = key
 		_phase_start = int(Time.get_unix_time_from_system())

@@ -20,12 +20,15 @@ func build_rows() -> Array:
 		{"type": "toggle", "key": "hud_health", "label": "Health %", "value": Settings.get_value("options", "hud_health"),
 			"desc": "Both fighters' health as a percentage, in the top corners."},
 		{"type": "toggle", "key": "hud", "label": "Match HUD offline", "value": Settings.get_value("options", "hud"),
-			"desc": "Round score with player names on top of the game in offline play.\nNetplay matches always show it, with the connection info."},
+			"desc": "Round score with player names on top of the game in offline play.\nDRAGON NET matches always show it, with the connection info."},
 		{"type": "toggle", "key": "show_fps", "label": "FPS counter", "value": Settings.get_value("options", "show_fps"),
 			"desc": "Show frames per second in the top-left corner."},
 		{"type": "toggle", "key": "minimize_while_playing", "label": "Hide menu while playing",
 			"value": Settings.get_value("options", "minimize_while_playing"),
 			"desc": "Minimise this window while a game runs.\nHold Select in game for the in-game menu."},
+		{"type": "choice", "key": "language", "label": "Language", "values": Lang.LANGUAGES,
+			"names": Lang.LANGUAGES.map(func(c): return Lang.NAMES[c]), "value": Lang.current() if Lang.chosen() else "en",
+			"desc": "The menus' language. Changes right away."},
 		{"type": "toggle", "key": "discord", "label": "Discord status", "value": Settings.get_value("options", "discord"),
 			"desc": "Show what you're doing on your Discord profile (menus, lobby, match).\nFriends can join a public lobby you host from there."},
 		{"type": "choice", "key": "profile", "label": "Profile", "values": ["user", "user2"],
@@ -38,6 +41,9 @@ func build_rows() -> Array:
 func on_value(key: String, value: Variant) -> void:
 	if key == "profile":
 		Settings.set_value("paths", "profile", value)
+		return
+	if key == "language":
+		app.choose_language(String(value), "options")
 		return
 	Settings.set_value("options", key, value)
 	if key == "music_volume":

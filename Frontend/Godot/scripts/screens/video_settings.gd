@@ -14,7 +14,7 @@ func build_rows() -> Array:
 	var windows: Array = Settings.WINDOW_SIZES.duplicate()
 	var window_names: Array = []
 	for w in windows:
-		window_names.append("Window " + String(w).replace("x", " x "))
+		window_names.append(tr("Window %s") % String(w).replace("x", " x "))
 	windows.append("borderless")
 	window_names.append("Borderless fullscreen")
 	return [

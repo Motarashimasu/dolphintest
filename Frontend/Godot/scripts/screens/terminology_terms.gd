@@ -33,7 +33,7 @@ func screen_desc() -> String:
 func _desc(item: Dictionary) -> String:
 	var t := String(item.get("desc", ""))
 	if item.has("tutorial"):
-		t += "   (%s: watch the video tutorial)" % Pad.prompt("accept")["key"]
+		t += tr("   (%s: watch the video tutorial)") % Pad.prompt("accept")["key"]
 	return t
 
 
@@ -143,7 +143,7 @@ func _refresh_status() -> void:
 		"loading", "":
 			_status.text = "Downloading demo..."
 		"failed":
-			_status.text = "No demo yet.\n\n%s\n\nYou can also put a GIF named\n%s.gif\nin SparkingData\\terminology." % [Demos.status, Demos.slug(_term())]
+			_status.text = tr("No demo yet.\n\n%s\n\nYou can also put a GIF named\n%s.gif\nin SparkingData\\terminology.") % [Demos.status, Demos.slug(_term())]
 		_:
 			_status.text = "Downloading demo..." if Demos.listed(_term()) else "No demo for this one."
 

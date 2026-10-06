@@ -60,8 +60,39 @@ func _ready() -> void:
 		t.config_path = user_args[tour + 1]
 		add_child(t)
 		return
-	if Settings.needs_setup():
+	var reopen: String = Engine.get_meta("reopen", "")
+	Engine.set_meta("reopen", "")
+	if reopen != "":
+		open(reopen)   # e.g. Options, after switching the language
+	if not Lang.chosen():
+		push(_language_menu(true))
+	elif Settings.needs_setup():
 		push(load(SCREENS % "setup").new())
+
+
+## First launch (and Options > Language): pick the menus' language. Each item speaks its own
+## language, so it's readable whatever is set now.
+func _language_menu(first_launch := false) -> Control:
+	var items: Array = []
+	var desc := {
+		"en": "Menus in English.\nYou can change this later in Options.",
+		"es": "Menús en español.\nPuedes cambiarlo más tarde en Opciones.",
+		"it": "Menu in italiano.\nPuoi cambiarlo più tardi in Opzioni.",
+	}
+	for code in Lang.LANGUAGES:
+		items.append({"label": Lang.NAMES[code], "glyph": code.to_upper(), "color": "#f2b531",
+			"desc": desc[code], "action": func(): choose_language(code)})
+	var s := _menu("Language / Idioma / Lingua", items)
+	s.set_meta("first_launch", first_launch)
+	return s
+
+
+## Switches the language and rebuilds the menus in it (no splash), coming back to `reopen`.
+func choose_language(code: String, reopen := "") -> void:
+	Lang.set_language(code)
+	Engine.set_meta("skin_reload", true)
+	Engine.set_meta("reopen", reopen)
+	get_tree().reload_current_scene()
 
 
 # --- Screen stack ------------------------------------------------------------------------
@@ -184,7 +215,7 @@ func open(script_name: String) -> Control:
 func require_setup() -> bool:
 	if Settings.is_configured():
 		return true
-	toast("Missing: " + ", ".join(Settings.missing_paths()))
+	toast(tr("Missing: %s") % ", ".join(Settings.missing_paths()))
 	open("setup")   # only the missing parts can be fixed there
 	return false
 
@@ -198,7 +229,7 @@ func _menu(title: String, items: Array, music := "") -> Control:
 func _main_menu() -> Control:
 	return _menu("Main Menu", [
 		{"label": Settings.GAME["title"], "glyph": "3", "color": "#f2b531",
-			"desc": "%s.\nPlay offline or online, set up controllers and codes." % Settings.GAME["full_title"],
+			"desc": tr("%s.\nPlay offline or online, set up controllers and codes.") % Settings.GAME["full_title"],
 			"action": func(): push(_game_menu())},
 		{"label": "Video Settings", "glyph": "V", "color": "#9b6be6",
 			"desc": "Change your video settings here.",
@@ -216,7 +247,7 @@ func _game_menu() -> Control:
 		{"label": "Play Offline", "glyph": "P", "color": "#f2b531",
 			"desc": "Play on your own, with your own save data.\nSingle Battle, Team Battle, story mode: everything the game has.",
 			"action": open_checked.bind("play_offline")},
-		{"label": "Netplay", "glyph": "N", "color": "#3fa9f5",
+		{"label": "DRAGON NET", "glyph": "D", "color": "#3fa9f5",
 			"desc": "Fight other players online. Browse public lobbies,\nhost a match, or let matchmaking find you one.",
 			"action": func(): push(_netplay_menu())},
 		{"label": "Controller Setup", "glyph": "C", "color": "#4cc38a",
@@ -249,7 +280,7 @@ func _terminology_menu() -> Control:
 	for c in doc.get("categories", []):
 		var cat: Dictionary = c
 		items.append({"label": cat["name"], "glyph": cat["glyph"], "color": cat["color"],
-			"desc": "%s\n%d terms." % [cat["desc"], cat["terms"].size()],
+			"desc": tr("%s\n%d terms.") % [cat["desc"], cat["terms"].size()],
 			"action": func(): push(load(SCREENS % "terminology_terms").new().setup(cat))})
 	items.append({"label": "Contributors", "glyph": "C", "color": "#8a9bb0",
 		"desc": String(doc.get("contributors", ""))})
@@ -261,10 +292,10 @@ func _terminology_menu() -> Control:
 func _modifications_menu() -> Control:
 	return _menu("Modifications", [
 		{"label": "Graphics", "glyph": "G", "color": "#9b6be6",
-			"desc": func(): return "Enhanced (HD textures) or Legacy (original textures).\nNow: %s" % Settings.get_value("options", "graphics"),
+			"desc": func(): return tr("Enhanced (HD textures) or Legacy (original textures).\nNow: %s") % Settings.get_value("options", "graphics"),
 			"action": func(): push(load(SCREENS % "variant_picker").new().setup("graphics"))},
 		{"label": "Button Prompts", "glyph": "B", "color": "#3fa9f5",
-			"desc": func(): return "GameCube, PlayStation or Xbox buttons in the game.\nNow: %s" % Settings.option_name("buttons", Settings.get_value("options", "buttons")),
+			"desc": func(): return tr("GameCube, PlayStation or Xbox buttons in the game.\nNow: %s") % Settings.option_name("buttons", Settings.get_value("options", "buttons")),
 			"action": func(): push(load(SCREENS % "variant_picker").new().setup("buttons"))},
 		{"label": "Codes", "glyph": "C", "color": "#e8663d",
 			"desc": "Turn this game's codes on or off\nfor offline play.",
@@ -275,7 +306,7 @@ func _modifications_menu() -> Control:
 
 
 func _netplay_menu() -> Control:
-	return _menu("Netplay", [
+	return _menu("DRAGON NET", [
 		{"label": "Lobby Browser", "glyph": "L", "color": "#3fa9f5",
 			"desc": "Public lobbies of players on this same version:\nmode, host, region and connection. Pick one to join.",
 			"action": open_checked.bind("lobby_browser")},
@@ -299,7 +330,7 @@ func _player_match_menu() -> Control:
 			"desc": "Pick Single Battle, Team Battle or Any, and get put in\nthe nearest open lobby (or host one others can find).",
 			"action": open_checked.bind("find_match")},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
-			"desc": "Back to the netplay menu."},
+			"desc": "Back to the DRAGON NET menu."},
 	], "netplay")
 
 

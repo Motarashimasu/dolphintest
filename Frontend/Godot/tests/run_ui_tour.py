@@ -219,7 +219,7 @@ def main():
                 "player": {"nickname": "Goku", "region": "EU"},
                 "netplay": {"public": True, "mode": "single", "traversal": True,
                             "public_address": "127.0.0.1", "find_mode": "any", "buffer": 4},
-                "options": {"minimize_while_playing": False, "buttons": "Vanilla"},
+                "options": {"minimize_while_playing": False, "buttons": "Vanilla", "language": "en"},
                 "controller": {"preset": "keep"},
                 "terminology": {"source": doc_url + "/doc/mobilebasic"},
             },
@@ -285,7 +285,7 @@ def main():
             and a.get("assets", {}).get("small_image") == "dbzsparkhdbackup" and a.get("timestamps", {}).get("start")),
         ("hosted public lobby with Ask to Join", lambda a: a.get("details") == "Single Battle lobby"
             and str(a.get("secrets", {}).get("join", "")).startswith("spk1:") and a.get("party", {}).get("size")),
-        ("netplay match vs the other player", lambda a: a.get("details") == "Netplay: Single Battle" and a.get("state") == "vs Vegeta"),
+        ("netplay match vs the other player", lambda a: a.get("details") == "DRAGON NET: Single Battle" and a.get("state") == "vs Vegeta"),
         ("offline game", lambda a: a.get("state") == "Playing offline"),
     ]:
         ok = seen(pred)

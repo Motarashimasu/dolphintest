@@ -56,4 +56,4 @@ func on_press(key: String) -> void:
 	if Dolphin.is_running():
 		Dolphin.send("textures %s=%s" % ["Graphics" if group == "graphics" else "Buttons", key])
 	list.set_rows(build_rows(), key)
-	app.toast("%s: %s" % [screen_title(), Settings.option_name(group, key)], 1.5)
+	app.toast(tr(screen_title() + ": %s") % tr(Settings.option_name(group, key)), 1.5)

@@ -37,7 +37,7 @@ func setup(title: String, rows: Array, body_height := 0.0, panel_size := Vector2
 	list.set_rows(rows)
 	list.pressed.connect(func(k): pressed.emit(k))
 	list.value_changed.connect(func(k, v): value_changed.emit(k, v))
-	var hint := Style.label("%s  Select      %s  Back to the game" % [Pad.prompt("accept")["key"],
+	var hint := Style.label(tr("%s  Select      %s  Back to the game") % [Pad.prompt("accept")["key"],
 			Pad.prompt("back")["key"]], 16, Style.INK_LINE, 0, Color.BLACK, "button")
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	Style.place(hint, 0, size.y - 36, size.x, 24)

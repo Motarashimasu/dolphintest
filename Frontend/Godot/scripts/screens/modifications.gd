@@ -15,7 +15,7 @@ func screen_title() -> String:
 
 
 func screen_desc() -> String:
-	return "Codes for offline play.\nNetplay always uses the same fixed set for everyone."
+	return "Codes for offline play.\nDRAGON NET always uses the same fixed set for everyone."
 
 
 func on_enter() -> void:
@@ -54,7 +54,7 @@ func build_rows() -> Array:
 		var by := _text(c.get("creator", "")).strip_edges()
 		var desc := name
 		if by != "":
-			desc += "  (by %s)" % by
+			desc += tr("  (by %s)") % by
 		if notes != "":
 			desc += "\n" + notes.replace("\n", " ").left(110)
 		rows.append({"type": "toggle", "key": "code:%d" % i, "label": name,

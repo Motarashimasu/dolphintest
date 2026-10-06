@@ -53,7 +53,7 @@ func _on_lobbies(events: Array) -> void:
 			"lobbies":
 				_lobbies = e.get("lobbies", [])
 			"error":
-				_error = "Lobby server unreachable (%s)" % e.get("reason", e.get("code", "error"))
+				_error = tr("Lobby server unreachable (%s)") % e.get("reason", e.get("code", "error"))
 	if is_inside_tree():
 		list.set_rows(build_rows())
 
@@ -87,26 +87,26 @@ func build_rows() -> Array:
 		var full: bool = not l.get("joinable", true)
 		var state := ""
 		if l.get("in_game", false):
-			state = "In match"
+			state = tr("In match")
 		elif full:
-			state = "Full"
+			state = tr("Full")
 		elif not right_game:
-			state = "Other game"
+			state = tr("Other game")
 		rows.append({"type": "action", "key": "lobby:%d" % _lobbies.find(l),
 			"label": String(l.get("host", "?")),
 			"value": "%s   ·   %s   ·   %s" % [Style.mode_name(l.get("mode", "any")),
-				l.get("region", "?"), state if state != "" else "%d/2 players" % int(l.get("players", 1))],
+				l.get("region", "?"), state if state != "" else tr("%d/2 players") % int(l.get("players", 1))],
 			"icon": String(l.get("link", "")),
 			"disabled": full or not right_game or l.get("in_game", false),
-			"desc": "Host: %s   Mode: %s   Region: %s\nConnection: %s   Players: %d   %s" % [l.get("host", "?"),
+			"desc": tr("Host: %s   Mode: %s   Region: %s\nConnection: %s   Players: %d   %s") % [l.get("host", "?"),
 				Style.mode_name(l.get("mode", "any")), l.get("region", "?"), Style.link_name(l.get("link", "")),
-				int(l.get("players", 1)), "Press %s to join." % Pad.prompt("accept")["key"] if state == "" else state + "."]})
+				int(l.get("players", 1)), tr("Press %s to join.") % Pad.prompt("accept")["key"] if state == "" else state + "."]})
 	rows.append_array([
 		{"type": "action", "key": "refresh", "label": "Refresh", "desc": "Check the list again."},
 		{"type": "text", "key": "direct", "label": "Join by code or IP", "value": "",
 			"placeholder": "room code or 1.2.3.4:2626",
 			"desc": "Join a private lobby: type the room code (or IP:port) the host gave you."},
-		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the netplay menu."},
+		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the DRAGON NET menu."},
 	])
 	return rows
 

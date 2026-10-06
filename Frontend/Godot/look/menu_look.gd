@@ -63,7 +63,7 @@ extends Resource
 @export var arrow_hover_color := Color("#ffd27a")
 
 @export_group("Item colors")
-## Color of a menu item by its label, e.g. "Netplay" -> blue. Items not listed keep their own.
+## Color of a menu item by its label, e.g. "DRAGON NET" -> blue. Items not listed keep their own.
 @export var item_colors: Dictionary = {}
 
 @export_group("Description bar")
