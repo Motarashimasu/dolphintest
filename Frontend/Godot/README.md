@@ -142,6 +142,24 @@ tutorial open it on A.
 The menus take controller and keyboard only: the mouse is hidden and ignored, so it can't
 steal the selection.
 
+**Sound effects.** Seven sounds, all empty for now (silent until you add them):
+
+| Slot | Plays when |
+|---|---|
+| `move` | the selection moves (Up/Down) or a value changes (Left/Right) |
+| `select` | A / Enter on something |
+| `back` | B / Escape, or picking Back / Leave |
+| `player_join` | someone joins the lobby |
+| `player_leave` | someone leaves the lobby |
+| `message` | a chat message from another player |
+| `game_start` | a game starts (offline, or the host starts the netplay match) |
+
+- In the Godot editor: open `look/menu_sounds.tres` and drag your audio files (from `sounds/`)
+  onto the slots in the Inspector. F9 in the running menus reloads them.
+- Or without the editor: files named after the slot in `SparkingData\sounds` (`move.wav`,
+  `select.ogg`, ...). Those win over the slots.
+- Volume: Options > Sound effects (0 = off).
+
 **Discord status.** With the Discord app running, your profile shows what you're doing: in the
 menus, playing offline, waiting in a Single/Team Battle lobby (1 of 2), or "vs <opponent>" in a
 netplay match, with a timer. A public lobby you host also gets **Ask to Join**: a friend presses

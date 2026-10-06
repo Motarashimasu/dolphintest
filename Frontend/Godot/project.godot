@@ -29,6 +29,7 @@ Demos="*res://scripts/demos.gd"
 Music="*res://scripts/music.gd"
 Pad="*res://scripts/pad.gd"
 Presence="*res://scripts/presence.gd"
+Sfx="*res://scripts/sfx.gd"
 
 [display]
 

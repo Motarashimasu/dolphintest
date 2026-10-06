@@ -14,6 +14,9 @@ func build_rows() -> Array:
 		{"type": "number", "key": "music_volume", "label": "Music volume", "min": 0, "max": 10, "step": 1,
 			"value": Settings.get_value("options", "music_volume"),
 			"desc": "Menu music (0 = off). It fades out while you play\nand comes back when the game closes."},
+		{"type": "number", "key": "sfx_volume", "label": "Sound effects", "min": 0, "max": 10, "step": 1,
+			"value": Settings.get_value("options", "sfx_volume"),
+			"desc": "Menu sounds: moving, selecting, players joining and leaving,\nmessages, a game starting (0 = off)."},
 		{"type": "toggle", "key": "hud_health", "label": "Health %", "value": Settings.get_value("options", "hud_health"),
 			"desc": "Both fighters' health as a percentage, in the top corners."},
 		{"type": "toggle", "key": "hud", "label": "Match HUD offline", "value": Settings.get_value("options", "hud"),
@@ -39,3 +42,5 @@ func on_value(key: String, value: Variant) -> void:
 	Settings.set_value("options", key, value)
 	if key == "music_volume":
 		Music.apply_volume()
+	elif key == "sfx_volume":
+		Sfx.play("move")

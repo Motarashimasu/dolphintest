@@ -203,6 +203,11 @@ def main():
                         f"sine=frequency={freq}:duration=20", "-c:a", "libvorbis",
                         os.path.join(data, "music", name + ".ogg")], check=True)
 
+    # One sound effect file, to check SparkingData\sounds is used (the rest stay empty).
+    os.makedirs(os.path.join(data, "sounds"), exist_ok=True)
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=880:duration=0.1",
+                    os.path.join(data, "sounds", "select.wav")], check=True)
+
     config = os.path.join(work, "tour.json")
     with open(config, "w") as f:
         json.dump({
@@ -257,7 +262,7 @@ def main():
             joiner.send("hello")
             joiner.seen("lobby_ready")
             joiner.send("chat hello from Vegeta")
-        elif line == "TOUR_EVENT host_left" and joiner:
+        elif line in ("TOUR_EVENT joiner_leave", "TOUR_EVENT host_left") and joiner and joiner.proc.poll() is None:
             joiner.send("quit")
         elif line.startswith("TOUR_RESULT"):
             result = line.split()[1]

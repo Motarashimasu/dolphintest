@@ -98,15 +98,23 @@ func is_editing() -> bool:
 func handle_input(event: InputEvent) -> bool:
 	if index < 0:
 		return false
+	var before := index
 	if event.is_action_pressed("ui_up", true):
 		_set_index(_next_selectable(index, -1))
+		if index != before:
+			Sfx.play("move")
 	elif event.is_action_pressed("ui_down", true):
 		_set_index(_next_selectable(index, 1))
-	elif event.is_action_pressed("ui_left", true):
-		_step(index, -1)
-	elif event.is_action_pressed("ui_right", true):
-		_step(index, 1)
+		if index != before:
+			Sfx.play("move")
+	elif event.is_action_pressed("ui_left", true) or event.is_action_pressed("ui_right", true):
+		var old = rows[index].get("value")
+		_step(index, -1 if event.is_action_pressed("ui_left", true) else 1)
+		if rows[index].get("value") != old:
+			Sfx.play("move")
 	elif event.is_action_pressed("ui_accept"):
+		if _enabled(index):
+			Sfx.play("back" if rows[index].get("key", "") in ["back", "leave"] else "select")
 		_press(index)
 	else:
 		return false

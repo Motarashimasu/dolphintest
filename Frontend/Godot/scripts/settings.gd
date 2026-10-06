@@ -52,7 +52,7 @@ var defaults := {
 		"hud": false,             # score bar offline (netplay always shows it)
 		"hud_health": true,       # health % in the corners
 		"show_fps": false, "minimize_while_playing": true, "music_volume": 7,
-		"discord": true},         # Discord Rich Presence (scripts/presence.gd)
+		"discord": true, "sfx_volume": 7},         # Discord Rich Presence (scripts/presence.gd)
 	"netplay": {"mode": "single", "find_mode": "any", "public": true, "traversal": true,
 		"buffer": 4, "public_address": ""},
 	"gecko": {"custom": false, "enabled": []},

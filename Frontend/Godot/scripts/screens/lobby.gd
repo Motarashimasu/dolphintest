@@ -426,8 +426,10 @@ func _on_event(name: String, data: Dictionary) -> void:
 				if _role == "host":
 					_status = "Ready to start" if _players.size() >= 2 else "Waiting for players..."
 		"player_joined":
+			Sfx.play("player_join")
 			_system("%s joined." % data.get("name", "?"))
 		"player_left":
+			Sfx.play("player_leave")
 			_system("%s left." % data.get("name", "?"))
 		"chat":
 			if data.get("self", false):
@@ -437,6 +439,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 				var text := String(data.get("text", ""))
 				var m := RegEx.create_from_string("^(.+?)\\[\\d+\\]: (.*)$").search(text)
 				if m:
+					Sfx.play("message")
 					_add_chat("[color=#7fd0ff][b]%s:[/b][/color] %s" % [_esc(m.get_string(1)), _esc(m.get_string(2))])
 				else:
 					_system(text)

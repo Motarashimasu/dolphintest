@@ -92,9 +92,13 @@ func activate() -> void:
 func handle_input(event: InputEvent) -> bool:
 	if event.is_action_pressed("ui_up", true):
 		move(-1)
+		Sfx.play("move")
 	elif event.is_action_pressed("ui_down", true):
 		move(1)
+		Sfx.play("move")
 	elif event.is_action_pressed("ui_accept"):
+		if not items.is_empty() and not current().get("disabled", false):
+			Sfx.play("back" if current().get("back", false) else "select")
 		activate()
 	else:
 		return false

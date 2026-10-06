@@ -343,6 +343,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F9:
 		# After saving look/menu_look.tres or Backdrop.tscn in the editor: reload and rebuild.
 		Style.load_skin()
+		Sfx.reload()
 		Engine.set_meta("skin_reload", true)
 		get_tree().reload_current_scene()
 		get_viewport().set_input_as_handled()
@@ -355,6 +356,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _compact.has_method("handle_input") and _compact.handle_input(event):
 			get_viewport().set_input_as_handled()
 		elif event.is_action_pressed("ui_cancel"):
+			Sfx.play("back")
 			close_ingame_menu()
 			get_viewport().set_input_as_handled()
 		return
@@ -364,6 +366,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if t.on_input(event):
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_cancel"):
+		Sfx.play("back")
 		t.on_back()
 		get_viewport().set_input_as_handled()
 

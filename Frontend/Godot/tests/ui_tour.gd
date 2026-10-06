@@ -275,6 +275,8 @@ func _tour() -> void:
 	check("music back after the match", not Music.is_muted_for_game() and Music.is_audible())
 	check("window restored", get_window().content_scale_size == Vector2i(1280, 720))
 	await shot("lobby_after_match")
+	print("TOUR_EVENT joiner_leave")   # Vegeta leaves: the player_leave sound
+	await wait_for("player_leave sound when Vegeta leaves", func(): return Sfx.played.has("player_leave"), 20)
 	await back()  # B -> Leave Lobby row
 	check("B selects Leave Lobby", lobby._actions.current_key() == "leave")
 	await back()  # B again -> leave
@@ -504,3 +506,10 @@ func _tour() -> void:
 	await shot("splash")
 	await press("ui_accept")
 	check("a button skips the splash", not app.is_splash_showing())
+
+	# Sound effects: every one was asked for at the right moment; a file in SparkingData\sounds
+	# is picked up, and an empty slot stays silent.
+	for s in ["move", "select", "back", "player_join", "player_leave", "message", "game_start"]:
+		check("sound effect played: " + s, s in Sfx.played)
+	check("sound file from SparkingData\\sounds", Sfx.stream_for("select") is AudioStreamWAV)
+	check("empty sound slot is silent", Sfx.stream_for("player_leave") == null)
