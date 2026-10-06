@@ -127,7 +127,9 @@ static func selected() -> Dictionary:
 		return {}
 	if choice == AUTO:
 		return auto_pick()
-	return find(choice)
+	var p := find(choice)
+	# A preset that's gone (renamed or deleted): fall back to Auto rather than nothing.
+	return p if not p.is_empty() else auto_pick()
 
 
 ## Writes a preset into GCPadNew.ini as [GCPad1]; other sections (ports 2-4) are kept.

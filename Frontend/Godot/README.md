@@ -101,8 +101,10 @@ the menus call it GameCube.
 game. It's used offline and in netplay.
 - **Auto** (the default) picks the preset that matches the first connected controller. If none
   matches, it leaves the mapping alone.
-- Built-in presets: Xbox (your current mapping) and PlayStation 4/5 (the same layout through
-  SDL; their device names aren't confirmed yet).
+- Built-in presets: Xbox One / Series, Xbox 360, PlayStation 4 and PlayStation 5, all the
+  **tecbox** layout. PlayStation pads go through SDL with the buttons in the same spots
+  (Square/Cross/Circle/Triangle = Xbox X/A/B/Y); their SDL device names aren't confirmed yet.
+  A selected preset that no longer exists falls back to Auto.
 - **Create New Config / Edit This Config:** pick a GameCube button, press A, then press the
   button you want for it. The selection then moves to the next one.
   - The strip at the top shows live what the menus see and what Dolphin sees from your

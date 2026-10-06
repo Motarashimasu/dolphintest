@@ -396,7 +396,8 @@ func _tour() -> void:
 	await choose("Controller Setup")
 	var pads: Control = top()
 	var preset_row: Dictionary = pads.list.row("preset")
-	check("built-in presets listed", "Xbox - Sparking Standard" in preset_row["values"]
+	check("built-in presets listed", "Xbox One - Sparking Standard" in preset_row["values"]
+			and "Xbox 360 - Sparking Standard" in preset_row["values"]
 			and "PlayStation 5 - Sparking Standard" in preset_row["values"])
 	await pick("preset", pads.list)   # Accept on a choice = next: keep -> first preset
 	await press("ui_right")           # and one more
