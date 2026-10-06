@@ -45,6 +45,9 @@ static var ITEM_COLORS := {}
 
 static var BAND_IMAGE: Texture2D            # band_image
 static var BAND_IMAGE_TINT := true
+static var BAND_FADE := true
+static var BAND_FADE_START := 0.45
+static var BAND_WIDTH := 860
 static var DESC_IMAGE: Texture2D
 static var PANEL_IMAGE: Texture2D
 static var PANEL_IMAGE_MARGIN := 24
@@ -80,6 +83,9 @@ static func load_skin() -> void:
 	BAND_BORDER_WIDTH = L.band_border
 	BAND_IMAGE = L.band_image
 	BAND_IMAGE_TINT = L.band_image_tint
+	BAND_FADE = L.band_fade
+	BAND_FADE_START = L.band_fade_start
+	BAND_WIDTH = L.band_width
 	SEL_TEXT = L.selected_text
 	SEL_EDGE = L.selected_outline
 	IDLE_TEXT = L.text

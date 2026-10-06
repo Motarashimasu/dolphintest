@@ -48,7 +48,9 @@ func _ready() -> void:
 	_band = Panel.new()
 	_band.add_theme_stylebox_override("panel", _band_box)
 	_band.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	Style.place(_band, 0, CENTER_Y - 6, 860, 72)
+	Style.place(_band, 0, CENTER_Y - 6, Style.BAND_WIDTH, 72)
+	if Style.BAND_FADE:
+		_band.material = _fade_material(Style.BAND_WIDTH, Style.BAND_FADE_START)
 	add_child(_band)
 	_add_arrow(true)
 	_add_arrow(false)
@@ -118,6 +120,29 @@ func _gui_input(event: InputEvent) -> void:
 func _color(item: Dictionary) -> Color:
 	var c = item.get("color", Style.MUTED)
 	return Style.item_color(String(item.get("label", "")), c if c is Color else Color(String(c)))
+
+
+## Fades whatever the band draws (color, borders or picture) to transparent towards the right.
+static func _fade_material(width: float, start: float) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = """
+shader_type canvas_item;
+uniform float width = 860.0;
+uniform float fade_start = 0.45;
+varying float x;
+void vertex() {
+	x = VERTEX.x;
+}
+void fragment() {
+	float t = clamp((x / width - fade_start) / max(1.0 - fade_start, 0.001), 0.0, 1.0);
+	COLOR.a *= 1.0 - smoothstep(0.0, 1.0, t);
+}
+"""
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("width", width)
+	m.set_shader_parameter("fade_start", start)
+	return m
 
 
 ## The highlight band's color for the selected item (skin: band_color "item" or a color).

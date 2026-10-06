@@ -46,6 +46,12 @@ extends Resource
 @export var band_image: Texture2D
 ## On: the picture is tinted with the band color. Off: shown as drawn.
 @export var band_image_tint := true
+## On: the band fades out to transparent towards its right end instead of stopping with an edge.
+@export var band_fade := true
+## Where the fade begins, as a fraction of the band's width (0 = from the left edge).
+@export_range(0.0, 1.0, 0.01) var band_fade_start := 0.45
+## How far the band reaches, in pixels (the fade ends there).
+@export_range(200, 1280, 10) var band_width := 860
 @export var selected_text := Color("#fff4d6")
 @export var selected_outline := Color("#4a1a08")
 @export var text := Color("#5b3a8c")

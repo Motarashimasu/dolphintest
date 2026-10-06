@@ -135,6 +135,8 @@ tutorial open it on A.
   letter icons, arrows), per-item colors, the description bar, panels and rows, toasts,
   fonts, and a background picture per menu (main_menu, game_menu, netplay, lobby,
   terminology, or one default).
+  The highlight band fades out to the right; Band Fade / Band Fade Start / Band Width in the
+  Menu wheel group set it (Band Fade off = the old hard edge).
 - **Background:** `scenes/Backdrop.tscn` is the scene behind every menu: the sky, the clouds
   and the ground. Open it in the 2D editor to recolor, move, delete or replace anything, or add
   your own art and animations. A menu picture from the look covers it (its `Scenery` node
