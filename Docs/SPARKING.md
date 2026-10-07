@@ -40,6 +40,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--input-test` | | Controller tester: prints the input devices Dolphin sees (`devices` event, again on every change) and every button/axis pressed or released (`input` events: `device`, `input`, `pressed`), with Dolphin's own names, until `quit` / stdin closes. The Godot controller config editor binds buttons with it. Starts no game. |
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
 | `--public` | off | Host: list the lobby on Dolphin's lobby server (browser + matchmaking). Name on the server: `SPK1\|<mode>\|<link>\|<nickname>`. |
+| `--spectate` | off | With `--netplay-join`: watch only. Lobbies hold 2 players (GameCube ports 1-2) and up to 2 spectators. A spectator never gets a port (not even when a player leaves), runs the game's default codes without any per-port code (no splitscreen remover), and `stop` only ends their own game. A 3rd player or 3rd spectator is turned away (`error` `lobby_full` / `spectators_full`). The public listing's player count is players + 10 × spectators. |
 | `--mode single\|team\|any` | `any` | Host: lobby mode, shown in the browser; `single`/`team` also auto-select that battle state from the game ini's `[Sparking.Modes]`. |
 | `--region EA\|CN\|EU\|NA\|SA\|OC\|AF` | `NA` | Public lobby region; matchmaking prefers lobbies in the same region. |
 | `--public-address <ip>` | | Direct (non-traversal) public lobby only: the address others join. |
@@ -90,7 +91,8 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `lobby_opening` | `role`, `traversal`, `nickname`, `known_games` | About to connect |
 | `lobby_ready` | `role` | Connected; lobby is live |
 | `room` | `type` (`traversal`/`direct`), `state` (`connecting`/`ready`/`failed`), `code` or `port`+`addresses` | Host only; re-sent whenever it changes |
-| `players` | `players[]`, `all_have_game`, `in_game` | On any change, and every 1 s (pings) |
+| `players` | `players[]` (each with `role`: `player`, `spectator` or `pending`), `all_have_game`, `in_game` | On any change, and every 1 s (pings) |
+| `player_rejected` | `pid`, `reason` (`lobby_full` / `spectators_full`) | Host: someone over the 2 + 2 limit is being turned away |
 | `player_joined` / `player_left` | `name` | |
 | `game_changed` | `name`, `game_id`, `local_status` | Host picked a game |
 | `chat` | `text`, `self`, (`from` when self) | |
@@ -128,7 +130,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `score` | `wins`, `rounds` | After `score reset` |
 | `hud` | `enabled` | After a `hud` command |
 | `poked` | `address`, `value` | Answer to `poke` |
-| `lobbies` | `lobbies[]` of `{host, mode, link, region, game, game_id, players, in_game, joinable, method, join}` | `--list-lobbies` result. `join` is what `--netplay-join` takes. No version field: it only filters. |
+| `lobbies` | `lobbies[]` of `{host, mode, link, region, game, game_id, players, spectators, in_game, joinable, watchable, method, join}` | `--list-lobbies` result. `join` is what `--netplay-join` takes. No version field: it only filters. |
 | `public` | `listed`, `mode`, `region`, `name` / `error` | Host: the lobby is (or failed to be) on the public list |
 | `mode` | `mode`, `battle_state` | Host: the lobby mode selected this battle state |
 | `matchmaking` | `state` (`searching`, `candidates`+`count`, `joining`+`host`/`mode`/`region`/`link`, `retry`+`reason`, `hosting`, `matched`+`port`, `cancelled`, `lobby_server_unreachable`) | `--netplay-find` progress |
