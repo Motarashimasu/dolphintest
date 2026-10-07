@@ -172,7 +172,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `chat <text>` | any | Send a chat message |
 | `stop` | any | Stop the running game for everyone (solo: stop and exit) |
 | `buffer <n>` | host | Set pad buffer (and turn the automatic buffer off) |
-| `buffer auto` | host | Automatic pad buffer: set from the pings when the host starts the match (before the game boots), then re-chosen right after each KO, by as many steps as needed, within 20 s and only while no round is being fought (never mid-fight). Size: the worst player's 90th-percentile ping of the last ~10 s plus its jitter, ÷ 8, between 2 and 20. Needs the game's `p1/p2_health_pct` watches to see KOs. |
+| `buffer auto` | host | Automatic pad buffer: set from the pings when the host starts the match (before the game boots), then re-chosen right after each KO, by as many steps as needed, within 20 s and only while no round is being fought (never mid-fight). Size: the worst player's 90th-percentile ping of the last ~10 s plus its jitter, ÷ 12 (rounded up), between 2 and 20. Needs the game's `p1/p2_health_pct` watches to see KOs. |
 | `kick <pid>` | host | Kick a player |
 | `automap wii\|gc\|none` | host | Auto-assign joiners to Wii Remote / GC slots in join order |
 | `battle_state <file.sst>` / `battle_state none` | host | Select the state everyone boots into |

@@ -672,7 +672,7 @@ void NetPlaySession::CmdStart(bool force)
 std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget()
 {
   // Worst player: the 90th percentile of its last ~10 pings (so short spikes are covered
-  // without chasing them) plus its jitter, then the usual rule of thumb: ping / 8.
+  // without chasing them) plus its jitter, then ping / 12 (rounded up).
   std::map<NetPlay::PlayerId, std::vector<u32>> all;
   {
     std::lock_guard lk(m_quality_mutex);
@@ -687,7 +687,7 @@ std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget
     std::ranges::sort(samples);
     const size_t at = std::min(samples.size() - 1, (samples.size() * 9 + 9) / 10 - 1);
     const u32 high = samples[at];
-    const int buffer = std::clamp(static_cast<int>((high + std::max(jitter, 0) + 7) / 8), 2, 20);
+    const int buffer = std::clamp(static_cast<int>((high + std::max(jitter, 0) + 11) / 12), 2, 20);
     if (!worst || buffer > worst->buffer)
       worst = AutoBufferChoice{buffer, high, std::max(jitter, 0)};
   }

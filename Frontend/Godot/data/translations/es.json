@@ -142,7 +142,7 @@
  "In match": "En combate",
  "In the lobby": "En la sala",
  "In the menus": "En los menús",
- "Input delay in frames. Higher hides more lag but feels slower.\nRule of thumb: ping / 8 (can be changed in the lobby).": "Retraso de entrada en fotogramas. Más alto oculta más lag,\npero responde más lento. Regla: ping / 8 (se cambia en la sala).",
+ "Input delay in frames. Higher hides more lag but feels slower.\nRule of thumb: ping / 12 (can be changed in the lobby).": "Retraso de entrada en fotogramas. Más alto oculta más lag,\npero responde más lento. Regla: ping / 12 (se cambia en la sala).",
  "Internal rendering resolution. 1080p is the default;\nhigher needs a stronger graphics card.": "Resolución interna de renderizado. 1080p es la predeterminada;\nmás alta necesita una tarjeta gráfica más potente.",
  "Join a private lobby: type the room code (or IP:port) the host gave you.": "Unirse a una sala privada: escribe el código\n(o IP:puerto) que te dio el anfitrión.",
  "Join by code or IP": "Unirse por código o IP",
