@@ -272,7 +272,7 @@ func _main_menu() -> Control:
 
 
 func _game_menu() -> Control:
-	var items: Array = [
+	return _menu("Tenkaichi 3", [
 		{"label": "Play Offline", "glyph": "P", "color": "#f2b531",
 			"desc": "Play on your own, with your own save data.\nSingle Battle, Team Battle, story mode: everything the game has.",
 			"action": open_checked.bind("play_offline")},
@@ -290,22 +290,7 @@ func _game_menu() -> Control:
 			"action": func(): push(_terminology_menu())},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the main menu."},
-	]
-	if dev_tools():
-		items.insert(items.size() - 1, {"label": "Capture Battle States", "glyph": "S", "color": "#9b6be6",
-			"desc": "Developer: record the states every DRAGON NET match boots into.\nRuns with the netplay save and the game's default codes (PAL60 = 30 fps).",
-			"action": open_capture})
-	return _menu("Tenkaichi 3", items, "game_menu")
-
-
-func open_capture() -> void:
-	if require_setup():
-		push(load(SCREENS % "play_offline").new().setup(true))
-
-
-## Developer tools (Options > Developer tools, or --dev): battle state capture.
-static func dev_tools() -> bool:
-	return bool(Settings.get_value("options", "dev_tools")) or "--dev" in OS.get_cmdline_user_args()
+	], "game_menu")
 
 
 var _terminology: Dictionary = {}

@@ -31,8 +31,6 @@ func build_rows() -> Array:
 			"desc": "The menus' language. Changes right away."},
 		{"type": "toggle", "key": "discord", "label": "Discord status", "value": Settings.get_value("options", "discord"),
 			"desc": "Show what you're doing on your Discord profile (menus, lobby, match).\nFriends can join a public lobby you host from there."},
-		{"type": "toggle", "key": "dev_tools", "label": "Developer tools", "value": Settings.get_value("options", "dev_tools"),
-			"desc": "Adds Capture Battle States to the Tenkaichi 3 menu: records the states\nevery DRAGON NET match boots into. Leave off unless you make them."},
 		{"type": "choice", "key": "profile", "label": "Profile", "values": ["user", "user2"],
 			"names": ["user (primary)", "user2 (secondary)"], "value": Settings.get_value("paths", "profile"),
 			"desc": "Primary and secondary user profiles for online play.\nOnly change to user2 for LAN testing."},

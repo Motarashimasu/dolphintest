@@ -7,13 +7,6 @@ const InGamePanel := preload("res://scripts/ui/ingame_panel.gd")
 var _state := "starting"   # starting, running, stopping
 var _aspect := ""
 var _panel: Control
-var _capturing := ""      # state file being saved (its old copy is .bak until it succeeds)
-var capture := false      # Capture Battle States: netplay save + default codes (Settings.capture_args)
-
-
-func setup(p_capture := false) -> Node:
-	capture = p_capture
-	return self
 
 
 func screen_music() -> String:
@@ -21,12 +14,10 @@ func screen_music() -> String:
 
 
 func screen_title() -> String:
-	return "Capture Battle States" if capture else "Play Offline"
+	return "Play Offline"
 
 
 func screen_desc() -> String:
-	if capture:
-		return "Go to the character select screen of Single or Team Battle,\nthen hold Select and pick Save as ... Battle state."
 	return "Hold Select (Back / Share) in game for the in-game menu.\nF3 graphics, F4 buttons, F5 aspect ratio."
 
 
@@ -34,7 +25,7 @@ func on_enter() -> void:
 	_aspect = Settings.get_value("options", "aspect")
 	super()
 	Dolphin.event.connect(_on_event)
-	if not Dolphin.launch(Settings.capture_args() if capture else Settings.solo_args()):
+	if not Dolphin.launch(Settings.solo_args()):
 		app.toast("Couldn't start Dolphin-Sparking (is the Dolphin folder next to the launcher?).")
 		app.pop.call_deferred()
 
@@ -70,22 +61,7 @@ func _rows(in_game_menu: bool) -> Array:
 		{"type": "action", "key": "stop", "label": "Stop Game", "color": "#e8663d",
 			"desc": "Close the game and go back to the menu."},
 	])
-	if capture:
-		# Capture the DRAGON NET battle states (everyone boots into these), on the character
-		# select screen. This session runs like a netplay match: netplay save, default codes.
-		var at := rows.size() - 1
-		rows.insert(at, {"type": "action", "key": "capture:Single", "label": "Save as Single Battle state",
-			"disabled": not running, "color": "#9b6be6",
-			"desc": tr("Saves this moment as the DRAGON NET Single Battle state\n(%s). The old file is kept as .bak.") % Settings.battle_state_file("Single")})
-		rows.insert(at + 1, {"type": "action", "key": "capture:Team", "label": "Save as Team Battle state",
-			"disabled": not running, "color": "#9b6be6",
-			"desc": tr("Saves this moment as the DRAGON NET Team Battle state\n(%s). The old file is kept as .bak.") % Settings.battle_state_file("Team")})
 	return rows
-
-
-## The state file each lobby mode boots into ([Sparking.Modes] in the game's ini).
-static func battle_state_file(mode: String) -> String:
-	return Settings.battle_state_file(mode)
 
 
 func build_rows() -> Array:
@@ -113,15 +89,6 @@ func on_press(key: String) -> void:
 			Dolphin.quit_session()
 		"resume":
 			app.close_ingame_menu()
-		"capture:Single", "capture:Team":
-			var file := battle_state_file(key.substr(8))
-			var path := Settings.data_path("states").path_join(file)
-			if FileAccess.file_exists(path):
-				DirAccess.remove_absolute(path + ".bak")
-				DirAccess.rename_absolute(path, path + ".bak")
-			_capturing = path
-			Dolphin.send("save_state_file " + file)
-			app.toast(tr("Saving %s...") % file)
 
 
 func on_back() -> void:
@@ -133,8 +100,7 @@ func on_back() -> void:
 
 
 func make_ingame_panel() -> Control:
-	_panel = InGamePanel.new().setup(Settings.GAME["title"], _rows(true), 0,
-			Vector2(560, 520) if capture else Vector2(520, 420))
+	_panel = InGamePanel.new().setup(Settings.GAME["title"], _rows(true), 0, Vector2(520, 420))
 	_panel.pressed.connect(on_press)
 	return _panel
 
@@ -150,14 +116,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 		"aspect":
 			_aspect = String(data.get("mode", _aspect))
 			_refresh()
-		"state_file_saved":
-			_capturing = ""
-			app.toast(tr("Saved %s. Everyone on DRAGON NET needs this new file.") % String(data.get("name", "")), 6.0)
 		"error":
-			if _capturing != "" and String(data.get("code", "")).begins_with("state"):
-				if not FileAccess.file_exists(_capturing) and FileAccess.file_exists(_capturing + ".bak"):
-					DirAccess.rename_absolute(_capturing + ".bak", _capturing)   # put the old one back
-				_capturing = ""
 			app.toast(tr("Dolphin: %s") % String(data.get("code", "error")).replace("_", " "))
 		"process_exited":
 			app.pop_to(func(s): return s != self)
