@@ -371,6 +371,8 @@ Notes:
 
 ### King of the Hill
 
+(Shown as **Battle Lounge** in the frontend and on Discord; `koth` everywhere in the protocol.)
+
 `--koth` lobbies are a ladder. Everyone who joins (not `--spectate` watchers) gets in line, up
 to 8 people in all: line position 1 holds GameCube pad 1 (the champion), position 2 pad 2 (the
 challenger), and the rest wait without a pad (they watch the set like spectators: default codes

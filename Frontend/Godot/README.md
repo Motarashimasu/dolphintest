@@ -83,8 +83,8 @@ press B again to leave.
   splitscreen remover, can chat, and Stop Watching only ends their own view. Watching starts in
   the lobby: Dolphin can't let anyone in once a match is running. A full lobby turns a 3rd
   player or 3rd spectator away with a message.
-- **King of the Hill** (DRAGON NET > King of the Hill): the same Lobby Browser, Host and Find
-  as Player Match, but only for King of the Hill lobbies (and the Player Match ones never show
+- **Battle Lounge** (DRAGON NET > Battle Lounge): the same Lobby Browser, Host and Find
+  as Player Match, but only for Battle Lounge lobbies (and the Player Match ones never show
   KOTH lobbies). The winner stays on pad 1, the loser goes to the back of the line and the next in
   line gets pad 2; Single Battle sets are first to 2 wins, Team Battle sets 1 win. The Players
   panel becomes the line (P1, P2, #3...), with the champion's streak. The host presses Start

@@ -358,7 +358,7 @@ func _tour() -> void:
 		if String(r.get("key", "")).begins_with("lobby:") and r.get("label") == "Piccolo":
 			piccolo = r["key"]
 	check("Piccolo's lobby listed", piccolo != "")
-	check("King of the Hill lobbies stay out of the regular browser",
+	check("Battle Lounge lobbies stay out of the regular browser",
 			not browser.list.rows.any(func(r): return r.get("label") == "Trunks"))
 	await shot("lobby_browser")
 	if piccolo != "":
@@ -416,43 +416,43 @@ func _tour() -> void:
 	await back()   # find options -> player match
 	await back()   # player match -> netplay
 
-	# --- King of the Hill: its own menu, browser lists only KOTH lobbies, the line ---------
-	await choose("King of the Hill")
-	check("King of the Hill menu", app._title.text == "King of the Hill")
+	# --- Battle Lounge: its own menu, browser lists only KOTH lobbies, the line ---------
+	await choose("Battle Lounge")
+	check("Battle Lounge menu", app._title.text == "Battle Lounge")
 	await shot("koth_menu")
 	await choose("Lobby Browser")
 	var kb: Control = top()
-	check("King of the Hill browser", kb.koth and app._title.text == "King of the Hill Lobbies")
+	check("Battle Lounge browser", kb.koth and app._title.text == "Battle Lounges")
 	await wait_for("KOTH lobby list loaded", func(): return not kb._loading, 20)
 	var trunks := ""
 	for r in kb.list.rows:
 		if String(r.get("key", "")).begins_with("lobby:") and r.get("label") == "Trunks":
 			trunks = r["key"]
-	check("Trunks' King of the Hill lobby listed", trunks != "")
-	check("regular lobbies stay out of the King of the Hill browser",
+	check("Trunks' Battle Lounge lobby listed", trunks != "")
+	check("regular lobbies stay out of the Battle Lounge browser",
 			not kb.list.rows.any(func(r): return r.get("label") == "Piccolo"))
 	await shot("koth_lobby_browser")
 	if trunks != "":
 		await pick(trunks, kb.list)
 		var kl: Control = top()
-		check("joined the King of the Hill lobby", kl != kb and kl.koth and "--koth" in kl._args)
+		check("joined the Battle Lounge lobby", kl != kb and kl.koth and "--koth" in kl._args)
 		await wait_for("in Trunks' line, second", func():
 			return (kl._koth.get("line", []) as Array).size() == 2 and int(kl._koth.get("local_pos", -1)) == 1, 25)
 		check("Trunks holds pad 1", String(kl._koth.get("line", [{}])[0].get("name", "")) == "Trunks")
 		check("Players panel shows the line", kl._players_head.text.begins_with(tr("Line")))
-		check("title says King of the Hill", app._title.text.begins_with(tr("King of the Hill: %s").split(":")[0]))
+		check("title says Battle Lounge", app._title.text.begins_with(tr("Battle Lounge: %s").split(":")[0]))
 		await frames(30)
 		await shot("koth_lobby_line")
 		await back()
 		await back()
 		await wait_for("left Trunks' lobby", func(): return app.top() == kb, 15)
-		await wait_for("Dolphin exited (King of the Hill)", func(): return not Dolphin.is_running(), 10)
-	await back()   # browser -> King of the Hill menu
+		await wait_for("Dolphin exited (Battle Lounge)", func(): return not Dolphin.is_running(), 10)
+	await back()   # browser -> Battle Lounge menu
 	await choose("Host")
-	check("King of the Hill host options", app._title.text == "Host King of the Hill")
-	check("host lobby is King of the Hill", top().koth)
+	check("Battle Lounge host options", app._title.text == "Host a Battle Lounge")
+	check("host lobby is Battle Lounge", top().koth)
 	await shot("koth_host_options")
-	await back()   # -> King of the Hill menu
+	await back()   # -> Battle Lounge menu
 	await back()   # -> DRAGON NET
 
 	# --- Buffer Training: solo, boots the training state, buffer changed live ------------

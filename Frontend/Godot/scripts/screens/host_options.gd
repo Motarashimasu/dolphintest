@@ -6,7 +6,7 @@ func screen_music() -> String:
 	return "netplay"
 
 
-var koth := false   # King of the Hill lobby
+var koth := false   # Battle Lounge lobby
 
 
 func with_koth(value: bool) -> Node:
@@ -15,12 +15,12 @@ func with_koth(value: bool) -> Node:
 
 
 func screen_title() -> String:
-	return "Host King of the Hill" if koth else "Host a Lobby"
+	return "Host a Battle Lounge" if koth else "Host a Lobby"
 
 
 func screen_desc() -> String:
 	if koth:
-		return "Set up your King of the Hill lobby, then Start.\nSingle Battle: first to 2 wins. Team Battle: 1 win."
+		return "Set up your Battle Lounge lobby, then Start.\nSingle Battle: first to 2 wins. Team Battle: 1 win."
 	return "Set up your lobby, then Start."
 
 
@@ -54,7 +54,7 @@ func build_rows() -> Array:
 		{"type": "action", "key": "start", "label": "Start Lobby", "color": "#3fbf6b",
 			"desc": "Open the lobby and wait for players."},
 		{"type": "action", "key": "back", "label": "Back",
-			"desc": "Back to King of the Hill." if koth else "Back to Player Match."},
+			"desc": "Back to Battle Lounge." if koth else "Back to Player Match."},
 	]
 
 

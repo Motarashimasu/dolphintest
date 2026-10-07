@@ -23,7 +23,7 @@ const CONFIG := "res://data/discord.json"
 const UPDATE_EVERY := 1.0
 const RETRY_EVERY := 15.0
 const JOIN_PREFIX := "spk1:"
-const KOTH_JOIN_PREFIX := "spk1k:"   # a King of the Hill lobby: joining waits out a running set
+const KOTH_JOIN_PREFIX := "spk1k:"   # a Battle Lounge lobby: joining waits out a running set
 
 var connected := false      # the Discord app accepted us
 var discord_user := ""      # "name" once connected
@@ -144,12 +144,12 @@ func current() -> Dictionary:
 			p["state"] = tr("Practicing with pad buffer %d") % int(lobby._buffer) if int(lobby._buffer) > 0 \
 					else tr("Practicing")
 		elif bool(lobby.get("koth")) and not (lobby._koth as Dictionary).is_empty():
-			# King of the Hill: where you are in the line, the set score while it's on.
+			# Battle Lounge: where you are in the line, the set score while it's on.
 			var k: Dictionary = lobby._koth
 			var line: Array = k.get("line", [])
 			var pos := int(k.get("local_pos", -1))
 			key = "koth_" + String(lobby._phase)
-			p["details"] = tr("King of the Hill: %s") % mode_name if lobby.mode != "any" else tr("King of the Hill")
+			p["details"] = tr("Battle Lounge: %s") % mode_name if lobby.mode != "any" else tr("Battle Lounge")
 			if String(k.get("state", "")) in ["playing", "decided"] and line.size() >= 2:
 				var w: Array = k.get("wins", [0, 0])
 				p["state"] = tr("%s %d - %d %s") % [line[0].get("name", "?"), int(w[0]), int(w[1]), line[1].get("name", "?")]

@@ -2,7 +2,7 @@ extends "res://scripts/screens/form_screen.gd"
 ## Netplay > Lobby Browser: public lobbies of this exact build (Dolphin filters by version and
 ## never reports it). Mode, host, region and the host's connection type; pick one to join.
 
-var koth := false             # King of the Hill browser: only KOTH lobbies
+var koth := false             # Battle Lounge browser: only KOTH lobbies
 var _lobbies: Array = []
 var _loading := false
 var _error := ""
@@ -18,12 +18,12 @@ func with_koth(value: bool) -> Node:
 
 
 func screen_title() -> String:
-	return "King of the Hill Lobbies" if koth else "Lobby Browser"
+	return "Battle Lounges" if koth else "Lobby Browser"
 
 
 func screen_desc() -> String:
 	if koth:
-		return "King of the Hill lobbies on your version. You can get in line\nany time there's room: if a set is on, you join when it ends."
+		return "Battle Lounge lobbies on your version. You can get in line\nany time there's room: if a set is on, you join when it ends."
 	return "Public lobbies of players on your version.\nPing shows once you're in a lobby."
 
 
@@ -94,7 +94,7 @@ func build_rows() -> Array:
 		var right_game: bool = String(l.get("game_id", "")).begins_with(Settings.GAME["id"])
 		var full: bool = not l.get("joinable", true)
 		var state := ""
-		# King of the Hill: a set being played only means waiting for it to end.
+		# Battle Lounge: a set being played only means waiting for it to end.
 		var blocked_by_match: bool = l.get("in_game", false) and not koth
 		if koth:
 			var people := int(l.get("players", 0)) + int(l.get("spectators", 0))
@@ -136,7 +136,7 @@ func build_rows() -> Array:
 			"placeholder": "room code or 1.2.3.4:2626",
 			"desc": "Watch a private lobby as a spectator: type its room code (or IP:port)."},
 		{"type": "action", "key": "back", "label": "Back",
-			"desc": "Back to the King of the Hill menu." if koth else "Back to the DRAGON NET menu."},
+			"desc": "Back to the Battle Lounge menu." if koth else "Back to the DRAGON NET menu."},
 	])
 	return rows
 

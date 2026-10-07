@@ -3,7 +3,7 @@ extends "res://scripts/screens/screen.gd"
 ## (slot, ping ± jitter, wired/Wi-Fi, quality), messages, pad buffer, Start (host), Leave.
 ## While the match runs, a held Select opens the small in-game version: messages, buffer and
 ## "Stop Match" (ends the match for everyone, back to this lobby).
-## King of the Hill (koth, or once Dolphin sends a "koth" event): the Players panel becomes the
+## Battle Lounge (koth, or once Dolphin sends a "koth" event): the Players panel becomes the
 ## line (P1 = champion, P2 = challenger, then everyone waiting), sets start on their own after a
 ## short break, and joining during a set waits for it to end.
 ## kind "training" is Buffer Training: a solo, unlisted lobby that boots straight into the training
@@ -30,7 +30,7 @@ const ERRORS := {
 	"lobby_full": "That lobby already has 2 players. You can watch it instead.",
 	"spectators_full": "That lobby already has 2 spectators.",
 	"training_solo": "That's a Buffer Training session: it's solo.",
-	"koth_need_two": "King of the Hill needs 2 people in line to start.",
+	"koth_need_two": "Battle Lounge needs 2 people in line to start.",
 }
 
 var kind := "host"            # host, join, find, watch (spectator: never plays), training (solo)
@@ -49,7 +49,7 @@ var _chat: PackedStringArray = []
 var _battle := {}
 var _logged_buffer := -1
 var _auto_started := false    # Buffer Training starts itself once the state is ready
-var koth := false             # King of the Hill lobby (set by the menus, or by a "koth" event)
+var koth := false             # Battle Lounge lobby (set by the menus, or by a "koth" event)
 var _koth := {}               # last "koth" event: state, line, wins, streak, ...
 var _koth_waiting := false    # joiner: a set is on, Dolphin retries until it ends
 
@@ -80,7 +80,7 @@ func screen_music() -> String:
 
 func screen_title() -> String:
 	if koth:
-		return tr("King of the Hill: %s") % (tr("Any Mode") if mode == "any" else Style.mode_name(mode))
+		return tr("Battle Lounge: %s") % (tr("Any Mode") if mode == "any" else Style.mode_name(mode))
 	if is_spectating():
 		return tr("Watching: %s") % (tr("Lobby") if mode == "any" else Style.mode_name(mode))
 	return "Lobby" if mode == "any" else Style.mode_name(mode)
@@ -93,7 +93,7 @@ func on_enter() -> void:
 	_phase = "searching" if kind == "find" else "connecting"
 	_status = tr("Looking for a %s lobby...") % Style.mode_name(mode) if kind == "find" else "Connecting..."
 	if koth and kind == "find":
-		_status = tr("Looking for a King of the Hill lobby...")
+		_status = tr("Looking for a Battle Lounge lobby...")
 	if not Dolphin.launch(_args):
 		app.toast("Couldn't start Dolphin-Sparking (is the Dolphin folder next to the launcher?).")
 		app.pop.call_deferred()
@@ -247,7 +247,7 @@ func _refresh_players() -> void:
 			_players_box.add_child(_player_row(p, true))
 
 
-## King of the Hill: the line in order (P1 champion, P2 challenger, #3... waiting), compact rows
+## Battle Lounge: the line in order (P1 champion, P2 challenger, #3... waiting), compact rows
 ## so all 8 fit; watchers are counted in the corner.
 func _refresh_line() -> void:
 	var by_pid := {}
@@ -312,7 +312,7 @@ func _line_row(pos: int, p: Dictionary, name: String) -> Control:
 	return row
 
 
-## What the King of the Hill is doing right now, for the status corner and the menus.
+## What the Battle Lounge is doing right now, for the status corner and the menus.
 func koth_status() -> String:
 	if _koth.is_empty():
 		return ""
@@ -637,6 +637,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 				_system(tr("Couldn't list the lobby publicly (%s).") % data["error"], "#e8663d")
 		"players":
 			_players = data.get("players", [])
+			_maybe_auto_start()
 			if _phase == "lobby":
 				if is_training():
 					_status = "Ready" if _auto_started else "Loading Training Mode..."
@@ -684,11 +685,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_buffer = b
 		"battle_state":
 			_battle = data
-			# Buffer Training goes straight in once the training state is checked.
-			if is_training() and not _auto_started and _phase == "lobby" and data.get("active", false) \
-					and data.get("ready", false):
-				_auto_started = true
-				Dolphin.send("start")
+			_maybe_auto_start()
 		"game_starting":
 			_status = "Match starting..."
 			_system("Training starting..." if is_training() else "Match starting...")
@@ -717,7 +714,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 			app.toast("Connection lost")
 		"error":
 			var code := String(data.get("code", "error"))
-			# King of the Hill: refused because a set is on. Dolphin retries; nothing to report.
+			# Battle Lounge: refused because a set is on. Dolphin retries; nothing to report.
 			if code == "game_running" or (_koth_waiting and code == "connect_failed"):
 				return
 			var msg: String = ERRORS.get(code, code.replace("_", " "))
@@ -740,6 +737,18 @@ func _on_event(name: String, data: Dictionary) -> void:
 		_:
 			return
 	_refresh_all()
+
+
+## Buffer Training goes straight in once the training state is checked: either the battle state
+## event says ready, or the player list shows the host's own check came back ok after it.
+func _maybe_auto_start() -> void:
+	if not is_training() or _auto_started or _phase != "lobby" or not _battle.get("active", false):
+		return
+	var checked: bool = _battle.get("ready", false) or (not _players.is_empty()
+			and _players.all(func(p): return String(p.get("state_status", "")) == "ok"))
+	if checked:
+		_auto_started = true
+		Dolphin.send("start")
 
 
 func _on_matchmaking(d: Dictionary) -> void:

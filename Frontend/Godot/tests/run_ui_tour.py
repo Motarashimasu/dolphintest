@@ -142,7 +142,7 @@ def main():
                                    "--link", "wired", *netplay_codes])
     piccolo.send("hello")
     piccolo.seen("public", lambda e: e.get("listed"))
-    # A public King of the Hill lobby (only the King of the Hill browser lists it).
+    # A public Battle Lounge (King of the Hill) lobby: only the Battle Lounge browser lists it.
     trunks = Instance("trunks", [exe, *COMMON, "-u", trunks_user, "--netplay-host", dol,
                                  "--netplay-direct", "--public", "--koth", "--mode", "single",
                                  "--region", "EU", "--public-address", "127.0.0.1",

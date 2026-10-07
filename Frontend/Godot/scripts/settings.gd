@@ -236,7 +236,7 @@ func host_args(mode: String, public: bool, traversal: bool, koth := false) -> Pa
 	var a := _netplay_base()
 	a.append_array(["--mode", mode])
 	if koth:
-		a.append("--koth")   # King of the Hill lobby
+		a.append("--koth")   # Battle Lounge lobby
 	if not traversal:
 		a.append("--netplay-direct")
 	if public:
@@ -280,7 +280,7 @@ func find_args(mode: String, koth := false) -> PackedStringArray:
 func list_lobbies_args(koth := false) -> PackedStringArray:
 	var a := PackedStringArray(["-u", data_path(get_value("paths", "profile")), "--list-lobbies"])
 	if koth:
-		a.append("--koth")   # King of the Hill lobbies only (without it: regular ones only)
+		a.append("--koth")   # Battle Lounge lobbies only (without it: regular ones only)
 	a.append_array(_extra_args())
 	return a
 
