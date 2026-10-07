@@ -90,7 +90,8 @@ std::optional<std::vector<LobbyInfo>> ListLobbies(std::string* error)
     lobby.region = s.region;
     lobby.game = s.game_id;
     lobby.game_id = ParseGameId(s.game_id);
-    lobby.players = s.player_count;
+    lobby.players = s.player_count % 10;
+    lobby.spectators = s.player_count / 10;
     lobby.in_game = s.in_game;
     lobby.method = s.method;
     lobby.join = s.method == "traversal" ? s.server_id : fmt::format("{}:{}", s.server_id, s.port);
@@ -109,8 +110,11 @@ std::string LobbyJson(const LobbyInfo& lobby)
       .Add("game", lobby.game)
       .Add("game_id", lobby.game_id)
       .Add("players", lobby.players)
+      .Add("spectators", lobby.spectators)
       .Add("in_game", lobby.in_game)
       .Add("joinable", !lobby.in_game && lobby.players < 2)
+      // Dolphin can't let anyone in while a match runs, so watching starts in the lobby.
+      .Add("watchable", !lobby.in_game && lobby.spectators < 2)
       .Add("method", lobby.method)
       .Add("join", lobby.join)
       .Str();

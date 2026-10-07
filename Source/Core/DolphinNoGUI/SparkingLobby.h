@@ -6,7 +6,8 @@
 // The index only stores a few fixed fields (name, region, game, player count, in-game, version,
 // room code), so Sparking packs its own data into the session NAME:
 //     SPK1|<mode>|<link>|<host name>        e.g. "SPK1|single|wired|Goku"
-// Lobbies without that tag (regular Dolphin users) are ignored, and the list is always filtered
+// The index's player count carries both kinds of guests: players + 10 x spectators (lobbies are
+// 2 players + up to 2 spectators). Lobbies without that tag (regular Dolphin users) are ignored, and the list is always filtered
 // to the exact same build (the index's "version" = Dolphin's scm description string), so players
 // only ever see lobbies they can actually play with.
 
@@ -35,6 +36,7 @@ struct LobbyInfo
   std::string game;     // the host's netplay game name ("Title (GAMEID, Revision N)")
   std::string game_id;  // parsed from `game` when possible
   int players = 0;
+  int spectators = 0;
   bool in_game = false;
   std::string method;   // "traversal" or "direct"
   std::string join;     // what --netplay-join takes: room code, or ip:port

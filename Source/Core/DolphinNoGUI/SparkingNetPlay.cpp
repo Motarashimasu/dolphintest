@@ -200,6 +200,7 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
   m_region = options.region.empty() ? "NA" : options.region;
   m_public_address = options.public_address;
   m_automap = options.automap;
+  m_spectate = options.spectate && !options.host_game_path;
   m_state_dir = options.state_dir;
   m_port_gecko = options.port_gecko;
   m_gecko_defaults = options.gecko_defaults;
@@ -355,6 +356,46 @@ void NetPlaySession::Pump()
     BroadcastBattleState();
   if (m_server && m_rebroadcast_save.exchange(false))
     BroadcastSaveCheck();
+  if (m_rejected.exchange(false))
+  {
+    std::string reason;
+    {
+      std::lock_guard lk(m_links_mutex);
+      reason = m_reject_reason;
+    }
+    Emit("error", Json().Add("code", reason.empty() ? "lobby_full" : reason));
+    m_quit = true;
+  }
+  if (m_server && !m_kick_at.empty())
+  {
+    const auto now = std::chrono::steady_clock::now();
+    std::map<NetPlay::PlayerId, std::string> present;
+    for (const NetPlay::Player* p : m_client->GetPlayers())
+      present[p->pid] = p->name;
+    for (auto it = m_kick_at.begin(); it != m_kick_at.end();)
+    {
+      // Already gone (left on their own after the notice), or the number now belongs to someone
+      // else: nothing more to do.
+      const auto who = present.find(it->first);
+      if (who == present.end() || (!it->second.name.empty() && who->second != it->second.name))
+      {
+        it = m_kick_at.erase(it);
+        continue;
+      }
+      if (now >= it->second.kick_at)
+      {
+        m_server->KickPlayer(it->first);
+        it = m_kick_at.erase(it);
+        continue;
+      }
+      if (now >= it->second.next_notice)
+      {
+        SendControl(fmt::format("reject {} {}", static_cast<int>(it->first), it->second.reason));
+        it->second.next_notice = now + std::chrono::milliseconds(250);
+      }
+      ++it;
+    }
+  }
   if (m_server)
   {
     PumpAutoBuffer();
@@ -366,7 +407,9 @@ void NetPlaySession::Pump()
     {
       std::lock_guard lk(m_links_mutex);
       m_links[m_client->GetLocalPlayerId()] = m_local_link;
+      m_roles[m_client->GetLocalPlayerId()] = m_spectate ? "spectator" : "player";
     }
+    SendControl(std::string("role ") + (m_spectate ? "spectator" : "player"));
     SendControl("link " + m_local_link);
     PushHudPlayers();
     m_players_dirty = true;
@@ -393,6 +436,11 @@ void NetPlaySession::EmitPlayers()
   for (const NetPlay::Player* p : players)
     quality[p->pid] = QualityOf(p->pid, p->ping);
 
+  {
+    std::lock_guard lk(m_links_mutex);
+    for (const NetPlay::Player* p : players)
+      m_names[p->pid] = p->name;
+  }
   std::vector<std::string> list;
   list.reserve(players.size());
   for (const NetPlay::Player* p : players)
@@ -416,6 +464,7 @@ void NetPlaySession::EmitPlayers()
                        .Add("mapping", NetPlay::GetPlayerMappingString(p->pid, pad_map, gba, wii_map))
                        .Add("revision", p->revision)
                        .Add("link", LinkOf(p->pid))
+                       .Add("role", p->IsHost() ? std::string("player") : RoleOf(p->pid))
                        .Add("jitter", quality[p->pid].jitter_ms)
                        .Add("quality", quality[p->pid].rating)
                        .Add("state_status", [&]() -> std::string {
@@ -494,15 +543,65 @@ void NetPlaySession::ApplyAutoMap()
   NetPlay::PadMappingArray map = m_automap == AutoMap::Wiimote ? m_server->GetWiimoteMapping() :
                                                                   m_server->GetPadMapping();
   bool changed = false;
-  for (const NetPlay::Player* p : m_client->GetPlayers())
+  const auto now = std::chrono::steady_clock::now();
+  auto players = m_client->GetPlayers();
+  std::ranges::sort(players, {}, &NetPlay::Player::pid);  // first come, first served
+  int spectators = 0;
+  // Dolphin hands every newcomer a free port as they connect: only ports 1-2 are for playing.
+  if (m_automap == AutoMap::GameCube)
   {
-    if (std::find(map.begin(), map.end(), p->pid) != map.end())
+    for (size_t i = MAX_PLAYERS; i < map.size(); ++i)
+    {
+      if (map[i] != 0)
+      {
+        map[i] = 0;
+        changed = true;
+      }
+    }
+  }
+  for (const NetPlay::Player* p : players)
+  {
+    m_first_seen.try_emplace(p->pid, now);
+    if (m_kick_at.contains(p->pid))
       continue;
-    const auto free_slot = std::find(map.begin(), map.end(), NetPlay::PlayerId{0});
-    if (free_slot == map.end())
-      break;  // More than 4 players; extras spectate.
+    std::string role = p->IsHost() ? "player" : RoleOf(p->pid);
+    if (role == "pending")
+    {
+      // Older builds never say: after a few seconds they count as players.
+      if (now - m_first_seen[p->pid] < std::chrono::seconds(3))
+        continue;
+      role = "player";
+    }
+    const auto mapped = std::find(map.begin(), map.end(), p->pid);
+    if (role == "spectator")
+    {
+      if (mapped != map.end())  // spectators never hold a port
+      {
+        *mapped = 0;
+        changed = true;
+      }
+      if (++spectators > MAX_SPECTATORS)
+        RejectPlayer(p->pid, "spectators_full");
+      continue;
+    }
+    if (mapped != map.end())
+      continue;
+    const auto ports = map.begin() + MAX_PLAYERS;  // GameCube ports 1-2 only
+    const auto free_slot = std::find(map.begin(), ports, NetPlay::PlayerId{0});
+    if (free_slot == ports)
+    {
+      RejectPlayer(p->pid, "lobby_full");
+      continue;
+    }
     *free_slot = p->pid;
     changed = true;
+  }
+  for (auto it = m_first_seen.begin(); it != m_first_seen.end();)
+  {
+    const bool gone = std::ranges::none_of(players, [&](const NetPlay::Player* p) {
+      return p->pid == it->first;
+    });
+    it = gone ? m_first_seen.erase(it) : std::next(it);
   }
 
   if (changed)
@@ -526,6 +625,35 @@ void NetPlaySession::ApplyAutoMap()
     else
       m_server->SetWiimoteMapping(empty);
   }
+}
+
+std::string NetPlaySession::RoleOf(NetPlay::PlayerId pid)
+{
+  std::lock_guard lk(m_links_mutex);
+  const auto it = m_roles.find(pid);
+  return it == m_roles.end() ? std::string("pending") : it->second;
+}
+
+void NetPlaySession::RejectPlayer(NetPlay::PlayerId pid, std::string_view reason)
+{
+  {
+    // Player list first, then our lock (Dolphin calls OnPlayerDisconnect holding its own lock).
+    const auto players = m_client->GetPlayers();
+    std::lock_guard lk(m_links_mutex);
+    for (const NetPlay::Player* p : players)
+      m_names[p->pid] = p->name;
+  }
+  // Tell them why (repeated until then: a brand-new joiner may miss the first one), and remove
+  // them a moment later.
+  const auto now = std::chrono::steady_clock::now();
+  std::string name;
+  {
+    std::lock_guard lk(m_links_mutex);
+    if (const auto it = m_names.find(pid); it != m_names.end())
+      name = it->second;
+  }
+  m_kick_at[pid] = PendingKick{std::string(reason), name, now + std::chrono::milliseconds(1500), now};
+  Emit("player_rejected", Json().Add("pid", static_cast<int>(pid)).Add("reason", reason));
 }
 
 bool NetPlaySession::HandleCommand(const Command& cmd)
@@ -1025,6 +1153,23 @@ void NetPlaySession::OnPlayerConnect(const std::string& player)
 
 void NetPlaySession::OnPlayerDisconnect(const std::string& player)
 {
+  {
+    // Dolphin reuses player numbers: forget what this one told us (role, link).
+    std::lock_guard lk(m_links_mutex);
+    for (auto it = m_names.begin(); it != m_names.end();)
+    {
+      if (it->second == player)
+      {
+        m_roles.erase(it->first);
+        m_links.erase(it->first);
+        it = m_names.erase(it);
+      }
+      else
+      {
+        ++it;
+      }
+    }
+  }
   m_players_dirty = true;
   Emit("player_left", Json().Add("name", player));
 }
@@ -1260,6 +1405,26 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
     SendControl(fmt::format("ack {} {}", wanted.sha1, status));
     EmitBattleState();
   }
+  else if (parts[0] == "role" && parts.size() == 2)
+  {
+    {
+      std::lock_guard lk(m_links_mutex);
+      m_roles[from] = parts[1] == "spectator" ? "spectator" : "player";
+    }
+    m_players_dirty = true;
+    return;
+  }
+  else if (parts[0] == "reject" && parts.size() == 3 && !m_server)
+  {
+    if (from != 1 || std::atoi(parts[1].c_str()) != m_client->GetLocalPlayerId())
+      return;
+    {
+      std::lock_guard lk(m_links_mutex);
+      m_reject_reason = parts[2] == "spectators_full" ? "spectators_full" : "lobby_full";
+    }
+    m_rejected = true;
+    return;
+  }
   else if (parts[0] == "link" && parts.size() == 2)
   {
     static constexpr std::array<std::string_view, 4> known = {"wired", "wireless", "virtual",
@@ -1479,6 +1644,21 @@ int NetPlaySession::PlayerCount()
   return m_client ? static_cast<int>(m_client->GetPlayers().size()) : 0;
 }
 
+int NetPlaySession::ListingCount()
+{
+  if (!m_client)
+    return 0;
+  int players = 0, spectators = 0;
+  for (const NetPlay::Player* p : m_client->GetPlayers())
+  {
+    if (!p->IsHost() && RoleOf(p->pid) == "spectator")
+      ++spectators;
+    else
+      ++players;
+  }
+  return std::min(players, 9) + 10 * spectators;
+}
+
 int NetPlaySession::LocalGcPort()
 {
   if (!m_client)
@@ -1533,7 +1713,7 @@ void NetPlaySession::UpdatePublicListing()
                         !m_host_game_name.empty()    ? m_host_game_name :
                                                        "UNKNOWN";
     }
-    listing.player_count = PlayerCount();
+    listing.player_count = ListingCount();
     listing.port = m_server->GetPort();
     listing.in_game = m_game_running;
 
@@ -1556,7 +1736,7 @@ void NetPlaySession::UpdatePublicListing()
   }
 
   // Kept fresh by NetPlayIndex's own 5-second heartbeat.
-  m_index->SetPlayerCount(PlayerCount());
+  m_index->SetPlayerCount(ListingCount());
   std::lock_guard lk(m_game_mutex);
   if (!m_current_game_name.empty())
     m_index->SetGame(m_current_game_name);

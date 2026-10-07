@@ -741,6 +741,10 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .metavar("CODE|IP:PORT")
       .help("Join a NetPlay session by traversal room code or address (implies --sparking)");
+  parser.add_option("--spectate")
+      .dest("spectate")
+      .action("store_true")
+      .help("With --netplay-join: watch only (never gets a controller port, no per-port codes)");
   parser.add_option("--netplay-game")
       .dest("netplay_game")
       .action("append")
@@ -1185,7 +1189,10 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
   if (options.is_set("netplay_host"))
     np.host_game_path = static_cast<const char*>(options.get("netplay_host"));
   else if (options.is_set("netplay_join"))
+  {
     np.join_target = static_cast<const char*>(options.get("netplay_join"));
+    np.spectate = options.is_set_by_user("spectate");
+  }
   const bool find = options.is_set("netplay_find");
   np.is_public = options.is_set_by_user("public");
   np.mode = static_cast<const char*>(find ? options.get("netplay_find") : options.get("mode"));
@@ -1267,6 +1274,8 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
       HandleGameCommand(cmd, platform);
     else if ((cmd.name == "quit" || cmd.name == "eof") && platform)
       platform->Stop();  // spectators have no pad mapped, so also stop locally
+    else if (cmd.name == "stop" && session->IsSpectating() && platform)
+      platform->Stop();  // a spectator stops watching; the match goes on for the players
   });
 
   if (!find)

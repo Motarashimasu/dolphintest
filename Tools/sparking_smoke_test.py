@@ -713,6 +713,7 @@ def main():
         check("host exits on stdin EOF", host.wait_for("exit")["code"] == 0)
         for inst in (host, joiner):
             inst.proc.wait(timeout=20)
+        spectator_check(exe, dol, work, game_id)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
@@ -791,6 +792,107 @@ class FakeLobbyServer:
         return sorted(s["name"] for s in self.sessions.values())
 
 
+def spectator_check(exe, dol, work, game_id):
+    """2 players + 2 spectators: spectators never get a port, run only the default codes (no
+    splitscreen remover), a 3rd spectator and a 3rd player are turned away, and a spectator
+    stopping only stops their own game."""
+    print("netplay: spectators (2 players + 2 spectators)")
+    common = ["-p", "headless", "-v", "Null"]
+
+    def setup(name):
+        d = os.path.join(work, "spec-" + name)
+        os.makedirs(os.path.join(d, "Config"), exist_ok=True)
+        os.makedirs(os.path.join(d, "GameSettings"), exist_ok=True)
+        with open(os.path.join(d, "Config", "Dolphin.ini"), "w") as f:
+            f.write("[NetPlay]\nTraversalChoice = direct\nHostPort = 26290\nSyncSaves = False\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        with open(os.path.join(d, "GameSettings", f"{game_id}.ini"), "w") as f:
+            f.write("[Gecko]\n"
+                    "$Splitscreen Remover P1 [Sparking]\n04001000 00000001\n"
+                    "$Splitscreen Remover P2 [Sparking]\n04001004 00000002\n"
+                    "$Infinite Health [Sparking]\n04001008 00000003\n"
+                    "[Gecko_Enabled]\n$Infinite Health\n")
+        nand = os.path.join(work, "spec-nand-" + name)
+        data = os.path.join(nand, "title", "00000000", "00000000", "data")
+        os.makedirs(data, exist_ok=True)
+        with open(os.path.join(data, "save.bin"), "wb") as f:
+            f.write(b"ALL-CHARACTERS-UNLOCKED" * 100)
+        return ["-u", d, "--nand", nand, "--netplay-gecko", "1=Splitscreen Remover P1",
+                "--netplay-gecko", "2=Splitscreen Remover P2"]
+
+    def joiner(name, *extra):
+        inst = Instance(name, [exe, *common, *setup(name), "--netplay-join", "127.0.0.1:26290",
+                               "--netplay-game", dol, "--nickname", name, *extra])
+        inst.send("hello")
+        return inst
+
+    host = Instance("spec-host", [exe, *common, *setup("host"), "--netplay-host", dol,
+                                  "--netplay-direct", "--nickname", "Goku", "--automap", "gc"])
+    insts = [host]
+    try:
+        host.send("hello")
+        host.wait_for("lobby_ready")
+        vegeta = joiner("Vegeta"); insts.append(vegeta)
+        vegeta.wait_for("lobby_ready")
+        kaio = joiner("Kaio", "--spectate"); insts.append(kaio)
+        kaio.wait_for("lobby_ready")
+        bulma = joiner("Bulma", "--spectate"); insts.append(bulma)
+        bulma.wait_for("lobby_ready")
+
+        def roles(e):
+            return {p["name"]: (p.get("role"), p["gc_slot"]) for p in e["players"]}
+
+        full = host.seen("players", lambda e: roles(e) == {
+            "Goku": ("player", 1), "Vegeta": ("player", 2),
+            "Kaio": ("spectator", -1), "Bulma": ("spectator", -1)}, timeout=20)
+        check(f"2 players on ports 1-2, 2 spectators with no port {roles(full)}", True)
+        check("everyone sees the roles", kaio.seen("players", lambda e: roles(e).get("Vegeta") == ("player", 2)
+              and roles(e).get("Bulma", ("",))[0] == "spectator", timeout=15) is not None)
+
+        piccolo = joiner("Piccolo", "--spectate"); insts.append(piccolo)
+        err = piccolo.wait_for("error", lambda e: e["code"] in ("spectators_full", "lobby_full"), timeout=20)
+        check(f"a 3rd spectator is turned away {err}", err["code"] == "spectators_full")
+        piccolo.proc.wait(timeout=20)
+        krillin = joiner("Krillin"); insts.append(krillin)
+        err = krillin.wait_for("error", lambda e: e["code"] in ("spectators_full", "lobby_full"), timeout=20)
+        check(f"a 3rd player is turned away {err}", err["code"] == "lobby_full")
+        for inst in (piccolo, krillin):
+            inst.proc.wait(timeout=20)
+        back = host.seen("players", lambda e: len(e["players"]) == 4 and
+                         all(p["name"] not in ("Piccolo", "Krillin") for p in e["players"]), timeout=20)
+        check("the lobby is back to 2 + 2", bool(back))
+
+        host.seen("players", lambda e: len(e["players"]) == 4 and
+                  all(p["save_status"] == "ok" for p in e["players"] if not p["is_host"]), timeout=20)
+        host.send("start")
+        for inst in (host, vegeta, kaio, bulma):
+            inst.wait_for("game_started", timeout=40)
+        check("the match runs on all four", True)
+        for inst, port, codes in ((host, 1, ["Infinite Health", "Splitscreen Remover P1"]),
+                                  (vegeta, 2, ["Infinite Health", "Splitscreen Remover P2"]),
+                                  (kaio, 0, ["Infinite Health"]), (bulma, 0, ["Infinite Health"])):
+            g = inst.seen("gecko_active")
+            check(f"{inst.name}: port {g['port']}, codes {g['codes']}", g["port"] == port and g["codes"] == codes)
+        time.sleep(4)
+        check("no desync with spectators watching",
+              not any(e["event"] == "desync" for inst in (host, vegeta, kaio, bulma) for e in inst.history))
+        kaio.send("stop")
+        kaio.wait_for("game_stopped", timeout=20)
+        time.sleep(2)
+        check("a spectator stopping only stops their own game",
+              not any(e["event"] == "game_stopped" for inst in (host, vegeta, bulma) for e in inst.history))
+        host.send("stop")
+        for inst in (host, vegeta, bulma):
+            inst.wait_for("game_stopped", timeout=30)
+        for inst in (vegeta, kaio, bulma, host):
+            inst.send("quit")
+            inst.wait_for("exit", timeout=20)
+    finally:
+        for inst in insts:
+            if inst.proc.poll() is None:
+                inst.proc.kill()
+
+
 def lobby_check(exe, dol, work, game_id):
     print("public lobbies + matchmaking (fake lobby server)")
     server = FakeLobbyServer()
@@ -854,6 +956,7 @@ def lobby_check(exe, dol, work, game_id):
     check(f"lobby entry {g}",
           g["mode"] == "single" and g["link"] == "wired" and g["region"] == "EU"
           and g["players"] == 1 and g["joinable"] is True and g["join"] == "127.0.0.1:26281"
+          and g["spectators"] == 0 and g["watchable"] is True
           and "version" not in g)
     check("--list-lobbies --mode team hides single lobbies", list_lobbies("--mode", "team") == [])
     check("--list-lobbies --mode any shows them", len(list_lobbies("--mode", "any")) == 1)

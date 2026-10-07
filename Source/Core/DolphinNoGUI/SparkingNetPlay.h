@@ -68,7 +68,14 @@ struct NetPlayOptions
                                   // battle state from the game ini's [Sparking.Modes]
   std::string region = "NA";      // lobby server region: EA CN EU NA SA OC AF
   std::string public_address;     // direct hosting only: address others join (traversal: room code)
+  // Joiner: watch only. Spectators never get a controller port (not even if a player leaves),
+  // and run the default codes without any per-port code.
+  bool spectate = false;
 };
+
+// Lobby size: 2 players (GameCube ports 1-2) and up to 2 spectators.
+constexpr int MAX_PLAYERS = 2;
+constexpr int MAX_SPECTATORS = 2;
 
 // Connection quality from ping samples (one per second): average change between consecutive
 // pings (jitter) plus the ping itself.
@@ -116,8 +123,11 @@ public:
   void OnGameEnded();
 
   bool WantsQuit() const { return m_quit; }
+  bool IsSpectating() const { return m_spectate; }
   // Host thread. Players in the lobby, and this player's GameCube port (0 = none / spectator).
   int PlayerCount();
+  // Public listing's player_count: players + 10 x spectators (see SparkingLobby.h).
+  int ListingCount();
   int LocalGcPort();
 
   // Set by the frontend so netplay can stop a running game from any thread.
@@ -235,6 +245,25 @@ private:
   std::mutex m_links_mutex;
   std::map<NetPlay::PlayerId, std::string> m_links;  // guarded by m_links_mutex
   std::atomic<bool> m_rebroadcast_link{true};
+
+  // Roles ("role player|spectator" control message, sent with "link" on joining). Host: a
+  // joiner gets a port only once its role is known (or after a few seconds for older builds),
+  // and anyone over the 2 + 2 limit is told why and removed.
+  bool m_spectate = false;
+  std::map<NetPlay::PlayerId, std::string> m_roles;  // guarded by m_links_mutex
+  std::map<NetPlay::PlayerId, std::string> m_names;  // last player list, guarded by m_links_mutex
+  std::string RoleOf(NetPlay::PlayerId pid);           // "player", "spectator" or "pending"
+  std::map<NetPlay::PlayerId, std::chrono::steady_clock::time_point> m_first_seen;  // host thread
+  struct PendingKick
+  {
+    std::string reason;
+    std::string name;  // player numbers get reused: only ever act on this same player
+    std::chrono::steady_clock::time_point kick_at, next_notice;
+  };
+  std::map<NetPlay::PlayerId, PendingKick> m_kick_at;  // host thread
+  std::atomic<bool> m_rejected{false};  // this joiner was turned away (netplay thread sets it)
+  std::string m_reject_reason;          // guarded by m_links_mutex
+  void RejectPlayer(NetPlay::PlayerId pid, std::string_view reason);  // host thread
   void PushHudPlayers();  // any thread: names' link icons per GameCube port
   std::string LinkOf(NetPlay::PlayerId pid);
 
