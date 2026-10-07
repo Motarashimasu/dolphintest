@@ -367,12 +367,24 @@ func _netplay_menu() -> Control:
 		{"label": "Player Match", "glyph": "P", "color": "#f2b531",
 			"desc": "Host your own lobby, or find a match\nfor the mode you want to play.",
 			"action": func(): push(_player_match_menu())},
+		{"label": "Buffer Training", "glyph": "T", "color": "#3fbf6b",
+			"desc": "Play in Training Mode, with the option to practice with pad buffering to emulate an online environment, so you can be prepared for anything! near or far!",
+			"action": open_buffer_training},
 		{"label": "Ranked Match", "glyph": "R", "color": "#c94bd6", "disabled": true,
 			"disabled_text": "Ranked Match is a work in progress.",
 			"desc": "Work in progress."},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the game menu."},
 	], "netplay")
+
+
+## Buffer Training: a solo, unlisted netplay lobby that boots the training state
+## ([Sparking.Modes] Training) so the pad buffer can be felt and changed while playing.
+func open_buffer_training() -> void:
+	if not require_setup():
+		return
+	var lobby: Control = load(SCREENS % "lobby").new()
+	push(lobby.setup("training", Settings.training_args(), "training"))
 
 
 func _player_match_menu() -> Control:

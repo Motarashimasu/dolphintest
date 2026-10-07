@@ -3,6 +3,8 @@ extends "res://scripts/screens/screen.gd"
 ## (slot, ping ± jitter, wired/Wi-Fi, quality), messages, pad buffer, Start (host), Leave.
 ## While the match runs, a held Select opens the small in-game version: messages, buffer and
 ## "Stop Match" (ends the match for everyone, back to this lobby).
+## kind "training" is Buffer Training: a solo, unlisted lobby that boots straight into the training
+## state, so the player can feel a pad buffer of their choice (set live, also from the menu).
 
 const OptionList := preload("res://scripts/ui/option_list.gd")
 const InGamePanel := preload("res://scripts/ui/ingame_panel.gd")
@@ -24,9 +26,10 @@ const ERRORS := {
 	"state_file_missing": "The battle state file is missing from SparkingData\\states.",
 	"lobby_full": "That lobby already has 2 players. You can watch it instead.",
 	"spectators_full": "That lobby already has 2 spectators.",
+	"training_solo": "That's a Buffer Training session: it's solo.",
 }
 
-var kind := "host"            # host, join, find, watch (spectator: never plays)
+var kind := "host"            # host, join, find, watch (spectator: never plays), training (solo)
 var mode := "any"
 var _args := PackedStringArray()
 var _closed_because := ""
@@ -41,6 +44,7 @@ var _buffer := -1
 var _chat: PackedStringArray = []
 var _battle := {}
 var _logged_buffer := -1
+var _auto_started := false    # Buffer Training starts itself once the state is ready
 
 var _info: Label
 var _info_right: Label
@@ -156,7 +160,9 @@ func _refresh_all() -> void:
 
 func _refresh_info() -> void:
 	var left := ""
-	if _role == "host" or not _room.is_empty():
+	if is_training():
+		left = _status if _phase in ["connecting", "searching"] else tr("Solo · Pad buffer %s") % (str(_buffer) if _buffer > 0 else "?")
+	elif _role == "host" or not _room.is_empty():
 		match _room.get("state", ""):
 			"ready":
 				if _room.get("type") == "traversal":
@@ -177,7 +183,9 @@ func _refresh_info() -> void:
 		left = _status if _phase in ["connecting", "searching"] else ("Hosting" if _role == "host" else "Joined lobby")
 	_info.text = tr(left)
 	var right: Array = [Style.mode_name(mode)]
-	if _role == "host":
+	if is_training():
+		right.append(tr("Solo"))
+	elif _role == "host":
 		if _public.get("listed", false):
 			right.append(tr("Public · %s") % String(_public.get("region", Settings.get_value("player", "region"))))
 		elif _public.has("error"):
@@ -229,6 +237,10 @@ func _watching() -> Array:
 
 func is_spectating() -> bool:
 	return kind == "watch"
+
+
+func is_training() -> bool:
+	return kind == "training"
 
 
 func _player_row(p: Dictionary, spectator := false) -> Control:
@@ -286,11 +298,16 @@ func _action_rows(in_game_menu: bool) -> Array:
 	if in_game_menu:
 		rows.append({"type": "action", "key": "resume", "label": "Back to the game"})
 	elif host:
-		rows.append({"type": "action", "key": "start", "label": "Start Match", "color": "#3fbf6b",
-			"disabled": _phase == "playing" or _playing().size() < 2})
-	rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": tr("Press %s to type") % Pad.prompt("accept")["key"],
-		"max_length": 200})
-	if host:
+		rows.append({"type": "action", "key": "start", "label": "Start Training" if is_training() else "Start Match",
+			"color": "#3fbf6b", "disabled": _phase == "playing" or _playing().size() < (1 if is_training() else 2)})
+	if not is_training():   # nobody to talk to in a solo session
+		rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": tr("Press %s to type") % Pad.prompt("accept")["key"],
+			"max_length": 200})
+	if host and is_training():
+		# The point of the mode: any buffer, changed live (no automatic mode, there's no ping).
+		rows.append({"type": "number", "key": "buffer", "label": "Pad buffer", "min": 1, "max": 20, "step": 1,
+			"value": _buffer if _buffer > 0 else int(Settings.get_value("netplay", "buffer"))})
+	elif host:
 		var auto: bool = Settings.get_value("netplay", "buffer_auto")
 		rows.append({"type": "choice", "key": "buffer_mode", "label": "Pad buffer mode", "values": [false, true],
 			"names": ["Manual", "Automatic"], "value": auto})
@@ -300,7 +317,7 @@ func _action_rows(in_game_menu: bool) -> Array:
 		rows.append({"type": "info", "key": "buffer", "label": "Pad buffer",
 			"value": str(_buffer) if _buffer > 0 else "?"})
 	# A spectator's Stop only ends their own view; the match goes on for the players.
-	var stop_label := "Stop Watching" if is_spectating() else "Stop Match"
+	var stop_label := "Stop Watching" if is_spectating() else ("Stop Training" if is_training() else "Stop Match")
 	if in_game_menu:
 		rows.append({"type": "action", "key": "stop", "label": stop_label, "color": "#e8663d"})
 	else:
@@ -342,7 +359,8 @@ func _players_line() -> String:
 func make_ingame_panel() -> Control:
 	if _phase != "playing":
 		return null
-	var panel: Control = InGamePanel.new().setup("Match Menu", _action_rows(true), 170, Vector2(560, 560))
+	var panel: Control = InGamePanel.new().setup("Training Menu" if is_training() else "Match Menu",
+			_action_rows(true), 170, Vector2(560, 560))
 	var box := RichTextLabel.new()
 	box.name = "Log"
 	box.bbcode_enabled = true
@@ -413,7 +431,7 @@ func _on_value(key: String, value: Variant) -> void:
 
 ## Host: automatic ("buffer auto": Dolphin picks it at the start and after each KO) or the number.
 func _send_buffer_mode() -> void:
-	if Settings.get_value("netplay", "buffer_auto"):
+	if Settings.get_value("netplay", "buffer_auto") and not is_training():
 		Dolphin.send("buffer auto")
 	else:
 		Dolphin.send("buffer %d" % int(Settings.get_value("netplay", "buffer")))
@@ -455,10 +473,14 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_phase = "lobby"
 			_players = []
 			_status = "Waiting for players..." if _role == "host" else "Waiting for the host to start"
+			if is_training():
+				_status = "Loading Training Mode..."
 			if _role == "host":
 				_buffer = int(Settings.get_value("netplay", "buffer"))
 				_send_buffer_mode()
-			if is_spectating():
+			if is_training():
+				_system("Buffer Training: change the pad buffer here or from the menu (hold Select) while you play.")
+			elif is_spectating():
 				_system("You're watching: spectators can't play, only chat.")
 			else:
 				_system("Lobby open." if _role == "host" else "Joined the lobby.")
@@ -474,7 +496,9 @@ func _on_event(name: String, data: Dictionary) -> void:
 		"players":
 			_players = data.get("players", [])
 			if _phase == "lobby":
-				if _role == "host":
+				if is_training():
+					_status = "Ready" if _auto_started else "Loading Training Mode..."
+				elif _role == "host":
 					_status = "Ready to start" if _playing().size() >= 2 else "Waiting for players..."
 		"player_joined":
 			Sfx.play("player_join")
@@ -516,20 +540,26 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_buffer = b
 		"battle_state":
 			_battle = data
+			# Buffer Training goes straight in once the training state is checked.
+			if is_training() and not _auto_started and _phase == "lobby" and data.get("active", false) \
+					and data.get("ready", false):
+				_auto_started = true
+				Dolphin.send("start")
 		"game_starting":
 			_status = "Match starting..."
-			_system("Match starting...")
+			_system("Training starting..." if is_training() else "Match starting...")
 		"sync_begin":
 			_status = "Syncing save data..."
 		"game_started":
 			_phase = "playing"
 			_status = "Watching the match (hold Select for the menu)" if is_spectating() \
-					else "Match in progress (hold Select for the menu)"
+					else ("Training (hold Select to change the pad buffer)" if is_training()
+					else "Match in progress (hold Select for the menu)")
 		"game_stopped", "game_start_aborted":
 			if _phase == "playing" or _phase == "lobby":
 				_phase = "lobby"
 				_status = "Back in the lobby"
-				_system("Match ended.")
+				_system("Training stopped." if is_training() else "Match ended.")
 		"round_result":
 			var wins: Dictionary = data.get("wins", {})
 			var parts: Array = []

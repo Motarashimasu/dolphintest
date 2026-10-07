@@ -133,37 +133,45 @@ func current() -> Dictionary:
 		# Only the two fighters count (spectators are listed separately).
 		var players: Array = lobby._playing() if lobby.has_method("_playing") else lobby._players
 		var count := maxi(players.size(), 1)
-		match String(lobby._phase):
-			"playing":
-				key = "match"
-				p["details"] = tr("DRAGON NET: %s") % mode_name if lobby.mode != "any" else tr("DRAGON NET match")
-				var me := String(Settings.get_value("player", "nickname"))
-				var others: Array = []
-				for pl in players:
-					var n := String(pl.get("name", ""))
-					if n != "" and n != me:
-						others.append(n)
-				p["state"] = tr("vs %s") % ", ".join(others) if not others.is_empty() else tr("Match in progress")
-				if lobby.has_method("is_spectating") and lobby.is_spectating():
-					var fighters: Array = []
-					for pl in lobby._playing():
-						fighters.append(String(pl.get("name", "?")))
-					p["state"] = tr("Watching %s") % " vs ".join(fighters)
-			"searching":
-				key = "searching"
-				p["details"] = tr("DRAGON NET")
-				p["state"] = tr("Looking for a %s lobby") % mode_name if lobby.mode != "any" else tr("Looking for a lobby")
-			_:
-				key = "lobby"
-				p["details"] = (tr("%s lobby") % mode_name) if lobby.mode != "any" else tr("DRAGON NET lobby")
-				p["state"] = tr("Waiting for players") if count < 2 else tr("In the lobby")
-				p["party_size"] = count
-				p["party_max"] = 2
-				var target := _join_target(lobby)
-				if target != "":
-					p["party_id"] = "spk-" + target.sha256_text().left(16)
-					if lobby._role == "host" and bool(lobby._public.get("listed", false)):
-						p["join_secret"] = JOIN_PREFIX + target
+		var training: bool = lobby.has_method("is_training") and lobby.is_training()
+		if training:
+			# Solo: no party, no Ask to Join.
+			key = "training"
+			p["details"] = tr("DRAGON NET: %s") % mode_name
+			p["state"] = tr("Practicing with pad buffer %d") % int(lobby._buffer) if int(lobby._buffer) > 0 \
+					else tr("Practicing")
+		else:
+			match String(lobby._phase):
+				"playing":
+					key = "match"
+					p["details"] = tr("DRAGON NET: %s") % mode_name if lobby.mode != "any" else tr("DRAGON NET match")
+					var me := String(Settings.get_value("player", "nickname"))
+					var others: Array = []
+					for pl in players:
+						var n := String(pl.get("name", ""))
+						if n != "" and n != me:
+							others.append(n)
+					p["state"] = tr("vs %s") % ", ".join(others) if not others.is_empty() else tr("Match in progress")
+					if lobby.has_method("is_spectating") and lobby.is_spectating():
+						var fighters: Array = []
+						for pl in lobby._playing():
+							fighters.append(String(pl.get("name", "?")))
+						p["state"] = tr("Watching %s") % " vs ".join(fighters)
+				"searching":
+					key = "searching"
+					p["details"] = tr("DRAGON NET")
+					p["state"] = tr("Looking for a %s lobby") % mode_name if lobby.mode != "any" else tr("Looking for a lobby")
+				_:
+					key = "lobby"
+					p["details"] = (tr("%s lobby") % mode_name) if lobby.mode != "any" else tr("DRAGON NET lobby")
+					p["state"] = tr("Waiting for players") if count < 2 else tr("In the lobby")
+					p["party_size"] = count
+					p["party_max"] = 2
+					var target := _join_target(lobby)
+					if target != "":
+						p["party_id"] = "spk-" + target.sha256_text().left(16)
+						if lobby._role == "host" and bool(lobby._public.get("listed", false)):
+							p["join_secret"] = JOIN_PREFIX + target
 	elif Dolphin.in_game:
 		key = "offline"
 		p["details"] = "Budokai Tenkaichi 3"

@@ -97,10 +97,17 @@ def main():
     piccolo_user = user(os.path.join(work, "piccolo"), 26310)
 
     # The DOL's game ID, for its Gecko codes and texture pack.
+    # It also captures the state Buffer Training boots ([Sparking.Modes] Training, below).
+    os.makedirs(os.path.join(data, "states"), exist_ok=True)
     probe = Instance("probe", [exe, *COMMON, "--sparking", "-u", user(os.path.join(work, "probe"), 26399),
+                               "--state-dir", os.path.join(data, "states"),
                                "-e", dol])
     probe.send("hello")
     game_id = probe.seen("game_info")["game_id"]
+    probe.seen("game_started", timeout=30)
+    time.sleep(1)
+    probe.send("save_state_file training.sst")
+    probe.seen("state_file_saved", timeout=30)
     probe.send("quit")
     probe.proc.wait(timeout=15)
     print("test game id:", game_id)
@@ -111,7 +118,8 @@ def main():
             f.write("[Gecko]\n$Player 1 Splitscreen Remover\n04001000 00000001\n"
                     "$Player 2 Splitscreen Remover\n04001004 00000002\n"
                     "$16:9 aspect ratio\n04001008 00000003\n"
-                    "[Gecko_Enabled]\n$16:9 aspect ratio\n")
+                    "[Gecko_Enabled]\n$16:9 aspect ratio\n"
+                    "[Sparking.Modes]\nTraining = training.sst\n")
     # Texture pack with the frontend's variant groups (empty placeholder textures).
     png = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
                         "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
@@ -286,6 +294,8 @@ def main():
         ("hosted public lobby with Ask to Join", lambda a: a.get("details") == "Single Battle lobby"
             and str(a.get("secrets", {}).get("join", "")).startswith("spk1:") and a.get("party", {}).get("size")),
         ("netplay match vs the other player", lambda a: a.get("details") == "DRAGON NET: Single Battle" and a.get("state") == "vs Vegeta"),
+        ("buffer training", lambda a: a.get("details") == "DRAGON NET: Buffer Training"
+            and str(a.get("state", "")).startswith("Practicing") and not a.get("secrets") and not a.get("party")),
         ("offline game", lambda a: a.get("state") == "Playing offline"),
     ]:
         ok = seen(pred)

@@ -83,6 +83,11 @@ press B again to leave.
   splitscreen remover, can chat, and Stop Watching only ends their own view. Watching starts in
   the lobby: Dolphin can't let anyone in once a match is running. A full lobby turns a 3rd
   player or 3rd spectator away with a message.
+- **Buffer Training** (DRAGON NET > Buffer Training): a solo, unlisted lobby that boots
+  `states\RDSPAF-BufferTraining.sst` (Training Mode) on its own, so you can feel a pad buffer
+  like an online match's. Change the buffer in the lobby or from the Training Menu (hold
+  Select) while you play; Stop Training goes back to the lobby, Start Training goes again.
+  Nobody else can join it.
 - **Pad buffer mode** (host): Manual uses the number you set. Automatic picks it from the ping
   when you press Start Match, and again right after each KO (any number of steps, within 20 s,
   never while a round is being fought). Every change is explained in the messages.

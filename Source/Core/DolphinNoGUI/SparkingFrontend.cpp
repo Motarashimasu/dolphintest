@@ -806,9 +806,10 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
   parser.add_option("--mode")
       .dest("mode")
       .action("store")
-      .choices({"single", "team", "any"})
+      .choices({"single", "team", "training", "any"})
       .set_default("any")
-      .help("Netplay: lobby mode (host) or wanted mode (--netplay-find): single, team, any");
+      .help("Netplay: lobby mode (host) or wanted mode (--netplay-find): single, team, any; "
+            "training = solo Buffer Training (never listed, nobody else can join)");
   parser.add_option("--region")
       .dest("region")
       .action("store")

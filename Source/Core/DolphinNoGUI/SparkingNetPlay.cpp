@@ -195,8 +195,9 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
   m_local_link = options.link.empty() ? DetectLinkType() : options.link;
   Emit("link", Json().Add("type", m_local_link));
   SetHudNetplayStats(-2, static_cast<int>(Config::Get(Config::NETPLAY_BUFFER_SIZE)));
-  m_public = options.is_public && options.host_game_path.has_value();
   m_mode = IsValidLobbyMode(options.mode) ? options.mode : "any";
+  // Buffer Training is a solo session: never listed, nobody else gets in.
+  m_public = options.is_public && options.host_game_path.has_value() && m_mode != "training";
   m_region = options.region.empty() ? "NA" : options.region;
   m_public_address = options.public_address;
   m_automap = options.automap;
@@ -564,6 +565,11 @@ void NetPlaySession::ApplyAutoMap()
     m_first_seen.try_emplace(p->pid, now);
     if (m_kick_at.contains(p->pid))
       continue;
+    if (m_mode == "training" && !p->IsHost())
+    {
+      RejectPlayer(p->pid, "training_solo");
+      continue;
+    }
     std::string role = p->IsHost() ? "player" : RoleOf(p->pid);
     if (role == "pending")
     {
@@ -1420,7 +1426,9 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
       return;
     {
       std::lock_guard lk(m_links_mutex);
-      m_reject_reason = parts[2] == "spectators_full" ? "spectators_full" : "lobby_full";
+      m_reject_reason = parts[2] == "spectators_full" || parts[2] == "training_solo" ?
+                             std::string(parts[2]) :
+                             "lobby_full";
     }
     m_rejected = true;
     return;
@@ -1750,13 +1758,14 @@ void NetPlaySession::ApplyModeBattleState()
   if (!game)
     return;
   m_mode_state_applied = true;
-  // [Sparking.Modes] in the game ini: Single = <state file>, Team = <state file>
+  // [Sparking.Modes] in the game ini: Single / Team / Training = <state file>
+  const char* key = m_mode == "single" ? "Single" : m_mode == "team" ? "Team" : "Training";
   std::string file;
   for (const Common::IniFile& ini : {SConfig::LoadLocalGameIni(game->GetGameID(), game->GetRevision()),
                                      SConfig::LoadDefaultGameIni(game->GetGameID(), game->GetRevision())})
   {
     const Common::IniFile::Section* section = ini.GetSection("Sparking.Modes");
-    if (section && section->Get(m_mode == "single" ? "Single" : "Team", &file) && !file.empty())
+    if (section && section->Get(key, &file) && !file.empty())
       break;
     file.clear();
   }

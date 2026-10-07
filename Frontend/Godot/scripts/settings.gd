@@ -246,6 +246,11 @@ func host_args(mode: String, public: bool, traversal: bool) -> PackedStringArray
 	return a
 
 
+## Buffer Training: solo direct-IP host, never listed; Dolphin refuses anyone else who joins.
+func training_args() -> PackedStringArray:
+	return host_args("training", false, false)
+
+
 func join_args(target: String) -> PackedStringArray:
 	var a := _netplay_base()
 	a.append_array(["--netplay-game", get_value("paths", "game"), "--netplay-join", target])

@@ -41,7 +41,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
 | `--public` | off | Host: list the lobby on Dolphin's lobby server (browser + matchmaking). Name on the server: `SPK1\|<mode>\|<link>\|<nickname>`. |
 | `--spectate` | off | With `--netplay-join`: watch only. Lobbies hold 2 players (GameCube ports 1-2) and up to 2 spectators. A spectator never gets a port (not even when a player leaves), runs the game's default codes without any per-port code (no splitscreen remover), and `stop` only ends their own game. A 3rd player or 3rd spectator is turned away (`error` `lobby_full` / `spectators_full`). The public listing's player count is players + 10 × spectators. |
-| `--mode single\|team\|any` | `any` | Host: lobby mode, shown in the browser; `single`/`team` also auto-select that battle state from the game ini's `[Sparking.Modes]`. |
+| `--mode single\|team\|training\|any` | `any` | Host: lobby mode, shown in the browser; `single`/`team`/`training` also auto-select that battle state from the game ini's `[Sparking.Modes]`. `training` is Buffer Training: a solo lobby that is never listed (even with `--public`) and turns anyone who joins away (`error` `training_solo`); `start` works with just the host, and `buffer <n>` changes the pad buffer live. |
 | `--region EA\|CN\|EU\|NA\|SA\|OC\|AF` | `NA` | Public lobby region; matchmaking prefers lobbies in the same region. |
 | `--public-address <ip>` | | Direct (non-traversal) public lobby only: the address others join. |
 | `--list-lobbies` [`--mode m`] | | Print the public Sparking lobbies for **this exact build** (`lobbies` event), then exit. Other builds, regular Dolphin rooms and passworded rooms are filtered out. |
@@ -92,7 +92,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `lobby_ready` | `role` | Connected; lobby is live |
 | `room` | `type` (`traversal`/`direct`), `state` (`connecting`/`ready`/`failed`), `code` or `port`+`addresses` | Host only; re-sent whenever it changes |
 | `players` | `players[]` (each with `role`: `player`, `spectator` or `pending`), `all_have_game`, `in_game` | On any change, and every 1 s (pings) |
-| `player_rejected` | `pid`, `reason` (`lobby_full` / `spectators_full`) | Host: someone over the 2 + 2 limit is being turned away |
+| `player_rejected` | `pid`, `reason` (`lobby_full` / `spectators_full` / `training_solo`) | Host: someone over the 2 + 2 limit is being turned away |
 | `player_joined` / `player_left` | `name` | |
 | `game_changed` | `name`, `game_id`, `local_status` | Host picked a game |
 | `chat` | `text`, `self`, (`from` when self) | |
@@ -361,8 +361,9 @@ Notes:
 - Ping can't be known before connecting (the lobby server doesn't measure it); the browser shows
   region and the host's wired/Wi-Fi status, and the lobby shows live ping once joined.
 - The lobby's mode picks the battle state (`[Sparking.Modes]` in the game ini, BT3: Single =
-  `RDSPAF-SingleBattle.sav`, Team = `RDSPAF-TeamBattle.sst`), so a "Team Battle" lobby boots
-  everyone straight into Team Battle.
+  `RDSPAF-SingleBattle.sav`, Team = `RDSPAF-TeamBattle.sst`, Training =
+  `RDSPAF-BufferTraining.sst`), so a "Team Battle" lobby boots everyone straight into Team
+  Battle, and Buffer Training boots straight into Training Mode.
 
 ## Overlay
 

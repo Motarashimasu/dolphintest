@@ -411,10 +411,47 @@ func _tour() -> void:
 	await wait_for("search cancelled", func(): return app.top() != finder, 15)
 	await wait_for("Dolphin exited (find)", func(): return not Dolphin.is_running(), 10)
 
+	# --- Buffer Training: solo, boots the training state, buffer changed live ------------
+	await back()   # find options -> player match
+	await back()   # player match -> netplay
+	var c: Control = top().carousel
+	for i in c.items.size():
+		if c.current().get("label") == "Buffer Training":
+			break
+		await press("ui_down")
+	await frames(20)
+	check("Buffer Training description", "emulate an online environment" in String(c.current().get("desc", "")))
+	await shot("netplay_menu_buffer_training")
+	await choose("Buffer Training")
+	var training: Control = top()
+	check("training lobby", training.has_method("is_training") and training.is_training())
+	check("training: unlisted direct host", "--netplay-direct" in training._args and not "--public" in training._args
+			and training._args[training._args.find("--mode") + 1] == "training")
+	await wait_for("training starts by itself", func(): return training._phase == "playing", 40)
+	check("training booted the Training state", "\n".join(Dolphin.log_lines).contains('"battle_state":"training.sst"'))
+	check("no chat row in solo", training._actions.row("chat").is_empty())
+	check("no automatic buffer in training", training._actions.row("buffer_mode").is_empty())
+	await shot("buffer_training_running")
+	app.open_ingame_menu()
+	await frames(10)
+	check("training menu open", app.is_ingame_menu_open())
+	var before: int = training._buffer
+	await pick("buffer", app._compact.list)
+	await press("ui_right")
+	await press("ui_right")
+	await wait_for("buffer changed live while training", func(): return training._buffer == before + 2, 10)
+	await shot("ingame_menu_training")
+	await pick("stop", app._compact.list)
+	await wait_for("training stopped", func(): return training._phase == "lobby", 30)
+	check("Start Training enabled when solo", not training._actions.row("start").get("disabled", true))
+	await shot("buffer_training_lobby")
+	await back()
+	await back()
+	await wait_for("left training", func(): return app.top() != training, 15)
+	await wait_for("Dolphin exited (training)", func(): return not Dolphin.is_running(), 10)
+
 	# --- Offline -------------------------------------------------------------------------
-	await back()   # find -> player match
-	await back()   # -> netplay
-	await back()   # -> game menu
+	await back()   # netplay -> game menu
 	check("back at the game menu", app._title.text == "Tenkaichi 3")
 	await choose("Play Offline")
 	var play: Control = top()

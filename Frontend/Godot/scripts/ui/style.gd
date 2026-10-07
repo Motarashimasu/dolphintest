@@ -298,4 +298,6 @@ static func mode_name(mode: String) -> String:
 			return TranslationServer.translate("Single Battle")
 		"team":
 			return TranslationServer.translate("Team Battle")
+		"training":
+			return TranslationServer.translate("Buffer Training")
 	return TranslationServer.translate("Any Mode")

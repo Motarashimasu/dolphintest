@@ -714,6 +714,7 @@ def main():
         for inst in (host, joiner):
             inst.proc.wait(timeout=20)
         spectator_check(exe, dol, work, game_id)
+        training_check(exe, dol, work, game_id, os.path.join(states["solo"], "battle.sst"))
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
@@ -891,6 +892,76 @@ def spectator_check(exe, dol, work, game_id):
         for inst in insts:
             if inst.proc.poll() is None:
                 inst.proc.kill()
+
+
+def training_check(exe, dol, work, game_id, battle_sst):
+    """Buffer Training: a solo lobby ("--mode training") that boots the Training state, starts with
+    one player, is never listed (even with --public), turns everyone else away and takes buffer
+    changes live."""
+    print("netplay: Buffer Training (solo)")
+    common = ["-p", "headless", "-v", "Null"]
+    server = FakeLobbyServer()
+
+    def setup(name):
+        d = os.path.join(work, "train-" + name)
+        os.makedirs(os.path.join(d, "Config"), exist_ok=True)
+        os.makedirs(os.path.join(d, "GameSettings"), exist_ok=True)
+        with open(os.path.join(d, "Config", "Dolphin.ini"), "w") as f:
+            f.write(f"[NetPlay]\nTraversalChoice = direct\nHostPort = 26295\nSyncSaves = False\n"
+                    f"IndexServer = {server.url}\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        with open(os.path.join(d, "GameSettings", f"{game_id}.ini"), "w") as f:
+            f.write("[Sparking.Modes]\nSingle = single.sst\nTraining = training.sst\n")
+        states = os.path.join(work, "train-states-" + name)
+        os.makedirs(states, exist_ok=True)
+        shutil.copy(battle_sst, os.path.join(states, "training.sst"))
+        return ["-u", d, "--state-dir", states, "--nand", os.path.join(work, "train-nand-" + name)]
+
+    host = Instance("train-host", [exe, *common, *setup("host"), "--netplay-host", dol,
+                                   "--netplay-direct", "--public", "--mode", "training",
+                                   "--nickname", "Goku", "--automap", "gc"])
+    insts = [host]
+    try:
+        host.send("hello")
+        host.wait_for("lobby_ready")
+        mode_ev = host.seen("mode", timeout=20)
+        check(f"training lobby picks the Training state {mode_ev}",
+              mode_ev["mode"] == "training" and mode_ev["battle_state"] == "training.sst")
+        ready = host.seen("battle_state", lambda e: e.get("name") == "training.sst" and e.get("ready"), timeout=20)
+        check("training state ready with one player", bool(ready))
+        room = host.seen("room")
+        time.sleep(6)   # past an index heartbeat
+        check(f"never listed, even with --public {room} {server.names()}",
+              room.get("public") is False and not server.names())
+
+        krillin = Instance("train-krillin", [exe, *common, *setup("krillin"), "--netplay-join",
+                                             "127.0.0.1:26295", "--netplay-game", dol,
+                                             "--nickname", "Krillin"])
+        insts.append(krillin)
+        krillin.send("hello")
+        err = krillin.wait_for("error", lambda e: e["code"] in ("training_solo", "lobby_full"), timeout=20)
+        check(f"anyone joining a training session is turned away {err}", err["code"] == "training_solo")
+        krillin.proc.wait(timeout=20)
+        host.seen("players", lambda e: [p["name"] for p in e["players"]] == ["Goku"], timeout=20)
+
+        host.send("buffer 7")
+        check("buffer set in the lobby", bool(host.seen("buffer_changed", lambda e: e["buffer"] == 7)))
+        host.send("start")
+        booting = host.wait_for("game_booting", timeout=30)
+        check(f"solo start boots the Training state {booting}", booting["battle_state"] == "training.sst")
+        host.wait_for("game_started", timeout=40)
+        host.send("buffer 12")
+        check("buffer changed live while training", bool(host.seen("buffer_changed", lambda e: e["buffer"] == 12)))
+        time.sleep(2)
+        host.send("stop")
+        host.wait_for("game_stopped", timeout=30)
+        host.send("quit")
+        check("training host exits 0", host.wait_for("exit", timeout=20)["code"] == 0)
+    finally:
+        for inst in insts:
+            if inst.proc.poll() is None:
+                inst.proc.kill()
+        server.httpd.shutdown()
 
 
 def lobby_check(exe, dol, work, game_id):

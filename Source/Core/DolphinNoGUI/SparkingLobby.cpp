@@ -36,7 +36,7 @@ std::string ParseGameId(const std::string& game)
 
 bool IsValidLobbyMode(const std::string& mode)
 {
-  return mode == "single" || mode == "team" || mode == "any";
+  return mode == "single" || mode == "team" || mode == "training" || mode == "any";
 }
 
 bool LobbyModesMatch(const std::string& wanted, const std::string& lobby)
@@ -85,7 +85,7 @@ std::optional<std::vector<LobbyInfo>> ListLobbies(std::string* error)
     lobby.mode = s.name.substr(a + 1, b - a - 1);
     lobby.link = s.name.substr(b + 1, c - b - 1);
     lobby.host = s.name.substr(c + 1);
-    if (!IsValidLobbyMode(lobby.mode))
+    if (!IsValidLobbyMode(lobby.mode) || lobby.mode == "training")  // solo, never listed
       continue;
     lobby.region = s.region;
     lobby.game = s.game_id;
