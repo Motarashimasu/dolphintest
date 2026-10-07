@@ -157,7 +157,7 @@ tutorial open it on A.
   covers the title, the menu wheel (highlight band color or picture, text colors and size,
   letter icons, arrows), per-item colors, the description bar, panels and rows, toasts,
   fonts, and a background picture per menu (main_menu, game_menu, netplay, lobby,
-  terminology, or one default).
+  battle_lounge (falls back to lobby's), terminology, or one default).
   The highlight band fades out to the right; Band Fade / Band Fade Start / Band Width in the
   Menu wheel group set it (Band Fade off = the old hard edge).
   Menu changes fade in from black, and entering a DRAGON NET lobby fades in from white: colors
@@ -221,6 +221,7 @@ best; it's scaled to cover the window.
 | `game_menu` | the Budokai Tenkaichi 3 menu, Controller Setup, Modifications |
 | `netplay` | Netplay, Player Match, Host, Find, Lobby Browser |
 | `lobby` | the lobby screen |
+| `battle_lounge` | the Battle Lounge lobby (no file: the `lobby` track plays) |
 | `terminology` | Tenkaichi Terminology |
 
 - Put files named after them in `music/` (`main_menu.ogg`, ...; ogg, mp3 or wav), or in

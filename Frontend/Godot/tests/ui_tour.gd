@@ -441,6 +441,7 @@ func _tour() -> void:
 		check("Trunks holds pad 1", String(kl._koth.get("line", [{}])[0].get("name", "")) == "Trunks")
 		check("Players panel shows the line", kl._players_head.text.begins_with(tr("Line")))
 		check("title says Battle Lounge", app._title.text.begins_with(tr("Battle Lounge: %s").split(":")[0]))
+		check("Battle Lounge has its own music track", Music.current_track() == "battle_lounge")
 		await frames(30)
 		await shot("koth_lobby_line")
 		await back()

@@ -75,7 +75,9 @@ func screen_fade() -> String:
 
 
 func screen_music() -> String:
-	return "lobby"
+	# Battle Lounge has its own track and background (music/battle_lounge.*; without a file it
+	# plays the lobby track).
+	return "battle_lounge" if koth else "lobby"
 
 
 func screen_title() -> String:
@@ -594,8 +596,8 @@ func _on_event(name: String, data: Dictionary) -> void:
 		"koth":
 			_koth = data
 			if not koth:
-				koth = true
-				app.set_title(screen_title())
+				koth = true   # joined by code / Discord: the lounge's title, music and background
+				app.refresh_chrome()
 			if _phase in ["lobby", "playing"]:
 				var st := koth_status()
 				if st != "":

@@ -140,9 +140,15 @@ static func item_color(label: String, fallback: Color) -> Color:
 
 
 ## Picture for a menu (by its music track name: main_menu, game_menu, ...), or null.
+const BACKGROUND_PARENT := {"battle_lounge": "lobby"}   # same as Music.TRACK_PARENT
+
+
 static func background(track: String) -> Texture2D:
 	_ensure()
 	var t = look.get("background_" + track) if track != "" else null
+	# A screen variant without its own picture uses its parent's (Battle Lounge -> lobby).
+	if t == null and BACKGROUND_PARENT.has(track):
+		t = look.get("background_" + String(BACKGROUND_PARENT[track]))
 	return t if t else look.background_default
 
 

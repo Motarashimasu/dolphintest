@@ -3,11 +3,14 @@ extends Node
 ## below it). A track is a file named after it, looked up in:
 ##   <SparkingData>/music/<name>.ogg|.mp3      (your own, no re-export needed)
 ##   res://music/<name>.ogg|.mp3|.wav          (shipped with the frontend)
-## A missing track falls back to "main_menu"; no file at all = silence.
+## A missing track falls back to its parent (TRACK_PARENT), then "main_menu"; no file at all =
+## silence.
 ## The music fades out while a game runs (Dolphin's window is up) and picks up where it left off
 ## when the game closes.
 
 const FALLBACK := "main_menu"
+## Tracks that are a variant of another: without their own file they play the other one.
+const TRACK_PARENT := {"battle_lounge": "lobby"}
 const FADE := 0.6
 const SILENT_DB := -60.0
 
@@ -40,6 +43,8 @@ func play(track: String) -> void:
 		track = FALLBACK
 	_track = track
 	var stream := _find(track)
+	if stream == null and TRACK_PARENT.has(track):
+		stream = _find(String(TRACK_PARENT[track]))
 	if stream == null and track != FALLBACK:
 		stream = _find(FALLBACK)
 	if stream == _current:

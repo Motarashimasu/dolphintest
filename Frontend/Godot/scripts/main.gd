@@ -223,6 +223,12 @@ func music_for_stack() -> String:
 	return ""
 
 
+## The top screen changed what it shows (title, music, background) while open.
+func refresh_chrome() -> void:
+	if top():
+		_apply_chrome(top())
+
+
 func set_title(text: String) -> void:
 	_title.text = text
 
