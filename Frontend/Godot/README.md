@@ -141,6 +141,8 @@ tutorial open it on A.
   terminology, or one default).
   The highlight band fades out to the right; Band Fade / Band Fade Start / Band Width in the
   Menu wheel group set it (Band Fade off = the old hard edge).
+  Menu changes fade in from black, and entering a DRAGON NET lobby fades in from white: colors
+  and times in the Transitions group (a time of 0 turns that fade off).
 - **Background:** `scenes/Backdrop.tscn` is the scene behind every menu: the sky, the clouds
   and the ground. Open it in the 2D editor to recolor, move, delete or replace anything, or add
   your own art and animations. A menu picture from the look covers it (its `Scenery` node

@@ -62,6 +62,15 @@ extends Resource
 @export var arrow_color := Color("#f7a531")
 @export var arrow_hover_color := Color("#ffd27a")
 
+@export_group("Transitions")
+## Changing menus: the new menu fades in from this color.
+@export var fade_color := Color.BLACK
+## How long that fade takes, in seconds (0 = no fade).
+@export_range(0.0, 2.0, 0.05) var fade_time := 0.35
+## Entering a DRAGON NET lobby: fades in from this color instead.
+@export var lobby_fade_color := Color.WHITE
+@export_range(0.0, 2.0, 0.05) var lobby_fade_time := 0.6
+
 @export_group("Item colors")
 ## Color of a menu item by its label, e.g. "DRAGON NET" -> blue. Items not listed keep their own.
 @export var item_colors: Dictionary = {}

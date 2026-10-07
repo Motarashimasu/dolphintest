@@ -44,6 +44,12 @@ func on_enter() -> void:
 	pass
 
 
+## The fade this screen opens with: "" = the normal one (Transitions in the look), "lobby" = the
+## DRAGON NET lobby's.
+func screen_fade() -> String:
+	return ""
+
+
 func on_resume() -> void:
 	app.set_desc(screen_desc())
 

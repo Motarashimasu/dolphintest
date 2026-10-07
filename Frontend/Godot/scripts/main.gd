@@ -20,6 +20,9 @@ var _desc: Label
 var _hints: HBoxContainer
 var _screens: Control
 var _overlay: Control        # toast + debug log, above screens
+var _fade: ColorRect         # menu transitions: covers everything, then fades out
+var _fade_tween: Tween
+var transitions := true      # tests turn the fades off so screenshots aren't half-faded
 var _toast: Label
 var _toast_timer: SceneTreeTimer
 var _log_panel: Panel
@@ -123,7 +126,27 @@ func choose_language(code: String, reopen := "") -> void:
 
 # --- Screen stack ------------------------------------------------------------------------
 
+## Menu change: the new menu fades in from black, or from white into a DRAGON NET lobby
+## (colors and times: Transitions in look/menu_look.tres).
+func _transition(screen: Control) -> void:
+	if not transitions or _fade == null:
+		return
+	var lobby: bool = screen.has_method("screen_fade") and screen.screen_fade() == "lobby"
+	var color: Color = Style.LOBBY_FADE_COLOR if lobby else Style.FADE_COLOR
+	var time: float = Style.LOBBY_FADE_TIME if lobby else Style.FADE_TIME
+	if time <= 0.0:
+		return
+	if _fade_tween and _fade_tween.is_valid():
+		_fade_tween.kill()
+	_fade.color = Color(color, 1.0)
+	_fade.visible = true
+	_fade_tween = create_tween()
+	_fade_tween.tween_property(_fade, "color:a", 0.0, time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_fade_tween.tween_callback(func(): _fade.visible = false)
+
+
 func push(screen: Control) -> void:
+	_transition(screen)
 	if not _stack.is_empty():
 		_stack.back().visible = false
 	screen.app = self
@@ -139,12 +162,14 @@ func pop() -> void:
 	var old: Control = _stack.pop_back()
 	old.queue_free()
 	var top: Control = _stack.back()
+	_transition(top)
 	top.visible = true
 	_apply_chrome(top)
 	top.on_resume()
 
 
 func replace(screen: Control) -> void:
+	_transition(screen)
 	var old: Control = _stack.pop_back()
 	old.queue_free()
 	_stack.append(screen)
@@ -684,6 +709,12 @@ func _build_backdrop() -> void:
 	_overlay = Control.new()
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_overlay)
+	_fade = ColorRect.new()
+	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fade.visible = false
+	_fade.z_index = 1000   # the menu wheel draws its rows on raised layers: stay above those too
+	add_child(_fade)   # above the menus, header, description bar and toasts
 	_toast = Style.label("", 20, Style.TOAST_TEXT)
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER

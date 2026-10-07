@@ -55,6 +55,10 @@ func setup(p_kind: String, args: PackedStringArray, p_mode: String) -> Node:
 	return self
 
 
+func screen_fade() -> String:
+	return "lobby"
+
+
 func screen_music() -> String:
 	return "lobby"
 

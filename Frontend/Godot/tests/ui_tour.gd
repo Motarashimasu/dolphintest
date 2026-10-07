@@ -18,6 +18,7 @@ func _ready() -> void:
 	app = get_parent()
 	app.ignore_focus = true
 	Pad.ignore_focus = true
+	app.transitions = false   # no half-faded screenshots (the fades get their own check)
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(config_path))
 	out_dir = cfg["out_dir"]
 	Settings.use_file(cfg["settings_file"])
@@ -585,6 +586,30 @@ func _tour() -> void:
 	await shot("read_only_folder")
 	check("read-only screen offers Exit", top().carousel.current().get("label") == "Exit")
 	app.pop()
+
+	# Menu transitions: dark fade between menus, white into a DRAGON NET lobby.
+	app.transitions = true
+	app.push(app._game_menu())
+	await frames(1)
+	check("changing menus fades in from black", app._fade.visible and app._fade.color.r < 0.1 and app._fade.color.a > 0.5)
+	app._fade_tween.pause()   # freeze it halfway for the screenshot
+	app._fade.color.a = 0.55
+	await shot("fade_dark")
+	app._fade_tween.play()
+	await wait_for("fade finished", func(): return not app._fade.visible, 3)
+	app.pop()
+	var fake_lobby: Control = load("res://scripts/screens/lobby.gd").new()
+	check("lobby screens ask for the lobby fade", fake_lobby.screen_fade() == "lobby")
+	app._transition(fake_lobby)
+	await frames(1)
+	check("entering a lobby fades in from white", app._fade.visible and app._fade.color.r > 0.9 and app._fade.color.a > 0.5)
+	app._fade_tween.pause()   # freeze it halfway for the screenshot
+	app._fade.color.a = 0.55
+	await shot("fade_white")
+	app._fade_tween.play()
+	fake_lobby.free()
+	await wait_for("lobby fade finished", func(): return not app._fade.visible, 3)
+	app.transitions = false
 
 	# Languages: the first-launch picker, then a few menus in Spanish and Italian.
 	TranslationServer.remove_translation(recorder)   # (Godot falls back to "en" for missing texts)

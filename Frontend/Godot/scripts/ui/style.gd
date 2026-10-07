@@ -46,6 +46,10 @@ static var ITEM_COLORS := {}
 static var BAND_IMAGE: Texture2D            # band_image
 static var BAND_IMAGE_TINT := true
 static var BAND_FADE := true
+static var FADE_COLOR := Color.BLACK
+static var FADE_TIME := 0.35
+static var LOBBY_FADE_COLOR := Color.WHITE
+static var LOBBY_FADE_TIME := 0.6
 static var BAND_FADE_START := 0.45
 static var BAND_WIDTH := 860
 static var DESC_IMAGE: Texture2D
@@ -84,6 +88,10 @@ static func load_skin() -> void:
 	BAND_IMAGE = L.band_image
 	BAND_IMAGE_TINT = L.band_image_tint
 	BAND_FADE = L.band_fade
+	FADE_COLOR = L.fade_color
+	FADE_TIME = L.fade_time
+	LOBBY_FADE_COLOR = L.lobby_fade_color
+	LOBBY_FADE_TIME = L.lobby_fade_time
 	BAND_FADE_START = L.band_fade_start
 	BAND_WIDTH = L.band_width
 	SEL_TEXT = L.selected_text
