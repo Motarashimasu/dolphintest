@@ -130,7 +130,8 @@ func current() -> Dictionary:
 	var lobby := _lobby()
 	if lobby:
 		var mode_name: String = Style.mode_name(String(lobby.mode))
-		var players: Array = lobby._players
+		# Only the two fighters count (spectators are listed separately).
+		var players: Array = lobby._playing() if lobby.has_method("_playing") else lobby._players
 		var count := maxi(players.size(), 1)
 		match String(lobby._phase):
 			"playing":
@@ -143,6 +144,11 @@ func current() -> Dictionary:
 					if n != "" and n != me:
 						others.append(n)
 				p["state"] = tr("vs %s") % ", ".join(others) if not others.is_empty() else tr("Match in progress")
+				if lobby.has_method("is_spectating") and lobby.is_spectating():
+					var fighters: Array = []
+					for pl in lobby._playing():
+						fighters.append(String(pl.get("name", "?")))
+					p["state"] = tr("Watching %s") % " vs ".join(fighters)
 			"searching":
 				key = "searching"
 				p["details"] = tr("DRAGON NET")

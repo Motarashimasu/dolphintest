@@ -482,7 +482,12 @@ func _on_dolphin_event(name: String, data: Dictionary) -> void:
 		"alert":
 			# Dolphin's own warnings and errors (it answers them itself): show them here too.
 			if String(data.get("severity", "")) in ["warning", "critical"]:
-				var text := String(data.get("text", "")).split("\n")[0]
+				# Dolphin often starts with a generic "An error occurred.": show the line that says what.
+				var lines: Array = Array(String(data.get("text", "")).split("\n", false)).map(
+						func(l): return String(l).strip_edges()).filter(func(l): return l != "")
+				if lines.size() > 1 and String(lines[0]).begins_with("An error occurred"):
+					lines.pop_front()
+				var text: String = lines[0] if not lines.is_empty() else ""
 				toast("Dolphin: " + text.left(160), 6.0)
 
 

@@ -252,6 +252,13 @@ func join_args(target: String) -> PackedStringArray:
 	return a
 
 
+## Watch a lobby: joins it as a spectator (no controller port, default codes only).
+func watch_args(target: String) -> PackedStringArray:
+	var a := join_args(target)
+	a.append("--spectate")
+	return a
+
+
 func find_args(mode: String) -> PackedStringArray:
 	var a := _netplay_base()
 	a.append_array(["--netplay-find", mode, "--region", get_value("player", "region")])

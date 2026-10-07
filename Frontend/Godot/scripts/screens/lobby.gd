@@ -22,11 +22,14 @@ const ERRORS := {
 	"bad_address": "That code or address isn't valid.",
 	"boot_failed": "The game failed to start.",
 	"state_file_missing": "The battle state file is missing from SparkingData\\states.",
+	"lobby_full": "That lobby already has 2 players. You can watch it instead.",
+	"spectators_full": "That lobby already has 2 spectators.",
 }
 
-var kind := "host"            # host, join, find
+var kind := "host"            # host, join, find, watch (spectator: never plays)
 var mode := "any"
 var _args := PackedStringArray()
+var _closed_because := ""
 
 var _phase := "connecting"    # connecting, searching, lobby, playing, closing
 var _role := ""               # host / client once in a lobby
@@ -64,6 +67,8 @@ func screen_music() -> String:
 
 
 func screen_title() -> String:
+	if is_spectating():
+		return tr("Watching: %s") % (tr("Lobby") if mode == "any" else Style.mode_name(mode))
 	return "Lobby" if mode == "any" else Style.mode_name(mode)
 
 
@@ -197,24 +202,45 @@ func _refresh_players() -> void:
 		_players_box.add_child(l)
 		_players_status.text = ""
 		return
-	var sorted := _players.duplicate()
+	var sorted := _playing()
 	sorted.sort_custom(func(a, b):
 		var sa: int = a.get("gc_slot", -1)
 		var sb: int = b.get("gc_slot", -1)
 		return (sa if sa > 0 else 99) < (sb if sb > 0 else 99))
 	for p in sorted:
 		_players_box.add_child(_player_row(p))
+	var watching := _watching()
+	if not watching.is_empty():
+		var head := Style.label(tr("Spectators (%d/2)") % watching.size(), 18, Style.GOLD, 3, Style.DARK, true)
+		head.custom_minimum_size = Vector2(612, 24)
+		_players_box.add_child(head)
+		for p in watching:
+			_players_box.add_child(_player_row(p, true))
 
 
-func _player_row(p: Dictionary) -> Control:
+## Players (they hold a controller port) and spectators (they only watch).
+func _playing() -> Array:
+	return _players.filter(func(p): return String(p.get("role", "player")) != "spectator")
+
+
+func _watching() -> Array:
+	return _players.filter(func(p): return String(p.get("role", "player")) == "spectator")
+
+
+func is_spectating() -> bool:
+	return kind == "watch"
+
+
+func _player_row(p: Dictionary, spectator := false) -> Control:
 	var row := Panel.new()
-	row.add_theme_stylebox_override("panel", Style.box(Color(0, 0, 0, 0.25), 8))
+	row.add_theme_stylebox_override("panel", Style.box(Color(0, 0, 0, 0.25 if not spectator else 0.15), 8))
 	row.custom_minimum_size = Vector2(612, 44)
 	var slot: int = p.get("gc_slot", -1)
 	var badge := Style.panel(Style.GOLD if slot == 1 else (Color("#3fa9f5") if slot == 2 else Style.MUTED), 8)
 	Style.place(badge, 6, 6, 52, 32)
 	row.add_child(badge)
-	var bl := Style.label("P%d" % slot if slot > 0 else "--", 18, Style.DARK, 0, Color.BLACK, true)
+	var bl := Style.label(tr("SPEC") if spectator else ("P%d" % slot if slot > 0 else "--"), 16 if spectator else 18,
+			Style.DARK, 0, Color.BLACK, true)
 	bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	bl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	Style.place(bl, 0, 0, 52, 32)
@@ -261,7 +287,7 @@ func _action_rows(in_game_menu: bool) -> Array:
 		rows.append({"type": "action", "key": "resume", "label": "Back to the game"})
 	elif host:
 		rows.append({"type": "action", "key": "start", "label": "Start Match", "color": "#3fbf6b",
-			"disabled": _phase == "playing" or _players.size() < 2})
+			"disabled": _phase == "playing" or _playing().size() < 2})
 	rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": tr("Press %s to type") % Pad.prompt("accept")["key"],
 		"max_length": 200})
 	if host:
@@ -273,13 +299,15 @@ func _action_rows(in_game_menu: bool) -> Array:
 	else:
 		rows.append({"type": "info", "key": "buffer", "label": "Pad buffer",
 			"value": str(_buffer) if _buffer > 0 else "?"})
+	# A spectator's Stop only ends their own view; the match goes on for the players.
+	var stop_label := "Stop Watching" if is_spectating() else "Stop Match"
 	if in_game_menu:
-		rows.append({"type": "action", "key": "stop", "label": "Stop Match", "color": "#e8663d"})
+		rows.append({"type": "action", "key": "stop", "label": stop_label, "color": "#e8663d"})
 	else:
 		if host and _room.get("type") == "traversal" and _room.has("code"):
 			rows.append({"type": "action", "key": "copy", "label": "Copy room code", "value": String(_room["code"])})
 		if _phase == "playing":
-			rows.append({"type": "action", "key": "stop", "label": "Stop Match", "color": "#e8663d"})
+			rows.append({"type": "action", "key": "stop", "label": stop_label, "color": "#e8663d"})
 		rows.append({"type": "action", "key": "leave", "label": "Leave Lobby", "color": "#e8663d"})
 	return rows
 
@@ -430,7 +458,10 @@ func _on_event(name: String, data: Dictionary) -> void:
 			if _role == "host":
 				_buffer = int(Settings.get_value("netplay", "buffer"))
 				_send_buffer_mode()
-			_system("Lobby open." if _role == "host" else "Joined the lobby.")
+			if is_spectating():
+				_system("You're watching: spectators can't play, only chat.")
+			else:
+				_system("Lobby open." if _role == "host" else "Joined the lobby.")
 		"room":
 			_room = data
 			if data.has("mode") and String(data["mode"]) != "":
@@ -444,7 +475,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_players = data.get("players", [])
 			if _phase == "lobby":
 				if _role == "host":
-					_status = "Ready to start" if _players.size() >= 2 else "Waiting for players..."
+					_status = "Ready to start" if _playing().size() >= 2 else "Waiting for players..."
 		"player_joined":
 			Sfx.play("player_join")
 			_system(tr("%s joined.") % data.get("name", "?"))
@@ -492,7 +523,8 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_status = "Syncing save data..."
 		"game_started":
 			_phase = "playing"
-			_status = "Match in progress (hold Select for the menu)"
+			_status = "Watching the match (hold Select for the menu)" if is_spectating() \
+					else "Match in progress (hold Select for the menu)"
 		"game_stopped", "game_start_aborted":
 			if _phase == "playing" or _phase == "lobby":
 				_phase = "lobby"
@@ -519,8 +551,12 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_system(msg, "#e8663d")
 			if _phase in ["connecting", "searching"]:
 				_status = msg
+			if code in ["lobby_full", "spectators_full"]:
+				_closed_because = msg   # turned away: say why instead of "The lobby closed."
 		"process_exited":
-			if _phase != "closing":
+			if _closed_because != "":
+				app.toast(_closed_because, 5.0)
+			elif _phase != "closing":
 				app.toast("The lobby closed.")
 			app.pop_to(func(s): return s != self)
 			return

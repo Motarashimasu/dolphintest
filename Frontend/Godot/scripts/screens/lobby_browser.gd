@@ -101,11 +101,22 @@ func build_rows() -> Array:
 			"desc": tr("Host: %s   Mode: %s   Region: %s\nConnection: %s   Players: %d   %s") % [l.get("host", "?"),
 				Style.mode_name(l.get("mode", "any")), l.get("region", "?"), Style.link_name(l.get("link", "")),
 				int(l.get("players", 1)), tr("Press %s to join.") % Pad.prompt("accept")["key"] if state == "" else state + "."]})
+		# Watching: up to 2 spectators, before the match starts (Dolphin can't let anyone in mid-match).
+		var watchers := int(l.get("spectators", 0))
+		var can_watch: bool = l.get("watchable", watchers < 2) and right_game and not l.get("in_game", false)
+		rows.append({"type": "action", "key": "watch:%d" % _lobbies.find(l),
+			"label": tr("   Watch %s") % String(l.get("host", "?")),
+			"value": tr("%d/2 watching") % watchers,
+			"disabled": not can_watch,
+			"desc": tr("Watch this lobby's matches without playing (2 spectators at most).\nSpectators never get a controller; they can chat and leave any time.")})
 	rows.append_array([
 		{"type": "action", "key": "refresh", "label": "Refresh", "desc": "Check the list again."},
 		{"type": "text", "key": "direct", "label": "Join by code or IP", "value": "",
 			"placeholder": "room code or 1.2.3.4:2626",
 			"desc": "Join a private lobby: type the room code (or IP:port) the host gave you."},
+		{"type": "text", "key": "watch_direct", "label": "Watch by code or IP", "value": "",
+			"placeholder": "room code or 1.2.3.4:2626",
+			"desc": "Watch a private lobby as a spectator: type its room code (or IP:port)."},
 		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the DRAGON NET menu."},
 	])
 	return rows
@@ -118,6 +129,9 @@ func on_value(key: String, value: Variant) -> void:
 	elif key == "direct" and String(value) != "":
 		list.update_row("direct", {"value": ""})
 		_join(String(value).strip_edges(), "any")
+	elif key == "watch_direct" and String(value) != "":
+		list.update_row("watch_direct", {"value": ""})
+		_join(String(value).strip_edges(), "any", true)
 
 
 func on_press(key: String) -> void:
@@ -126,12 +140,18 @@ func on_press(key: String) -> void:
 	elif key.begins_with("lobby:"):
 		var l: Dictionary = _lobbies[int(key.substr(6))]
 		_join(String(l.get("join", "")), String(l.get("mode", "any")))
+	elif key.begins_with("watch:"):
+		var l: Dictionary = _lobbies[int(key.substr(6))]
+		_join(String(l.get("join", "")), String(l.get("mode", "any")), true)
 	else:
 		super(key)
 
 
-func _join(target: String, mode: String) -> void:
+func _join(target: String, mode: String, watch := false) -> void:
 	if target == "":
 		return
 	var lobby: Control = load("res://scripts/screens/lobby.gd").new()
-	app.push(lobby.setup("join", Settings.join_args(target), mode))
+	if watch:
+		app.push(lobby.setup("watch", Settings.watch_args(target), mode))
+	else:
+		app.push(lobby.setup("join", Settings.join_args(target), mode))

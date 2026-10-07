@@ -77,6 +77,12 @@ they're plugged in.
 quality dot) and messages. You can also send a message, change the pad buffer (host), Start
 Match (host), copy the room code, and Leave Lobby. Press B once to jump to Leave Lobby, and
 press B again to leave.
+- **Spectators:** up to 2 per lobby, next to the 2 players. Lobby Browser > **Watch <host>** (or
+  Watch by code or IP) joins as a spectator, listed under Spectators. Spectators never get a
+  controller (not even if a player leaves), run the game's default codes without the
+  splitscreen remover, can chat, and Stop Watching only ends their own view. Watching starts in
+  the lobby: Dolphin can't let anyone in once a match is running. A full lobby turns a 3rd
+  player or 3rd spectator away with a message.
 - **Pad buffer mode** (host): Manual uses the number you set. Automatic picks it from the ping
   when you press Start Match, and again right after each KO (any number of steps, within 20 s,
   never while a round is being fought). Every change is explained in the messages.

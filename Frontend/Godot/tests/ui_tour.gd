@@ -372,6 +372,29 @@ func _tour() -> void:
 		await back()
 		await wait_for("left Piccolo's lobby", func(): return app.top() == browser, 15)
 		await wait_for("Dolphin exited (guest)", func(): return not Dolphin.is_running(), 10)
+		# Watch the same lobby: a spectator, listed apart from the players, can't start anything.
+		await wait_for("browser list back", func(): return not browser._loading, 20)
+		var watch_key := ""
+		for r in browser.list.rows:
+			if String(r.get("key", "")).begins_with("watch:") and "Piccolo" in String(r.get("label", "")):
+				watch_key = r["key"]
+		check("Watch offered for Piccolo's lobby", watch_key != "" and not browser.list.row(watch_key).get("disabled", false))
+		if watch_key != "":
+			await pick(watch_key, browser.list)
+			var watcher: Control = top()
+			check("watching as a spectator", watcher != browser and watcher.is_spectating())
+			await wait_for("watching: lobby ready", func(): return watcher._phase == "lobby", 20)
+			await wait_for("listed under Spectators", func():
+				return watcher._watching().any(func(p): return p.get("name") == "Goku"), 15)
+			check("Piccolo listed as a player", watcher._playing().any(func(p): return p.get("name") == "Piccolo"))
+			check("no Start Match for a spectator", watcher._actions.row("start").is_empty())
+			check("title says watching", app._title.text.begins_with(tr("Watching: %s").split(":")[0]))
+			await frames(30)
+			await shot("lobby_watching")
+			await back()
+			await back()
+			await wait_for("stopped watching", func(): return app.top() == browser, 15)
+			await wait_for("Dolphin exited (spectator)", func(): return not Dolphin.is_running(), 10)
 
 	# --- Find: no Single Battle lobby open -> hosts one and waits -----------------------
 	await back()   # browser -> netplay
