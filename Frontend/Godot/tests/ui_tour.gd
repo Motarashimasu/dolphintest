@@ -326,10 +326,12 @@ func _tour() -> void:
 	await wait_for("game told to ignore the controller", func():
 		return "\n".join(Dolphin.log_lines).contains('"event":"background_input","enabled":false'), 5)
 	check("window shrank to the panel", get_window().size == Vector2i(560, 560))
+	check("in-game menu window has no frame", get_window().borderless)
 	await shot("ingame_menu_netplay")
 	await pick("stop", app._compact.list)
 	await wait_for("back in the lobby after Stop Match", func(): return lobby._phase == "lobby", 30)
 	check("in-game menu closed", not app.is_ingame_menu_open() and not Pad.menu_open)
+	check("frame back after the in-game menu", not get_window().borderless)
 	check("music back after the match", not Music.is_muted_for_game() and Music.is_audible())
 	check("window restored", get_window().content_scale_size == Vector2i(1280, 720))
 	check("match started with the automatic pad buffer",

@@ -510,7 +510,7 @@ func open_ingame_menu() -> void:
 	Dolphin.send("background_input off")
 	Pad.menu_open = true
 	var w := get_window()
-	_saved_window = {"mode": w.mode, "size": w.size, "position": w.position}
+	_saved_window = {"mode": w.mode, "size": w.size, "position": w.position, "borderless": w.borderless}
 	_compact = panel
 	_bg.visible = false
 	_header.visible = false
@@ -525,6 +525,7 @@ func open_ingame_menu() -> void:
 		await get_tree().process_frame
 	if _compact != panel:
 		return   # closed again meanwhile
+	w.borderless = true   # just the panel on top of the game: no title bar or frame
 	_place_compact(Vector2i(panel.size))
 	w.always_on_top = true
 	show_window()
@@ -555,6 +556,7 @@ func close_ingame_menu(back_to_game := true) -> void:
 	Dolphin.send("background_input on")
 	var w := get_window()
 	w.always_on_top = false
+	w.borderless = bool(_saved_window.get("borderless", false))
 	w.content_scale_size = BASE_SIZE
 	w.min_size = Vector2i(640, 360)
 	w.size = _saved_window.get("size", BASE_SIZE)
