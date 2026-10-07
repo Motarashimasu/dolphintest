@@ -224,6 +224,12 @@ void DoState(PointerWrap& p)
   std::lock_guard codes_lock(s_active_codes_lock);
   p.Do(s_code_handler_installed);
   // FIXME: The active codes list will disagree with the embedded GCT
+  // Sparking: the code list (GCT) lives in game RAM, so a loaded state would bring back whatever
+  // codes were on when it was captured and keep running those (netplay's per-port codes, e.g.
+  // the splitscreen remover for the player's own pad, would never apply). Rewrite the list from
+  // the codes active now, at the next hook (the handler is never mid-run there).
+  if (p.IsReadMode() && s_code_handler_installed == Installation::Installed)
+    s_code_handler_installed = Installation::Uninstalled;
 }
 
 void Shutdown()

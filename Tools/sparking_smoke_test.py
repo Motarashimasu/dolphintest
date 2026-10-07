@@ -716,6 +716,7 @@ def main():
         spectator_check(exe, dol, work, game_id)
         training_check(exe, dol, work, game_id, os.path.join(states["solo"], "battle.sst"))
         koth_check(exe, dol, work, game_id)
+        gecko_state_check(exe, dol, work, game_id)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
@@ -892,6 +893,61 @@ def spectator_check(exe, dol, work, game_id):
     finally:
         for inst in insts:
             if inst.proc.poll() is None:
+                inst.proc.kill()
+
+
+def gecko_state_check(exe, dol, work, game_id):
+    """A battle state keeps the Gecko code list in game RAM: booting from it must still run this
+    player's codes (per-port), not the ones that were on when the state was captured."""
+    print("netplay: per-port Gecko codes after a battle-state boot")
+    common = ["-p", "headless", "-v", "Null"]
+    states = os.path.join(work, "gx-states")
+    os.makedirs(states, exist_ok=True)
+
+    def user(name):
+        d = os.path.join(work, "gx-" + name)
+        os.makedirs(os.path.join(d, "Config"), exist_ok=True)
+        os.makedirs(os.path.join(d, "GameSettings"), exist_ok=True)
+        with open(os.path.join(d, "Config", "Dolphin.ini"), "w") as f:
+            f.write("[NetPlay]\nTraversalChoice = direct\nHostPort = 26330\nSyncSaves = False\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        with open(os.path.join(d, "GameSettings", f"{game_id}.ini"), "w") as f:
+            f.write("[Gecko]\n$Code A [x]\n04001000 00000001\n$Code B [x]\n04001004 00000002\n"
+                    "[Sparking.Modes]\nTraining = cap.sst\n"
+                    "[Sparking.Watch]\ncode_a = u32 0x80001000\ncode_b = u32 0x80001004\n")
+        return d
+
+    def latest(inst, name):
+        v = [e["value"] for e in inst.history if e["event"] == "watch" and e["name"] == name]
+        return v[-1] if v else None
+
+    solo = Instance("gx-capture", [exe, *common, "--sparking", "-u", user("solo"), "--state-dir",
+                                   states, "-e", dol, "--gecko", "Code A"])
+    host = None
+    try:
+        solo.send("hello")
+        solo.seen("game_started")
+        time.sleep(2)
+        solo.send("save_state_file cap.sst")
+        solo.seen("state_file_saved")
+        solo.send("quit")
+        solo.proc.wait(timeout=20)
+        host = Instance("gx-host", [exe, *common, "-u", user("host"), "--state-dir", states,
+                                    "--netplay-host", dol, "--netplay-direct", "--mode", "training",
+                                    "--nickname", "Goku", "--netplay-gecko", "1=Code B",
+                                    "--netplay-gecko-defaults", "off"])
+        host.send("hello")
+        host.seen("battle_state", lambda e: e.get("ready"), timeout=20)
+        host.send("start")
+        host.seen("game_started", timeout=40)
+        time.sleep(3)
+        check(f"state captured with Code A, pad's Code B runs after the boot (code_b={latest(host, 'code_b')})",
+              latest(host, "code_b") == 2)
+        host.send("quit")
+        host.proc.wait(timeout=20)
+    finally:
+        for inst in (solo, host):
+            if inst and inst.proc.poll() is None:
                 inst.proc.kill()
 
 

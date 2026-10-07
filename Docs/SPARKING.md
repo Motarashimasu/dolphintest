@@ -369,6 +369,12 @@ Notes:
   `RDSPAF-BufferTraining.sst`), so a "Team Battle" lobby boots everyone straight into Team
   Battle, and Buffer Training boots straight into Training Mode.
 
+- Gecko codes and battle states: Dolphin keeps the running code list in game RAM, so a state
+  would bring back the codes that were on when it was captured. Dolphin-Sparking rewrites the
+  list from the codes active now whenever a state loads, so each player's per-port codes apply.
+  A code that was on at capture time can still leave its last written values in memory (turning
+  it off doesn't undo them), so capture battle states with no per-port code on.
+
 ### King of the Hill
 
 (Shown as **Battle Lounge** in the frontend and on Discord; `koth` everywhere in the protocol.)
