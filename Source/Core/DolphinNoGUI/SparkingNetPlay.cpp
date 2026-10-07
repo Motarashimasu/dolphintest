@@ -14,6 +14,7 @@
 #include <array>
 #include <charconv>
 #include <filesystem>
+#include <set>
 #include <string_view>
 
 #include <fmt/format.h>
@@ -678,10 +679,20 @@ std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget
     std::lock_guard lk(m_quality_mutex);
     all = m_ping_samples;
   }
+  // Only the players: a spectator's ping doesn't delay anyone's inputs (it sends none).
+  std::set<NetPlay::PlayerId> playing;
+  if (m_client)
+  {
+    for (const NetPlay::PlayerId pid : m_client->GetPadMapping())
+    {
+      if (pid > 0)
+        playing.insert(pid);
+    }
+  }
   std::optional<AutoBufferChoice> worst;
   for (auto& [pid, samples] : all)
   {
-    if (samples.size() < 3)
+    if (samples.size() < 3 || (!playing.empty() && !playing.contains(pid)))
       continue;
     const int jitter = QualityOf(pid, samples.back()).jitter_ms;
     std::ranges::sort(samples);
