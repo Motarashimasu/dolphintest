@@ -202,7 +202,15 @@ select screen of Single Battle or Team Battle, so nobody navigates menus online.
 
 1. **Capture once** (solo): launch the game with `--sparking --state-dir <dir>`, navigate to the
    screen, send `save_state_file BT3-SingleBattle.sst`. Wait for `state_file_saved`. Capture with
-   the same per-game settings profile Godot uses for netplay.
+   the same per-game settings profile Godot uses for netplay. The Godot frontend does all of this:
+   Options > Developer tools, then Tenkaichi 3 > **Capture Battle States** boots a copy of the
+   netplay save with only the game's default codes, and the in-game menu saves to the file names
+   in `[Sparking.Modes]`.
+   - The codes that change how the game sets itself up must be running when you capture: BT3's
+     PAL60 code (30 fps) only takes effect when the game sets up its video mode, which happens
+     before the menus. A state captured without it keeps every match at 25 fps.
+   - `Tools/sparking_state_check.py <state>` shows the build that saved a state and, for BT3, whether
+     PAL60 was on.
 2. **Ship** the `.sst` files with the app so every player has identical bytes in `--state-dir`.
 3. **In the lobby** the host sends `battle_state BT3-SingleBattle.sst`. Dolphin hashes it (SHA-1)
    and tells every peer the name + hash; each peer checks its own copy and replies `ok`,

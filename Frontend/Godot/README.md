@@ -156,6 +156,14 @@ changes it any time. Netplay is called **DRAGON NET** in the menus and on Discor
   player and controller names.
 - The UI tour records every text it shows and fails if one is missing from either table.
 
+**Capturing the DRAGON NET battle states** (whoever makes them): Options > **Developer tools**
+on, then Tenkaichi 3 > **Capture Battle States**. It boots like a netplay match: a throwaway copy
+of the netplay save and only the game's default codes (PAL60 = 30 fps). Go to the character
+select screen of Single (or Team) Battle, hold Select, and pick **Save as Single / Team Battle
+state**. The files are named from `[Sparking.Modes]`, and the old ones are kept as `.bak`.
+Check them with `python Tools/sparking_state_check.py SparkingData/states/*` before sharing:
+everyone needs the same new files.
+
 **Sound effects.** Seven sounds, all empty for now (silent until you add them):
 
 | Slot | Plays when |

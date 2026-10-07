@@ -53,7 +53,8 @@ var defaults := {
 		"hud_health": true,       # health % in the corners
 		"show_fps": false, "minimize_while_playing": true, "music_volume": 7,
 		"discord": true, "sfx_volume": 7,
-		"language": ""},          # en / es / it ("" = ask at first launch)         # Discord Rich Presence (scripts/presence.gd)
+		"language": "",           # en / es / it ("" = ask at first launch)
+		"dev_tools": false},      # developer tools: Capture Battle States in the game menu (also --dev)
 	"netplay": {"mode": "single", "find_mode": "any", "public": true, "traversal": true,
 		"buffer": 4, "public_address": ""},
 	"gecko": {"custom": false, "enabled": []},
@@ -219,6 +220,59 @@ func solo_args() -> PackedStringArray:
 			a.append_array(["--gecko", code])
 	a.append_array(["-e", get_value("paths", "game")])
 	return a
+
+
+## Capturing the DRAGON NET battle states: offline, but set up exactly like a netplay match so
+## the state matches what everyone boots: the netplay save (a throwaway copy, so the real one
+## and its fingerprint never change) and only the game's default codes (PAL60 included).
+func capture_args() -> PackedStringArray:
+	var a := common_args()
+	a.append_array(["--hud", "off"])
+	var nand := data_path("saves/capture")
+	_copy_dir(data_path("saves/netplay"), nand)
+	a.append_array(["--sparking", "--nand", nand, "--state-dir", data_path("states")])
+	a.append_array(["-e", get_value("paths", "game")])
+	return a
+
+
+static func _copy_dir(from: String, to: String) -> void:
+	if DirAccess.dir_exists_absolute(to):
+		_remove_dir(to)
+	DirAccess.make_dir_recursive_absolute(to)
+	var d := DirAccess.open(from)
+	if d == null:
+		return
+	for f in d.get_files():
+		DirAccess.copy_absolute(from.path_join(f), to.path_join(f))
+	for sub in d.get_directories():
+		_copy_dir(from.path_join(sub), to.path_join(sub))
+
+
+static func _remove_dir(path: String) -> void:
+	var d := DirAccess.open(path)
+	if d == null:
+		return
+	for f in d.get_files():
+		DirAccess.remove_absolute(path.path_join(f))
+	for sub in d.get_directories():
+		_remove_dir(path.path_join(sub))
+	DirAccess.remove_absolute(path)
+
+
+## The state file a lobby mode ("Single" / "Team") boots into: [Sparking.Modes] in the game's
+## ini next to Dolphin (Sys/GameSettings/<id>.ini), the same place Dolphin reads it from.
+func battle_state_file(mode: String) -> String:
+	var ini := dolphin_path().get_base_dir().path_join("Sys/GameSettings/%s.ini" % GAME["id"])
+	var section := ""
+	for line in FileAccess.get_file_as_string(ini).split("\n"):
+		line = line.strip_edges()
+		if line.begins_with("["):
+			section = line
+		elif section == "[Sparking.Modes]" and line.begins_with(mode) and "=" in line:
+			var value := line.split("=", true, 1)[1].strip_edges()
+			if line.split("=")[0].strip_edges() == mode and value != "":
+				return value
+	return "%s-%sBattle.sst" % [GAME["id"], mode]
 
 
 func _netplay_base() -> PackedStringArray:

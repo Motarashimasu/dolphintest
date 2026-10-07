@@ -406,6 +406,7 @@ func _tour() -> void:
 	app.open_ingame_menu()
 	await frames(10)
 	check("offline in-game menu open", app.is_ingame_menu_open())
+	check("no capture rows in normal offline play", app._compact.list.row("capture:Single").is_empty())
 	await shot("ingame_menu_offline")
 	await pick("resume", app._compact.list)
 	check("Back to the game closes it", not app.is_ingame_menu_open())
@@ -414,6 +415,38 @@ func _tour() -> void:
 	await pick("stop", play.list)
 	await wait_for("offline game stopped", func(): return app.top() != play, 20)
 	await wait_for("Dolphin exited (solo)", func(): return not Dolphin.is_running(), 10)
+
+	# --- Capture Battle States (developer tools): netplay save copy + default codes -----
+	Settings.set_value("options", "dev_tools", true)
+	app.push(app._game_menu())
+	await frames(4)
+	check("Capture Battle States listed with developer tools", top().carousel.items.any(
+			func(i): return i.get("label") == "Capture Battle States"))
+	app.pop()
+	FileAccess.open(Settings.data_path("saves/netplay/marker.txt"), FileAccess.WRITE).store_string("netplay save")
+	app.open_capture()
+	var cap: Control = top()
+	await wait_for("capture session running", func(): return cap._state == "running", 30)
+	check("capture boots a copy of the netplay save", FileAccess.get_file_as_string(
+			Settings.data_path("saves/capture/marker.txt")) == "netplay save"
+			and "saves/capture" in " ".join(Dolphin.log_lines) and not "--gecko" in " ".join(Dolphin.log_lines.slice(-60)))
+	check("state names come from [Sparking.Modes]", Settings.battle_state_file("Single") == "RDSPAF-SingleBattle.sav"
+			and Settings.battle_state_file("Team") == "RDSPAF-TeamBattle.sst")
+	app.open_ingame_menu()
+	await frames(10)
+	await shot("ingame_menu_capture")
+	var state_path := Settings.data_path("states").path_join(Settings.battle_state_file("Single"))
+	DirAccess.make_dir_recursive_absolute(state_path.get_base_dir())
+	FileAccess.open(state_path, FileAccess.WRITE).store_string("old")
+	await pick("capture:Single", app._compact.list)
+	await wait_for("battle state captured", func(): return "state_file_saved" in "\n".join(Dolphin.log_lines), 20)
+	check("new state written, old one kept as .bak", FileAccess.get_file_as_string(state_path + ".bak") == "old"
+			and FileAccess.get_file_as_bytes(state_path).size() > 1000)
+	await pick("stop", app._compact.list)
+	await wait_for("capture session stopped", func(): return not Dolphin.is_running(), 20)
+	Settings.set_value("options", "dev_tools", false)
+	DirAccess.remove_absolute(state_path)
+	DirAccess.remove_absolute(state_path + ".bak")
 	await frames(10)
 	check("music resumes after the game closes", Music.is_audible() and Music.current_track() == "game_menu")
 
