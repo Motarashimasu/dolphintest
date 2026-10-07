@@ -41,6 +41,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
 | `--public` | off | Host: list the lobby on Dolphin's lobby server (browser + matchmaking). Name on the server: `SPK1\|<mode>\|<link>\|<nickname>`. |
 | `--spectate` | off | With `--netplay-join`: watch only. Lobbies hold 2 players (GameCube ports 1-2) and up to 2 spectators. A spectator never gets a port (not even when a player leaves), runs the game's default codes without any per-port code (no splitscreen remover), and `stop` only ends their own game. A 3rd player or 3rd spectator is turned away (`error` `lobby_full` / `spectators_full`). The public listing's player count is players + 10 × spectators. |
+| `--koth` | off | King of the Hill. Host: a KOTH lobby (see *King of the Hill*). `--netplay-find` / `--list-lobbies`: only KOTH lobbies (without it, only regular ones). `--netplay-join`: if a set is being played (Dolphin lets nobody in during a game), wait (`koth_waiting`) and retry every 3 s until it ends. |
 | `--mode single\|team\|training\|any` | `any` | Host: lobby mode, shown in the browser; `single`/`team`/`training` also auto-select that battle state from the game ini's `[Sparking.Modes]`. `training` is Buffer Training: a solo lobby that is never listed (even with `--public`) and turns anyone who joins away (`error` `training_solo`); `start` works with just the host, and `buffer <n>` changes the pad buffer live. |
 | `--region EA\|CN\|EU\|NA\|SA\|OC\|AF` | `NA` | Public lobby region; matchmaking prefers lobbies in the same region. |
 | `--public-address <ip>` | | Direct (non-traversal) public lobby only: the address others join. |
@@ -130,7 +131,10 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `score` | `wins`, `rounds` | After `score reset` |
 | `hud` | `enabled` | After a `hud` command |
 | `poked` | `address`, `value` | Answer to `poke` |
-| `lobbies` | `lobbies[]` of `{host, mode, link, region, game, game_id, players, spectators, in_game, joinable, watchable, method, join}` | `--list-lobbies` result. `join` is what `--netplay-join` takes. No version field: it only filters. |
+| `koth` | `state` (`waiting` for a 2nd person, `ready` for the host's Start, `next` set in `next_in` s, `playing`, `decided`), `cap` (wins that take a set), `streak`, `champion`, `wins` (`[pad 1, pad 2]` this set), `line[]` of `{pid, name, pos}` (pos 0 = pad 1), `local_pos` (-1 = watching), `max` | King of the Hill: whenever the line or set changes (everyone) |
+| `koth_set` | `winner`, `loser`, `streak`, `wins` (`[winner, loser]`) | King of the Hill: the deciding KO of a set |
+| `koth_waiting` | `retry_in` | King of the Hill joiner: a set is on, trying again in a few seconds |
+| `lobbies` | `lobbies[]` of `{host, mode, format (classic/koth), link, region, game, game_id, players, spectators, in_game, joinable, watchable, method, join}` | `--list-lobbies` result. `join` is what `--netplay-join` takes. No version field: it only filters. |
 | `public` | `listed`, `mode`, `region`, `name` / `error` | Host: the lobby is (or failed to be) on the public list |
 | `mode` | `mode`, `battle_state` | Host: the lobby mode selected this battle state |
 | `matchmaking` | `state` (`searching`, `candidates`+`count`, `joining`+`host`/`mode`/`region`/`link`, `retry`+`reason`, `hosting`, `matched`+`port`, `cancelled`, `lobby_server_unreachable`) | `--netplay-find` progress |
@@ -364,6 +368,29 @@ Notes:
   `RDSPAF-SingleBattle.sav`, Team = `RDSPAF-TeamBattle.sst`, Training =
   `RDSPAF-BufferTraining.sst`), so a "Team Battle" lobby boots everyone straight into Team
   Battle, and Buffer Training boots straight into Training Mode.
+
+### King of the Hill
+
+`--koth` lobbies are a ladder. Everyone who joins (not `--spectate` watchers) gets in line, up
+to 8 people in all: line position 1 holds GameCube pad 1 (the champion), position 2 pad 2 (the
+challenger), and the rest wait without a pad (they watch the set like spectators: default codes
+only, no splitscreen code; per-port codes follow whoever holds the pad at each boot).
+
+- A **set** is one boot of the battle state. The host counts KOs per pad from the health
+  watches: Single Battle sets go to the first to 2 wins, Team Battle sets to 1 win (the team
+  health bar covers the whole team).
+- About 4 s after the deciding KO the host ends the game for everyone. The winner keeps / takes
+  pad 1, the loser goes to the back of the line, and the next in line takes pad 2. The champion's
+  streak counts sets won in a row.
+- After a 10 s break (time for people to join: Dolphin lets nobody in while a game runs) the next
+  set starts on its own, once everyone's game, save and battle state check out. Joining during a
+  set (`--koth` on the joiner) waits for the break.
+- The host starts the first set. A set stopped by hand (`stop`) pauses the ladder until the host
+  starts again; if someone on a pad leaves, nobody wins and the next set starts on its own. The
+  host referees: its `stop` works even while it waits in line without a pad.
+- Public KOTH lobbies are listed as `SPK1|koth.<mode>|<link>|<host>` (`format: koth`): the
+  listing's players are the 2 on pads, spectators everyone else. They're only shown with
+  `--koth`, and regular lobbies only without it.
 
 ## Overlay
 

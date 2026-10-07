@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -71,6 +72,10 @@ struct NetPlayOptions
   // Joiner: watch only. Spectators never get a controller port (not even if a player leaves),
   // and run the default codes without any per-port code.
   bool spectate = false;
+  // King of the Hill (see NetPlaySession::PumpKoth): the winner keeps / takes pad 1, the loser
+  // goes to the back of the line and the next in line takes pad 2. Host: the lobby's format.
+  // Joiner: joining while a set is being played waits and retries until it ends.
+  bool koth = false;
 };
 
 // Lobby size: 2 players (GameCube ports 1-2) and up to 2 spectators.
@@ -123,6 +128,11 @@ public:
   void OnGameEnded();
 
   bool WantsQuit() const { return m_quit; }
+  bool IsKoth() const { return m_koth; }
+  // The host refused us because a game is running (King of the Hill: wait for the set to end).
+  bool JoinRefusedGameRunning() const { return m_refused_game_running; }
+  // King of the Hill joiner: the host has put this player in the line.
+  bool InKothLine() const { return m_in_koth_line; }
   bool IsSpectating() const { return m_spectate; }
   // Host thread. Players in the lobby, and this player's GameCube port (0 = none / spectator).
   int PlayerCount();
@@ -309,6 +319,57 @@ private:
   std::string m_host_game_name;  // host: netplay name of the game it opened with
   bool m_index_failed = false;
   bool m_mode_state_applied = false;
+
+  // King of the Hill (host runs it, everyone is told with "koth" control messages).
+  //  - The line: m_line[0] holds pad 1 (the champion), m_line[1] pad 2 (the challenger), the
+  //    rest wait for their turn without a pad (like spectators: default codes only). Joiners go
+  //    to the back. Watchers (--spectate) never get in line. Up to KOTH_MAX_PEOPLE in all.
+  //  - A set is one boot: the host counts KOs per port (Single Battle: first to 2, Team Battle:
+  //    1), then a few seconds after the deciding KO it stops the game, rotates the line (winner
+  //    to the front, loser to the back), and starts the next set after a short break in which
+  //    people can join (Dolphin lets nobody in while a game runs).
+  //  - A set that ends undecided (someone pressed Stop) pauses the ladder until the host
+  //    presses Start; if a pad holder left, the next set starts on its own.
+  struct LineEntry
+  {
+    NetPlay::PlayerId pid;
+    std::string name;  // player numbers get reused: an entry is only ever this same player
+  };
+  struct KothView
+  {
+    std::string state = "waiting";  // waiting, ready, next, playing, decided
+    int cap = 2, streak = 0, next_in = 0;
+    NetPlay::PlayerId champion = 0;
+    std::array<int, 2> wins{};
+    std::vector<NetPlay::PlayerId> line;
+    std::string ToControl() const;
+    static std::optional<KothView> Parse(const std::vector<std::string>& parts);
+  };
+  void KothMap(NetPlay::PadMappingArray& map, bool& changed,
+               const std::vector<const NetPlay::Player*>& players);  // host, in ApplyAutoMap
+  void PumpKoth();         // host thread, lobby and (via the ticker) during a set
+  void OnSetEnded();       // host thread, after a set's game has stopped
+  bool KothReadyToStart();  // host: everyone has the game, saves and battle state checked
+  KothView CurrentKothView();
+  void BroadcastKoth(bool force);  // host
+  void EmitKoth(const KothView& view);
+  bool m_koth = false;
+  int m_koth_cap = 2;
+  std::vector<LineEntry> m_line;  // host thread (and host jobs on it)
+  NetPlay::PlayerId m_champion = 0;
+  int m_streak = 0;
+  bool m_koth_paused = true;  // waits for the host's first Start
+  bool m_set_live = false;    // a set's game is running (host)
+  bool m_set_decided = false;
+  int m_set_winner_port = 0;
+  std::array<LineEntry, 2> m_set_players{};
+  std::array<int, 2> m_set_base{}, m_set_wins{};
+  std::optional<std::chrono::steady_clock::time_point> m_set_stop_at, m_next_set_at;
+  std::string m_last_koth;
+  std::chrono::steady_clock::time_point m_last_koth_send{};
+  std::atomic<bool> m_refused_game_running{false};
+  std::atomic<bool> m_koth_start_aborted{false};
+  bool m_in_koth_line = false;
 
   std::string m_last_room_json;
   std::chrono::steady_clock::time_point m_last_player_emit{};

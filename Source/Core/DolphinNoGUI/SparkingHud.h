@@ -45,6 +45,9 @@ void SetHudLinks(const std::array<std::string, 2>& links);
 // host's automatic pad buffer, which only changes between rounds.
 int HudResultCount();
 bool HudRoundLive();
+// KOs won by the side on GameCube port 1 or 2 since this process started (never reset). The
+// King of the Hill host counts a set's wins from these. Any thread.
+int HudPortWins(int port);
 // When a game starts/ends: forget health values and scores.
 void ResetHud();
 // Scores back to 0-0.

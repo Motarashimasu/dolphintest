@@ -745,6 +745,13 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .dest("spectate")
       .action("store_true")
       .help("With --netplay-join: watch only (never gets a controller port, no per-port codes)");
+  parser.add_option("--koth")
+      .dest("koth")
+      .action("store_true")
+      .help("King of the Hill: host a KOTH lobby (winner keeps pad 1, loser to the back of the "
+            "line; Single Battle first to 2, Team Battle 1 win), or with --netplay-find / "
+            "--list-lobbies only KOTH lobbies (without it, only regular ones). With "
+            "--netplay-join: joining during a set waits and retries until it ends.");
   parser.add_option("--netplay-game")
       .dest("netplay_game")
       .action("append")
@@ -984,6 +991,8 @@ static int RunListLobbies(const optparse::Values& options)
   {
     if (options.is_set_by_user("mode") && !LobbyModesMatch(mode, lobby.mode))
       continue;
+    if ((lobby.format == "koth") != options.is_set_by_user("koth"))
+      continue;  // King of the Hill and regular lobbies are browsed separately
     list.push_back(LobbyJson(lobby));
   }
   Emit("lobbies", Json().AddRaw("lobbies", JsonArray(list)));
@@ -1126,21 +1135,40 @@ NetPlaySession* s_active_session = nullptr;  // host thread only
 SessionEnd RunSession(const NetPlayOptions& np, const FrontendHooks& hooks, MatchRole role)
 {
   auto& system = Core::System::GetInstance();
-  NetPlaySession session;
-  // Netplay may ask us to stop from its own thread; hop to the host thread to touch the window.
-  session.SetStopGameCallback([&platform = hooks.platform] {
-    Core::QueueHostJob(
-        [&platform](Core::System&) {
-          if (platform)
-            platform->Stop();
-        },
-        /*run_during_stop=*/true);
-  });
-
-  s_active_session = &session;
+  std::optional<NetPlaySession> holder;
   Common::ScopeGuard clear_active([] { s_active_session = nullptr; });
-  if (!session.Start(np))
-    return role == MatchRole::Joiner ? SessionEnd::Retry : SessionEnd::Failed;
+  for (;;)
+  {
+    holder.emplace();
+    // Netplay may ask us to stop from its own thread; hop to the host thread to touch the window.
+    holder->SetStopGameCallback([&platform = hooks.platform] {
+      Core::QueueHostJob(
+          [&platform](Core::System&) {
+            if (platform)
+              platform->Stop();
+          },
+          /*run_during_stop=*/true);
+    });
+    s_active_session = &*holder;
+    if (holder->Start(np))
+      break;
+    s_active_session = nullptr;
+    // King of the Hill: Dolphin lets nobody in while a set is being played. Wait for the break
+    // between sets, trying every few seconds (quit/stop cancels).
+    const bool wait = np.koth && np.join_target && holder->JoinRefusedGameRunning();
+    holder.reset();
+    if (!wait || s_quit_requested)
+      return role == MatchRole::Joiner ? SessionEnd::Retry : SessionEnd::Failed;
+    Emit("koth_waiting", Json().Add("retry_in", 3));
+    for (int i = 0; i < 60 && !s_quit_requested; ++i)
+    {
+      Core::HostDispatchJobs(system);
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    if (s_quit_requested)
+      return SessionEnd::Quit;
+  }
+  NetPlaySession& session = *holder;
 
   // Matchmaking joiner: the lobby may have been taken a moment ago (we'd only be a spectator).
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(12);
@@ -1161,7 +1189,9 @@ SessionEnd RunSession(const NetPlayOptions& np, const FrontendHooks& hooks, Matc
 
     if (!matched)
     {
-      if (session.PlayerCount() >= 2 && session.LocalGcPort() > 0)
+      // King of the Hill: in line with someone else there (the pad comes when it's our turn).
+      if (session.IsKoth() ? session.InKothLine() && session.PlayerCount() >= 2 :
+                             session.PlayerCount() >= 2 && session.LocalGcPort() > 0)
       {
         matched = true;
         Emit("matchmaking", Json().Add("state", "matched").Add("port", session.LocalGcPort()));
@@ -1197,6 +1227,7 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
   const bool find = options.is_set("netplay_find");
   np.is_public = options.is_set_by_user("public");
   np.mode = static_cast<const char*>(find ? options.get("netplay_find") : options.get("mode"));
+  np.koth = options.is_set_by_user("koth");
   np.region = static_cast<const char*>(options.get("region"));
   if (options.is_set("public_address"))
     np.public_address = static_cast<const char*>(options.get("public_address"));
@@ -1275,8 +1306,10 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
       HandleGameCommand(cmd, platform);
     else if ((cmd.name == "quit" || cmd.name == "eof") && platform)
       platform->Stop();  // spectators have no pad mapped, so also stop locally
-    else if (cmd.name == "stop" && session->IsSpectating() && platform)
-      platform->Stop();  // a spectator stops watching; the match goes on for the players
+    else if (cmd.name == "stop" && platform &&
+             (session->IsSpectating() ||
+              (session->IsKoth() && !session->IsHosting() && session->LocalGcPort() == 0)))
+      platform->Stop();  // a spectator (or someone waiting in line) stops watching; the set goes on
   });
 
   if (!find)
@@ -1319,7 +1352,13 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
       const bool same_game = std::ranges::any_of(my_games, [&](const std::string& id) {
         return lobby.game_id == id || lobby.game.find(id) != std::string::npos;
       });
-      if (!lobby.in_game && lobby.players < 2 && LobbyModesMatch(np.mode, lobby.mode) && same_game)
+      // King of the Hill: any KOTH lobby with room (a set being played just means waiting for
+      // it to end); regular: an open regular lobby.
+      const bool open = np.koth ?
+                            lobby.format == "koth" &&
+                                lobby.players + lobby.spectators < KOTH_MAX_PEOPLE :
+                            lobby.format != "koth" && !lobby.in_game && lobby.players < 2;
+      if (open && LobbyModesMatch(np.mode, lobby.mode) && same_game)
       {
         candidates.push_back(lobby);
       }

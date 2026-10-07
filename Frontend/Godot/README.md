@@ -83,6 +83,14 @@ press B again to leave.
   splitscreen remover, can chat, and Stop Watching only ends their own view. Watching starts in
   the lobby: Dolphin can't let anyone in once a match is running. A full lobby turns a 3rd
   player or 3rd spectator away with a message.
+- **King of the Hill** (DRAGON NET > King of the Hill): the same Lobby Browser, Host and Find
+  as Player Match, but only for King of the Hill lobbies (and the Player Match ones never show
+  KOTH lobbies). The winner stays on pad 1, the loser goes to the back of the line and the next in
+  line gets pad 2; Single Battle sets are first to 2 wins, Team Battle sets 1 win. The Players
+  panel becomes the line (P1, P2, #3...), with the champion's streak. The host presses Start
+  Match once; after that each set starts by itself after a 10-second break. Up to 8 people; you
+  can join while a set is on and get in line as soon as it ends. Hold Select: the host's Stop Set
+  pauses the ladder, and someone waiting in line can Stop Watching (only their own view).
 - **Buffer Training** (DRAGON NET > Buffer Training): a solo, unlisted lobby that boots
   `states\RDSPAF-BufferTraining.sst` (Training Mode) on its own, so you can feel a pad buffer
   like an online match's. Change the buffer in the lobby or from the Training Menu (hold

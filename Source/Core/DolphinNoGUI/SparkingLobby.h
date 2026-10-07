@@ -6,8 +6,11 @@
 // The index only stores a few fixed fields (name, region, game, player count, in-game, version,
 // room code), so Sparking packs its own data into the session NAME:
 //     SPK1|<mode>|<link>|<host name>        e.g. "SPK1|single|wired|Goku"
+// King of the Hill lobbies prefix the mode: "SPK1|koth.single|wired|Goku" (format "koth"; the
+// others are format "classic"). A browser only ever shows one format.
 // The index's player count carries both kinds of guests: players + 10 x spectators (lobbies are
-// 2 players + up to 2 spectators). Lobbies without that tag (regular Dolphin users) are ignored, and the list is always filtered
+// 2 players + up to 2 spectators; King of the Hill: the 2 on pads + up to 6 others in line or
+// watching). Lobbies without that tag (regular Dolphin users) are ignored, and the list is always filtered
 // to the exact same build (the index's "version" = Dolphin's scm description string), so players
 // only ever see lobbies they can actually play with.
 
@@ -25,12 +28,16 @@ bool IsValidLobbyMode(const std::string& mode);
 bool LobbyModesMatch(const std::string& wanted, const std::string& lobby);
 
 std::string MakeLobbyName(const std::string& mode, const std::string& link,
-                          const std::string& host);
+                          const std::string& host, bool koth = false);
+
+// King of the Hill: everyone in the lobby (the 2 on pads, the line and watchers).
+constexpr int KOTH_MAX_PEOPLE = 8;
 
 struct LobbyInfo
 {
   std::string host;
   std::string mode;
+  std::string format = "classic";  // "classic" or "koth" (King of the Hill)
   std::string link;
   std::string region;
   std::string game;     // the host's netplay game name ("Title (GAMEID, Revision N)")

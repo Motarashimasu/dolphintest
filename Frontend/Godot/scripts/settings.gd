@@ -232,9 +232,11 @@ func _netplay_base() -> PackedStringArray:
 	return a
 
 
-func host_args(mode: String, public: bool, traversal: bool) -> PackedStringArray:
+func host_args(mode: String, public: bool, traversal: bool, koth := false) -> PackedStringArray:
 	var a := _netplay_base()
 	a.append_array(["--mode", mode])
+	if koth:
+		a.append("--koth")   # King of the Hill lobby
 	if not traversal:
 		a.append("--netplay-direct")
 	if public:
@@ -251,28 +253,34 @@ func training_args() -> PackedStringArray:
 	return host_args("training", false, false)
 
 
-func join_args(target: String) -> PackedStringArray:
+func join_args(target: String, koth := false) -> PackedStringArray:
 	var a := _netplay_base()
 	a.append_array(["--netplay-game", get_value("paths", "game"), "--netplay-join", target])
+	if koth:
+		a.append("--koth")   # joining during a set waits for it to end
 	return a
 
 
 ## Watch a lobby: joins it as a spectator (no controller port, default codes only).
-func watch_args(target: String) -> PackedStringArray:
-	var a := join_args(target)
+func watch_args(target: String, koth := false) -> PackedStringArray:
+	var a := join_args(target, koth)
 	a.append("--spectate")
 	return a
 
 
-func find_args(mode: String) -> PackedStringArray:
+func find_args(mode: String, koth := false) -> PackedStringArray:
 	var a := _netplay_base()
 	a.append_array(["--netplay-find", mode, "--region", get_value("player", "region")])
+	if koth:
+		a.append("--koth")
 	a.append_array(["--netplay-game", get_value("paths", "game")])
 	return a
 
 
-func list_lobbies_args() -> PackedStringArray:
+func list_lobbies_args(koth := false) -> PackedStringArray:
 	var a := PackedStringArray(["-u", data_path(get_value("paths", "profile")), "--list-lobbies"])
+	if koth:
+		a.append("--koth")   # King of the Hill lobbies only (without it: regular ones only)
 	a.append_array(_extra_args())
 	return a
 

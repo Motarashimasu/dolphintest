@@ -49,6 +49,7 @@ std::string s_rating;                 // guarded by s_mutex: good/ok/poor/measur
 std::array<std::string, 2> s_links;   // guarded by s_mutex: wired/wireless/virtual/unknown, "" = none
 int s_rounds = 0;
 std::atomic<int> s_result_count{0};  // every confirmed KO, never reset
+std::array<std::atomic<int>, 2> s_port_wins{};  // KOs won per port (1, 2), never reset
 
 std::string DisplayName(const Side& side, int port)
 {
@@ -390,6 +391,11 @@ int HudResultCount()
   return s_result_count;
 }
 
+int HudPortWins(int port)
+{
+  return port == 1 || port == 2 ? s_port_wins[port - 1].load() : 0;
+}
+
 bool HudRoundLive()
 {
   std::lock_guard lk(s_mutex);
@@ -481,6 +487,7 @@ void HudTick()
   s_pending_loser = 0;
   s_round_live = false;
   ++s_rounds;
+  ++s_port_wins[winner_port - 1];
   ++s_result_count;
   const std::string winner = DisplayName(s_sides[winner_port - 1], winner_port);
   const std::string loser = DisplayName(s_sides[loser_port - 1], loser_port);

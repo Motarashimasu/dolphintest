@@ -77,7 +77,7 @@ func _check_translations() -> void:
 			if JSON.stringify(s).trim_prefix("\"").trim_suffix("\"") in term_text:
 				continue
 			if s.begins_with("◀") or s.begins_with("★") or s.begins_with("[b]") or "   ·   " in s \
-					or RegEx.create_from_string("^\\d+ ms|^[A-Z]{2}$|Sparking Standard|^Tecbox layout").search(s):
+					or RegEx.create_from_string("^\\d+ ms|^[A-Z]{2}$|Sparking Standard|^Tecbox layout|^\\S+  \\(.+\\)$").search(s):
 				continue   # composed from translated pieces
 			if templates.any(func(rx): return rx.search(s) != null):
 				continue
@@ -358,6 +358,8 @@ func _tour() -> void:
 		if String(r.get("key", "")).begins_with("lobby:") and r.get("label") == "Piccolo":
 			piccolo = r["key"]
 	check("Piccolo's lobby listed", piccolo != "")
+	check("King of the Hill lobbies stay out of the regular browser",
+			not browser.list.rows.any(func(r): return r.get("label") == "Trunks"))
 	await shot("lobby_browser")
 	if piccolo != "":
 		await pick(piccolo, browser.list)
@@ -411,9 +413,49 @@ func _tour() -> void:
 	await wait_for("search cancelled", func(): return app.top() != finder, 15)
 	await wait_for("Dolphin exited (find)", func(): return not Dolphin.is_running(), 10)
 
-	# --- Buffer Training: solo, boots the training state, buffer changed live ------------
 	await back()   # find options -> player match
 	await back()   # player match -> netplay
+
+	# --- King of the Hill: its own menu, browser lists only KOTH lobbies, the line ---------
+	await choose("King of the Hill")
+	check("King of the Hill menu", app._title.text == "King of the Hill")
+	await shot("koth_menu")
+	await choose("Lobby Browser")
+	var kb: Control = top()
+	check("King of the Hill browser", kb.koth and app._title.text == "King of the Hill Lobbies")
+	await wait_for("KOTH lobby list loaded", func(): return not kb._loading, 20)
+	var trunks := ""
+	for r in kb.list.rows:
+		if String(r.get("key", "")).begins_with("lobby:") and r.get("label") == "Trunks":
+			trunks = r["key"]
+	check("Trunks' King of the Hill lobby listed", trunks != "")
+	check("regular lobbies stay out of the King of the Hill browser",
+			not kb.list.rows.any(func(r): return r.get("label") == "Piccolo"))
+	await shot("koth_lobby_browser")
+	if trunks != "":
+		await pick(trunks, kb.list)
+		var kl: Control = top()
+		check("joined the King of the Hill lobby", kl != kb and kl.koth and "--koth" in kl._args)
+		await wait_for("in Trunks' line, second", func():
+			return (kl._koth.get("line", []) as Array).size() == 2 and int(kl._koth.get("local_pos", -1)) == 1, 25)
+		check("Trunks holds pad 1", String(kl._koth.get("line", [{}])[0].get("name", "")) == "Trunks")
+		check("Players panel shows the line", kl._players_head.text.begins_with(tr("Line")))
+		check("title says King of the Hill", app._title.text.begins_with(tr("King of the Hill: %s").split(":")[0]))
+		await frames(30)
+		await shot("koth_lobby_line")
+		await back()
+		await back()
+		await wait_for("left Trunks' lobby", func(): return app.top() == kb, 15)
+		await wait_for("Dolphin exited (King of the Hill)", func(): return not Dolphin.is_running(), 10)
+	await back()   # browser -> King of the Hill menu
+	await choose("Host")
+	check("King of the Hill host options", app._title.text == "Host King of the Hill")
+	check("host lobby is King of the Hill", top().koth)
+	await shot("koth_host_options")
+	await back()   # -> King of the Hill menu
+	await back()   # -> DRAGON NET
+
+	# --- Buffer Training: solo, boots the training state, buffer changed live ------------
 	var c: Control = top().carousel
 	for i in c.items.size():
 		if c.current().get("label") == "Buffer Training":

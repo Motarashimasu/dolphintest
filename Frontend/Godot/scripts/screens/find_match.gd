@@ -7,8 +7,16 @@ func screen_music() -> String:
 	return "netplay"
 
 
+var koth := false   # King of the Hill: only KOTH lobbies (or host one)
+
+
+func with_koth(value: bool) -> Node:
+	koth = value
+	return self
+
+
 func screen_title() -> String:
-	return "Find a Match"
+	return "Find King of the Hill" if koth else "Find a Match"
 
 
 func screen_desc() -> String:
@@ -26,8 +34,10 @@ func build_rows() -> Array:
 		{"type": "text", "key": "nickname", "label": "DRAGON NET name", "max_length": 24,
 			"value": Settings.get_value("player", "nickname"), "desc": "The name other players see."},
 		{"type": "action", "key": "search", "label": "Search", "color": "#3fbf6b",
-			"desc": "Look for an open lobby. If none is free, a public lobby\nof this mode is opened for you and others can join it."},
-		{"type": "action", "key": "back", "label": "Back", "desc": "Back to Player Match."},
+			"desc": ("Get in line in a King of the Hill lobby with room. If there's none, one\nis opened for you and others can join it." if koth
+				else "Look for an open lobby. If none is free, a public lobby\nof this mode is opened for you and others can join it.")},
+		{"type": "action", "key": "back", "label": "Back",
+			"desc": "Back to King of the Hill." if koth else "Back to Player Match."},
 	]
 
 
@@ -45,6 +55,7 @@ func on_press(key: String) -> void:
 	if key == "search":
 		var mode: String = Settings.get_value("netplay", "find_mode")
 		var lobby: Control = load("res://scripts/screens/lobby.gd").new()
-		app.push(lobby.setup("find", Settings.find_args(mode), mode))
+		lobby.koth = koth
+		app.push(lobby.setup("find", Settings.find_args(mode, koth), mode))
 	else:
 		super(key)

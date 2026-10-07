@@ -129,6 +129,9 @@ public:
   bool ChangeGame(const std::string& game);
   void SendChatMessage(const std::string& msg);
   void RequestStopGame();
+  // Sparking: stop the game for everyone even without a pad (the King of the Hill host, waiting
+  // in line, still referees the set). The server accepts a stop from any player.
+  void RequestStopGameForEveryone() { SendStopGamePacket(); }
   void SendPowerButtonEvent();
   void RequestGolfControl(PlayerId pid);
   void RequestGolfControl();

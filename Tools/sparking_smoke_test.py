@@ -715,6 +715,7 @@ def main():
             inst.proc.wait(timeout=20)
         spectator_check(exe, dol, work, game_id)
         training_check(exe, dol, work, game_id, os.path.join(states["solo"], "battle.sst"))
+        koth_check(exe, dol, work, game_id)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
@@ -892,6 +893,188 @@ def spectator_check(exe, dol, work, game_id):
         for inst in insts:
             if inst.proc.poll() is None:
                 inst.proc.kill()
+
+
+def koth_check(exe, dol, work, game_id):
+    """King of the Hill: the line fills pads 1-2, the host counts KOs per port (Single Battle:
+    first to 2), stops the game after the deciding KO, rotates the line (winner to pad 1, loser
+    to the back, next in line to pad 2) and starts the next set by itself; joining during a set
+    waits for it to end; listings carry the format."""
+    print("netplay: King of the Hill")
+    common = ["-p", "headless", "-v", "Null"]
+    server = FakeLobbyServer()
+    FULL, ZERO = "42C80000", "00000000"
+    HP1, HP2 = "80001100", "80001104"
+
+    def setup(name):
+        d = os.path.join(work, "koth-" + name)
+        os.makedirs(os.path.join(d, "Config"), exist_ok=True)
+        os.makedirs(os.path.join(d, "GameSettings"), exist_ok=True)
+        with open(os.path.join(d, "Config", "Dolphin.ini"), "w") as f:
+            f.write(f"[NetPlay]\nTraversalChoice = direct\nHostPort = 26297\nSyncSaves = False\n"
+                    f"IndexServer = {server.url}\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        with open(os.path.join(d, "GameSettings", f"{game_id}.ini"), "w") as f:
+            f.write("[Gecko]\n"
+                    "$Splitscreen Remover P1 [Sparking]\n04001000 00000001\n"
+                    "$Splitscreen Remover P2 [Sparking]\n04001004 00000002\n"
+                    "$Infinite Health [Sparking]\n04001008 00000003\n"
+                    "[Gecko_Enabled]\n$Infinite Health\n"
+                    "[Sparking.Watch]\np1_health_pct = f32 0x80001100\np2_health_pct = f32 0x80001104\n")
+        nand = os.path.join(work, "koth-nand-" + name)
+        data = os.path.join(nand, "title", "00000000", "00000000", "data")
+        os.makedirs(data, exist_ok=True)
+        with open(os.path.join(data, "save.bin"), "wb") as f:
+            f.write(b"ALL-CHARACTERS-UNLOCKED" * 100)
+        return ["-u", d, "--nand", nand, "--netplay-gecko", "1=Splitscreen Remover P1",
+                "--netplay-gecko", "2=Splitscreen Remover P2"]
+
+    def joiner(name, *extra):
+        inst = Instance("koth-" + name, [exe, *common, *setup(name), "--netplay-join",
+                                         "127.0.0.1:26297", "--netplay-game", dol,
+                                         "--nickname", name, *extra])
+        inst.send("hello")
+        return inst
+
+    def count(inst, event, pred=lambda e: True):
+        return len([e for e in list(inst.history) if e["event"] == event and pred(e)])
+
+    def until(inst, event, n, pred=lambda e: True, timeout=40):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if count(inst, event, pred) >= n:
+                return
+            time.sleep(0.1)
+        for e in inst.history[-30:]:
+            print("   ", e)
+        raise AssertionError(f"{inst.name}: expected {n} x '{event}'")
+
+    def line(e):
+        return [x["name"] for x in e["line"]]
+
+    def hpoke(addr, val):
+        host.send(f"poke {addr} {val}")
+        host.wait_for("poked", lambda e: e["address"] == addr and e["value"] == val)
+        time.sleep(0.15)
+
+    def ko(loser_addr):
+        hpoke(HP1, FULL); hpoke(HP2, FULL)
+        before = count(host, "round_result")
+        hpoke(loser_addr, ZERO)
+        until(host, "round_result", before + 1, timeout=10)
+
+    host = Instance("koth-host", [exe, *common, *setup("host"), "--netplay-host", dol,
+                                  "--netplay-direct", "--koth", "--mode", "single", "--public",
+                                  "--public-address", "127.0.0.1", "--region", "EU",
+                                  "--nickname", "Goku", "--automap", "gc", "--test-hooks"])
+    insts = [host]
+    try:
+        host.send("hello")
+        host.wait_for("lobby_ready")
+        vegeta = joiner("Vegeta", "--koth"); insts.append(vegeta)
+        host.seen("koth", lambda e: line(e) == ["Goku", "Vegeta"], timeout=20)
+        piccolo = joiner("Piccolo"); insts.append(piccolo)   # joins by address: no flag needed
+        k = host.seen("koth", lambda e: line(e) == ["Goku", "Vegeta", "Piccolo"], timeout=20)
+        check(f"line in join order, Single Battle first to 2 {line(k)} cap {k['cap']}",
+              k["cap"] == 2 and k["state"] == "ready")
+        pk = piccolo.seen("koth", lambda e: line(e) == ["Goku", "Vegeta", "Piccolo"], timeout=20)
+        check("everyone sees the line (and their place)", pk["local_pos"] == 2)
+        ports = host.seen("players", lambda e: {p["name"]: p["gc_slot"] for p in e["players"]}
+                          == {"Goku": 1, "Vegeta": 2, "Piccolo": -1}, timeout=20)
+        check("pads 1-2 for the first two, the rest of the line waits", bool(ports))
+
+        time.sleep(6)  # index heartbeat
+        def list_lobbies(*extra):
+            inst = Instance("koth-list", [exe, "-u", os.path.join(work, "koth-host"), "--list-lobbies", *extra])
+            ev = inst.wait_for("lobbies")
+            inst.proc.wait(timeout=20)
+            return ev["lobbies"]
+        kl = list_lobbies("--koth")
+        check(f"--list-lobbies --koth lists it {kl}", len(kl) == 1 and kl[0]["format"] == "koth"
+              and kl[0]["mode"] == "single" and kl[0]["players"] == 2 and kl[0]["spectators"] == 1
+              and kl[0]["joinable"] is True)
+        check("regular browsing never shows it", list_lobbies() == [])
+
+        host.seen("players", lambda e: len(e["players"]) == 3 and
+                  all(p["save_status"] == "ok" for p in e["players"] if not p["is_host"]), timeout=20)
+        host.send("start")
+        for inst in (host, vegeta, piccolo):
+            until(inst, "game_started", 1)
+        check("set 1: Goku (P1) vs Vegeta (P2)",
+              vegeta.seen("gecko_active")["port"] == 2 and piccolo.seen("gecko_active")["port"] == 0)
+        ko(HP2)
+        time.sleep(1)
+        check("one KO isn't the set (first to 2)", count(host, "game_stopped") == 0)
+        ko(HP2)
+        ks = host.seen("koth_set", timeout=10)
+        check(f"set decided {ks}", ks["winner"] == "Goku" and ks["loser"] == "Vegeta" and ks["wins"] == [2, 0])
+        check("everyone hears who won", vegeta.seen("koth_set")["winner"] == "Goku")
+        for inst in (host, vegeta, piccolo):
+            until(inst, "game_stopped", 1, timeout=20)
+        k = host.seen("koth", lambda e: line(e) == ["Goku", "Piccolo", "Vegeta"] and e["state"] == "next")
+        check(f"rotated: winner stays P1, next up P2, loser to the back (streak {k['streak']})",
+              k["streak"] == 1 and k["champion"] == "Goku")
+
+        # Set 2 starts by itself after the break; Krillin tries to join in the middle of it.
+        for inst in (host, vegeta, piccolo):
+            until(inst, "game_started", 2, timeout=40)
+        check("set 2 started on its own: Piccolo on pad 2, Vegeta waiting",
+              [e for e in piccolo.history if e["event"] == "gecko_active"][-1]["port"] == 2
+              and [e for e in vegeta.history if e["event"] == "gecko_active"][-1]["port"] == 0)
+        krillin = joiner("Krillin", "--koth"); insts.append(krillin)
+        krillin.seen("koth_waiting", timeout=20)
+        check("joining during a set waits for it", count(krillin, "lobby_ready") == 0)
+        ko(HP1)
+        ko(HP1)
+        ks = host.seen("koth_set", lambda e: e["winner"] == "Piccolo", timeout=10)
+        check("set 2: the challenger takes it 2-0", ks["wins"] == [2, 0] and ks["streak"] == 1)
+        until(host, "game_stopped", 2, timeout=20)
+        krillin.seen("lobby_ready", timeout=30)
+        k = host.seen("koth", lambda e: line(e) == ["Piccolo", "Vegeta", "Goku", "Krillin"], timeout=30)
+        check(f"new champion on pad 1, old one to the back, Krillin got in between sets {line(k)}",
+              k["champion"] == "Piccolo" and k["streak"] == 1)
+
+        # Set 3: Piccolo vs Vegeta, the host waits in line without a pad but still referees.
+        for inst in (host, vegeta, piccolo, krillin):
+            until(inst, "game_started", 3 if inst is not krillin else 1, timeout=60)
+        check("host waiting in line has no pad", [e for e in host.history if e["event"] == "gecko_active"][-1]["port"] == 0)
+        ko(HP2)
+        ko(HP2)
+        until(host, "game_stopped", 3, timeout=20)
+        k = host.seen("koth", lambda e: line(e) == ["Piccolo", "Goku", "Krillin", "Vegeta"], timeout=20)
+        check(f"champion defends: streak {k['streak']}, the host's set ends without a pad", k["streak"] == 2)
+
+        # Set 4: stopping by hand pauses the ladder until the host starts it again.
+        for inst in (host, vegeta, piccolo, krillin):
+            until(inst, "game_started", 4 if inst is not krillin else 2, timeout=60)
+        host.send("stop")
+        until(host, "game_stopped", 4, timeout=20)
+        k = host.seen("koth", lambda e: e["state"] == "ready" and line(e)[:2] == ["Piccolo", "Goku"], timeout=10)
+        check("stopped by hand: nobody moves, waiting for Start", bool(k))
+        time.sleep(12)
+        check("no set starts on its own while paused", count(host, "game_started") == 4)
+        for inst in insts:
+            inst.send("quit")
+        for inst in insts:
+            inst.proc.wait(timeout=20)
+    finally:
+        for inst in insts:
+            if inst.proc.poll() is None:
+                inst.proc.kill()
+        server.httpd.shutdown()
+
+    # Team Battle: one win takes the set.
+    host = Instance("koth-team", [exe, *common, *setup("team"), "--netplay-host", dol,
+                                  "--netplay-direct", "--koth", "--mode", "team", "--nickname", "Goku"])
+    try:
+        host.send("hello")
+        k = host.seen("koth", timeout=20)
+        check(f"Team Battle King of the Hill: 1 win takes the set (cap {k['cap']})", k["cap"] == 1)
+        host.send("quit")
+        host.proc.wait(timeout=20)
+    finally:
+        if host.proc.poll() is None:
+            host.proc.kill()
 
 
 def training_check(exe, dol, work, game_id, battle_sst):

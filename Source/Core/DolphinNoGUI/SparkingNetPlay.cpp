@@ -202,6 +202,8 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
   m_public_address = options.public_address;
   m_automap = options.automap;
   m_spectate = options.spectate && !options.host_game_path;
+  m_koth = options.koth && m_mode != "training";
+  m_koth_cap = m_mode == "team" ? 1 : 2;  // Team Battle: 1 win takes the set; otherwise first to 2
   m_state_dir = options.state_dir;
   m_port_gecko = options.port_gecko;
   m_gecko_defaults = options.gecko_defaults;
@@ -400,6 +402,7 @@ void NetPlaySession::Pump()
   if (m_server)
   {
     PumpAutoBuffer();
+    PumpKoth();
     ApplyModeBattleState();
     UpdatePublicListing();
   }
@@ -560,47 +563,54 @@ void NetPlaySession::ApplyAutoMap()
       }
     }
   }
-  for (const NetPlay::Player* p : players)
+  if (m_koth && m_automap == AutoMap::GameCube)
   {
-    m_first_seen.try_emplace(p->pid, now);
-    if (m_kick_at.contains(p->pid))
-      continue;
-    if (m_mode == "training" && !p->IsHost())
+    KothMap(map, changed, players);
+  }
+  else
+  {
+    for (const NetPlay::Player* p : players)
     {
-      RejectPlayer(p->pid, "training_solo");
-      continue;
-    }
-    std::string role = p->IsHost() ? "player" : RoleOf(p->pid);
-    if (role == "pending")
-    {
-      // Older builds never say: after a few seconds they count as players.
-      if (now - m_first_seen[p->pid] < std::chrono::seconds(3))
+      m_first_seen.try_emplace(p->pid, now);
+      if (m_kick_at.contains(p->pid))
         continue;
-      role = "player";
-    }
-    const auto mapped = std::find(map.begin(), map.end(), p->pid);
-    if (role == "spectator")
-    {
-      if (mapped != map.end())  // spectators never hold a port
+      if (m_mode == "training" && !p->IsHost())
       {
-        *mapped = 0;
-        changed = true;
+        RejectPlayer(p->pid, "training_solo");
+        continue;
       }
-      if (++spectators > MAX_SPECTATORS)
-        RejectPlayer(p->pid, "spectators_full");
-      continue;
+      std::string role = p->IsHost() ? "player" : RoleOf(p->pid);
+      if (role == "pending")
+      {
+        // Older builds never say: after a few seconds they count as players.
+        if (now - m_first_seen[p->pid] < std::chrono::seconds(3))
+          continue;
+        role = "player";
+      }
+      const auto mapped = std::find(map.begin(), map.end(), p->pid);
+      if (role == "spectator")
+      {
+        if (mapped != map.end())  // spectators never hold a port
+        {
+          *mapped = 0;
+          changed = true;
+        }
+        if (++spectators > MAX_SPECTATORS)
+          RejectPlayer(p->pid, "spectators_full");
+        continue;
+      }
+      if (mapped != map.end())
+        continue;
+      const auto ports = map.begin() + MAX_PLAYERS;  // GameCube ports 1-2 only
+      const auto free_slot = std::find(map.begin(), ports, NetPlay::PlayerId{0});
+      if (free_slot == ports)
+      {
+        RejectPlayer(p->pid, "lobby_full");
+        continue;
+      }
+      *free_slot = p->pid;
+      changed = true;
     }
-    if (mapped != map.end())
-      continue;
-    const auto ports = map.begin() + MAX_PLAYERS;  // GameCube ports 1-2 only
-    const auto free_slot = std::find(map.begin(), ports, NetPlay::PlayerId{0});
-    if (free_slot == ports)
-    {
-      RejectPlayer(p->pid, "lobby_full");
-      continue;
-    }
-    *free_slot = p->pid;
-    changed = true;
   }
   for (auto it = m_first_seen.begin(); it != m_first_seen.end();)
   {
@@ -689,7 +699,10 @@ bool NetPlaySession::HandleCommand(const Command& cmd)
   }
   else if (cmd.name == "stop")
   {
-    if (m_game_running)
+    // The King of the Hill host referees: its Stop ends the set for everyone, pad or not.
+    if (m_game_running && m_koth && m_server)
+      m_client->RequestStopGameForEveryone();
+    else if (m_game_running)
       m_client->RequestStopGame();
   }
   else if (cmd.name == "buffer")
@@ -764,6 +777,16 @@ void NetPlaySession::CmdStart(bool force)
   if (m_game_running)
     return;
 
+  if (m_koth)
+  {
+    ApplyAutoMap();  // pads 1-2 = the first two in line
+    if (m_line.size() < 2)
+    {
+      Emit("error", Json().Add("code", "koth_need_two"));
+      return;
+    }
+  }
+
   if (!force && !m_client->DoAllPlayersHaveGame())
   {
     Emit("error", Json().Add("code", "not_all_players_have_game"));
@@ -800,8 +823,24 @@ void NetPlaySession::CmdStart(bool force)
     ApplyAutoBuffer("match_start");
   m_seen_results = HudResultCount();
   m_auto_due.reset();
+  if (m_koth)
+  {
+    m_koth_paused = false;
+    m_next_set_at.reset();
+    m_set_players = {m_line[0], m_line[1]};
+    m_set_base = {HudPortWins(1), HudPortWins(2)};
+    m_set_wins = {};
+    m_set_decided = false;
+    m_set_winner_port = 0;
+    m_set_stop_at.reset();
+    m_set_live = true;
+  }
   if (!m_server->RequestStartGame())
+  {
+    m_set_live = false;
     Emit("error", Json().Add("code", "start_rejected"));
+  }
+  BroadcastKoth(true);
 }
 
 std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget()
@@ -870,11 +909,13 @@ void NetPlaySession::StartAutoTicker()
     while (m_ticking)
     {
       std::this_thread::sleep_for(std::chrono::milliseconds(250));
-      if (m_ticking && m_auto_buffer)
+      if (m_ticking && (m_auto_buffer || m_koth))
       {
         Core::QueueHostJob([this, alive](Core::System&) {
-          if (*alive)
-            PumpAutoBuffer();
+          if (!*alive)
+            return;
+          PumpAutoBuffer();
+          PumpKoth();
         });
       }
     }
@@ -923,11 +964,18 @@ void NetPlaySession::OnGameEnded()
   // Mirrors NetPlayDialog: if the game ended locally (window closed etc.) rather than because
   // the server told us to stop, tell everyone else to stop too.
   if (m_client && !m_got_stop_request)
-    m_client->RequestStopGame();
+  {
+    if (m_koth && m_server)
+      m_client->RequestStopGameForEveryone();  // the host may be waiting in line (no pad)
+    else
+      m_client->RequestStopGame();
+  }
 
   m_game_running = false;
   StopAutoTicker();
   m_got_stop_request = false;
+  if (m_koth && m_server)
+    OnSetEnded();
   if (m_index && m_index_added)
     m_index->SetInGame(false);
   m_players_dirty = true;
@@ -1204,6 +1252,13 @@ void NetPlaySession::OnConnectionLost()
 
 void NetPlaySession::OnConnectionError(const std::string& message)
 {
+  // NetPlayClient's text for ConnectionError::GameRunning.
+  if (message == "The game is currently running.")
+  {
+    m_refused_game_running = true;
+    Emit("error", Json().Add("code", "game_running"));
+    return;
+  }
   Emit("error", Json().Add("code", "connection_error").Add("message", message));
 }
 
@@ -1221,6 +1276,7 @@ void NetPlaySession::OnGameStartAborted()
 {
   m_game_running = false;
   StopAutoTicker();
+  m_koth_start_aborted = true;
   Emit("game_start_aborted");
 }
 
@@ -1418,6 +1474,37 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
       m_roles[from] = parts[1] == "spectator" ? "spectator" : "player";
     }
     m_players_dirty = true;
+    return;
+  }
+  else if (parts[0] == "koth" && !m_server)
+  {
+    if (from != 1)
+      return;
+    if (const auto view = KothView::Parse(parts); view && body != m_last_koth)
+    {
+      m_last_koth = body;
+      EmitKoth(*view);
+    }
+    return;
+  }
+  else if (parts[0] == "kothset" && parts.size() == 6 && !m_server)
+  {
+    if (from != 1)
+      return;
+    const auto name_of = [&](const std::string& pid) {
+      for (const NetPlay::Player* p : m_client->GetPlayers())
+      {
+        if (p->pid == static_cast<NetPlay::PlayerId>(std::atoi(pid.c_str())))
+          return p->name;
+      }
+      return std::string("?");
+    };
+    Emit("koth_set", Json()
+                         .Add("winner", name_of(parts[1]))
+                         .Add("loser", name_of(parts[2]))
+                         .Add("streak", std::atoi(parts[3].c_str()))
+                         .AddRaw("wins", fmt::format("[{},{}]", std::atoi(parts[4].c_str()),
+                                                     std::atoi(parts[5].c_str()))));
     return;
   }
   else if (parts[0] == "reject" && parts.size() == 3 && !m_server)
@@ -1656,6 +1743,13 @@ int NetPlaySession::ListingCount()
 {
   if (!m_client)
     return 0;
+  if (m_koth && m_server)
+  {
+    // The 2 on pads count as players; the line and watchers as spectators.
+    const int total = static_cast<int>(m_client->GetPlayers().size());
+    const int pads = std::min<int>(static_cast<int>(m_line.size()), MAX_PLAYERS);
+    return pads + 10 * std::clamp(total - pads, 0, 9);
+  }
   int players = 0, spectators = 0;
   for (const NetPlay::Player* p : m_client->GetPlayers())
   {
@@ -1711,7 +1805,7 @@ void NetPlaySession::UpdatePublicListing()
     }
 
     ::NetPlaySession listing;
-    listing.name = MakeLobbyName(m_mode, m_local_link, m_nickname);
+    listing.name = MakeLobbyName(m_mode, m_local_link, m_nickname, m_koth);
     listing.region = m_region;
     listing.method = m_use_traversal ? "traversal" : "direct";
     listing.server_id = server_id;
@@ -1773,6 +1867,337 @@ void NetPlaySession::ApplyModeBattleState()
     return;
   Emit("mode", Json().Add("mode", m_mode).Add("battle_state", file));
   CmdBattleState(file);
+}
+
+// --- King of the Hill ----------------------------------------------------------------------
+
+std::string NetPlaySession::KothView::ToControl() const
+{
+  std::string ids;
+  for (const NetPlay::PlayerId pid : line)
+    ids += (ids.empty() ? "" : ",") + std::to_string(static_cast<int>(pid));
+  return fmt::format("koth {} {} {} {} {} {} {} {}", state, cap, streak, static_cast<int>(champion),
+                     wins[0], wins[1], next_in, ids.empty() ? "-" : ids);
+}
+
+std::optional<NetPlaySession::KothView>
+NetPlaySession::KothView::Parse(const std::vector<std::string>& parts)
+{
+  if (parts.size() != 9 || parts[0] != "koth")
+    return std::nullopt;
+  static constexpr std::array<std::string_view, 5> STATES = {"waiting", "ready", "next", "playing",
+                                                             "decided"};
+  if (std::ranges::find(STATES, parts[1]) == STATES.end())
+    return std::nullopt;
+  KothView v;
+  v.state = parts[1];
+  v.cap = std::atoi(parts[2].c_str());
+  v.streak = std::atoi(parts[3].c_str());
+  v.champion = static_cast<NetPlay::PlayerId>(std::atoi(parts[4].c_str()));
+  v.wins = {std::atoi(parts[5].c_str()), std::atoi(parts[6].c_str())};
+  v.next_in = std::atoi(parts[7].c_str());
+  if (parts[8] != "-")
+  {
+    for (const std::string& id : SplitString(parts[8], ','))
+    {
+      if (v.line.size() < static_cast<size_t>(KOTH_MAX_PEOPLE))
+        v.line.push_back(static_cast<NetPlay::PlayerId>(std::atoi(id.c_str())));
+    }
+  }
+  return v;
+}
+
+void NetPlaySession::KothMap(NetPlay::PadMappingArray& map, bool& changed,
+                             const std::vector<const NetPlay::Player*>& players)
+{
+  const auto now = std::chrono::steady_clock::now();
+  const auto find_player = [&](NetPlay::PlayerId pid) -> const NetPlay::Player* {
+    for (const NetPlay::Player* p : players)
+    {
+      if (p->pid == pid)
+        return p;
+    }
+    return nullptr;
+  };
+  // Whoever left (or whose number now belongs to someone else) leaves the line.
+  std::erase_if(m_line, [&](const LineEntry& e) {
+    const NetPlay::Player* p = find_player(e.pid);
+    return !p || p->name != e.name || (!p->IsHost() && RoleOf(e.pid) == "spectator");
+  });
+
+  int watchers = 0;
+  for (const NetPlay::Player* p : players)
+  {
+    m_first_seen.try_emplace(p->pid, now);
+    if (m_kick_at.contains(p->pid))
+      continue;
+    if (std::ranges::any_of(m_line, [&](const LineEntry& e) { return e.pid == p->pid; }))
+      continue;
+    std::string role = p->IsHost() ? "player" : RoleOf(p->pid);
+    if (role == "pending")
+    {
+      if (now - m_first_seen[p->pid] < std::chrono::seconds(3))
+        continue;
+      role = "player";
+    }
+    if (role == "spectator")
+    {
+      // Watchers never get in line or on a pad.
+      if (++watchers > MAX_SPECTATORS)
+      {
+        --watchers;
+        RejectPlayer(p->pid, "spectators_full");
+      }
+      else if (static_cast<int>(m_line.size()) + watchers > KOTH_MAX_PEOPLE)
+      {
+        --watchers;
+        RejectPlayer(p->pid, "lobby_full");
+      }
+      continue;
+    }
+    if (static_cast<int>(m_line.size()) + watchers >= KOTH_MAX_PEOPLE)
+    {
+      RejectPlayer(p->pid, "lobby_full");
+      continue;
+    }
+    m_line.push_back({p->pid, p->name});  // newcomers wait at the back
+  }
+
+  // Pad 1 = champion, pad 2 = challenger; everyone else in line waits without a pad.
+  for (int i = 0; i < MAX_PLAYERS; ++i)
+  {
+    const NetPlay::PlayerId want = i < static_cast<int>(m_line.size()) ? m_line[i].pid : 0;
+    if (map[i] != want)
+    {
+      map[i] = want;
+      changed = true;
+    }
+  }
+}
+
+bool NetPlaySession::KothReadyToStart()
+{
+  bool has_battle_state;
+  {
+    std::lock_guard lk(m_game_mutex);
+    has_battle_state = m_battle_state.has_value();
+  }
+  return m_client->DoAllPlayersHaveGame() && IsSaveDataReady() &&
+         (!has_battle_state || IsBattleStateReady());
+}
+
+NetPlaySession::KothView NetPlaySession::CurrentKothView()
+{
+  KothView v;
+  v.cap = m_koth_cap;
+  v.streak = m_streak;
+  v.champion = m_champion;
+  v.wins = m_set_wins;
+  for (const LineEntry& e : m_line)
+    v.line.push_back(e.pid);
+  if (m_set_live)
+  {
+    v.state = m_set_decided ? "decided" : "playing";
+    // The line during a set is the one it started with: pads 1-2 are the two fighting.
+  }
+  else if (m_line.size() < 2)
+  {
+    v.state = "waiting";
+  }
+  else if (m_koth_paused)
+  {
+    v.state = "ready";
+  }
+  else
+  {
+    v.state = "next";
+    if (m_next_set_at)
+    {
+      const auto left = *m_next_set_at - std::chrono::steady_clock::now();
+      v.next_in = std::max<int>(
+          0, static_cast<int>(
+                 (std::chrono::duration_cast<std::chrono::milliseconds>(left).count() + 999) / 1000));
+    }
+  }
+  return v;
+}
+
+void NetPlaySession::BroadcastKoth(bool force)
+{
+  if (!m_koth || !m_server || !m_client)
+    return;
+  const KothView view = CurrentKothView();
+  const std::string control = view.ToControl();
+  const auto now = std::chrono::steady_clock::now();
+  const bool changed = control != m_last_koth;
+  // Re-sent every 2 s too, so newcomers learn the line without asking.
+  if (force || changed || now - m_last_koth_send > std::chrono::seconds(2))
+  {
+    SendControl(control);
+    m_last_koth_send = now;
+  }
+  if (changed || force)
+  {
+    m_last_koth = control;
+    EmitKoth(view);
+  }
+}
+
+void NetPlaySession::EmitKoth(const KothView& view)
+{
+  std::map<NetPlay::PlayerId, std::string> names;
+  for (const NetPlay::Player* p : m_client->GetPlayers())
+    names[p->pid] = p->name;
+  const NetPlay::PlayerId me = m_client->GetLocalPlayerId();
+  std::vector<std::string> line;
+  int local_pos = -1;
+  for (size_t i = 0; i < view.line.size(); ++i)
+  {
+    const auto it = names.find(view.line[i]);
+    if (view.line[i] == me)
+      local_pos = static_cast<int>(i);
+    line.push_back(Json()
+                       .Add("pid", static_cast<int>(view.line[i]))
+                       .Add("name", it == names.end() ? std::string("?") : it->second)
+                       .Add("pos", static_cast<int>(i))
+                       .Str());
+  }
+  m_in_koth_line = local_pos >= 0;
+  const auto champ = names.find(view.champion);
+  Emit("koth", Json()
+                   .Add("state", view.state)
+                   .Add("cap", view.cap)
+                   .Add("streak", view.streak)
+                   .Add("champion", champ == names.end() || view.streak == 0 ? std::string() :
+                                                                               champ->second)
+                   .AddRaw("wins", fmt::format("[{},{}]", view.wins[0], view.wins[1]))
+                   .Add("next_in", view.next_in)
+                   .AddRaw("line", JsonArray(line))
+                   .Add("local_pos", local_pos)
+                   .Add("max", KOTH_MAX_PEOPLE));
+}
+
+void NetPlaySession::PumpKoth()
+{
+  if (!m_koth || !m_server || !m_client)
+    return;
+  const auto now = std::chrono::steady_clock::now();
+  constexpr auto BREAK = std::chrono::seconds(10);  // between sets: time for people to join
+
+  if (m_koth_start_aborted.exchange(false) && m_set_live && !m_game_running)
+  {
+    m_set_live = false;
+    m_next_set_at = now + std::chrono::seconds(5);
+  }
+
+  if (m_set_live)
+  {
+    if (!m_set_decided)
+    {
+      m_set_wins = {HudPortWins(1) - m_set_base[0], HudPortWins(2) - m_set_base[1]};
+      for (int i = 0; i < 2; ++i)
+      {
+        if (m_set_wins[i] < m_koth_cap)
+          continue;
+        // Set decided: let the KO play out, then end the game for everyone.
+        m_set_decided = true;
+        m_set_winner_port = i + 1;
+        m_set_stop_at = now + std::chrono::seconds(4);
+        const LineEntry& winner = m_set_players[i];
+        const LineEntry& loser = m_set_players[1 - i];
+        const int streak = i == 0 && m_streak > 0 && m_champion == winner.pid ? m_streak + 1 : 1;
+        SendControl(fmt::format("kothset {} {} {} {} {}", static_cast<int>(winner.pid),
+                                static_cast<int>(loser.pid), streak, m_set_wins[i],
+                                m_set_wins[1 - i]));
+        Emit("koth_set", Json()
+                             .Add("winner", winner.name)
+                             .Add("loser", loser.name)
+                             .Add("streak", streak)
+                             .AddRaw("wins", fmt::format("[{},{}]", m_set_wins[i],
+                                                         m_set_wins[1 - i])));
+        break;
+      }
+    }
+    if (m_set_stop_at && now >= *m_set_stop_at)
+    {
+      m_set_stop_at.reset();
+      if (m_game_running)
+        m_client->RequestStopGameForEveryone();
+    }
+    BroadcastKoth(false);
+    return;
+  }
+
+  // Between sets.
+  if (!m_koth_paused)
+  {
+    if (m_line.size() < 2 || !m_next_set_at)
+    {
+      m_next_set_at = now + BREAK;  // a fresh break once there's someone to fight
+    }
+    else if (now >= *m_next_set_at && KothReadyToStart())
+    {
+      m_next_set_at.reset();
+      CmdStart(false);
+      return;
+    }
+  }
+  BroadcastKoth(false);
+}
+
+void NetPlaySession::OnSetEnded()
+{
+  if (!m_set_live)
+    return;
+  m_set_live = false;
+  m_set_stop_at.reset();
+  const auto now = std::chrono::steady_clock::now();
+  const auto players = m_client->GetPlayers();
+  const auto present = [&](const LineEntry& e) {
+    return std::ranges::any_of(players, [&](const NetPlay::Player* p) {
+      return p->pid == e.pid && p->name == e.name;
+    });
+  };
+  const auto remove = [&](const LineEntry& e) {
+    std::erase_if(m_line, [&](const LineEntry& x) { return x.pid == e.pid; });
+  };
+
+  if (m_set_decided)
+  {
+    const int w = m_set_winner_port - 1;
+    const LineEntry winner = m_set_players[w];
+    const LineEntry loser = m_set_players[1 - w];
+    // Winner keeps / takes pad 1, the loser goes to the back, the next in line gets pad 2.
+    remove(winner);
+    remove(loser);
+    if (present(winner))
+      m_line.insert(m_line.begin(), winner);
+    if (present(loser))
+      m_line.push_back(loser);
+    m_streak = w == 0 && m_streak > 0 && m_champion == winner.pid ? m_streak + 1 : 1;
+    m_champion = winner.pid;
+    m_next_set_at = now + std::chrono::seconds(10);
+  }
+  else if (!present(m_set_players[0]) || !present(m_set_players[1]))
+  {
+    // Someone on a pad left: nobody won. The next in line steps up on its own.
+    if (!present(m_set_players[0]) || m_champion != m_set_players[0].pid)
+    {
+      m_streak = 0;
+      m_champion = 0;
+    }
+    m_next_set_at = now + std::chrono::seconds(10);
+  }
+  else
+  {
+    // Stopped by hand: the ladder waits for the host's Start.
+    m_koth_paused = true;
+    m_next_set_at.reset();
+  }
+  m_set_decided = false;
+  m_set_winner_port = 0;
+  m_players_dirty = true;
+  BroadcastKoth(true);
 }
 
 }  // namespace Sparking

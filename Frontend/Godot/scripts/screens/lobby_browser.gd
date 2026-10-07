@@ -2,6 +2,7 @@ extends "res://scripts/screens/form_screen.gd"
 ## Netplay > Lobby Browser: public lobbies of this exact build (Dolphin filters by version and
 ## never reports it). Mode, host, region and the host's connection type; pick one to join.
 
+var koth := false             # King of the Hill browser: only KOTH lobbies
 var _lobbies: Array = []
 var _loading := false
 var _error := ""
@@ -11,11 +12,18 @@ func screen_music() -> String:
 	return "netplay"
 
 
+func with_koth(value: bool) -> Node:
+	koth = value
+	return self
+
+
 func screen_title() -> String:
-	return "Lobby Browser"
+	return "King of the Hill Lobbies" if koth else "Lobby Browser"
 
 
 func screen_desc() -> String:
+	if koth:
+		return "King of the Hill lobbies on your version. You can get in line\nany time there's room: if a set is on, you join when it ends."
 	return "Public lobbies of players on your version.\nPing shows once you're in a lobby."
 
 
@@ -39,7 +47,7 @@ func _refresh() -> void:
 	_loading = true
 	_error = ""
 	list.set_rows(build_rows())
-	if not Dolphin.query(Settings.list_lobbies_args(), _on_lobbies):
+	if not Dolphin.query(Settings.list_lobbies_args(koth), _on_lobbies):
 		_loading = false
 		_error = "Couldn't start Dolphin-Sparking"
 		list.set_rows(build_rows())
@@ -86,7 +94,17 @@ func build_rows() -> Array:
 		var right_game: bool = String(l.get("game_id", "")).begins_with(Settings.GAME["id"])
 		var full: bool = not l.get("joinable", true)
 		var state := ""
-		if l.get("in_game", false):
+		# King of the Hill: a set being played only means waiting for it to end.
+		var blocked_by_match: bool = l.get("in_game", false) and not koth
+		if koth:
+			var people := int(l.get("players", 0)) + int(l.get("spectators", 0))
+			if full:
+				state = tr("Full")
+			elif not right_game:
+				state = tr("Other game")
+			else:
+				state = (tr("Set on · %d/8 in line") if l.get("in_game", false) else tr("%d/8 in line")) % people
+		elif l.get("in_game", false):
 			state = tr("In match")
 		elif full:
 			state = tr("Full")
@@ -97,16 +115,16 @@ func build_rows() -> Array:
 			"value": "%s   ·   %s   ·   %s" % [Style.mode_name(l.get("mode", "any")),
 				l.get("region", "?"), state if state != "" else tr("%d/2 players") % int(l.get("players", 1))],
 			"icon": String(l.get("link", "")),
-			"disabled": full or not right_game or l.get("in_game", false),
+			"disabled": full or not right_game or blocked_by_match,
 			"desc": tr("Host: %s   Mode: %s   Region: %s\nConnection: %s   Players: %d   %s") % [l.get("host", "?"),
 				Style.mode_name(l.get("mode", "any")), l.get("region", "?"), Style.link_name(l.get("link", "")),
-				int(l.get("players", 1)), tr("Press %s to join.") % Pad.prompt("accept")["key"] if state == "" else state + "."]})
+				int(l.get("players", 1)), tr("Press %s to join.") % Pad.prompt("accept")["key"] if state == "" or (koth and not full and right_game) else state + "."]})
 		# Watching: up to 2 spectators, before the match starts (Dolphin can't let anyone in mid-match).
 		var watchers := int(l.get("spectators", 0))
-		var can_watch: bool = l.get("watchable", watchers < 2) and right_game and not l.get("in_game", false)
+		var can_watch: bool = l.get("watchable", watchers < 2) and right_game and not blocked_by_match
 		rows.append({"type": "action", "key": "watch:%d" % _lobbies.find(l),
 			"label": tr("   Watch %s") % String(l.get("host", "?")),
-			"value": tr("%d/2 watching") % watchers,
+			"value": "" if koth else tr("%d/2 watching") % watchers,
 			"disabled": not can_watch,
 			"desc": tr("Watch this lobby's matches without playing (2 spectators at most).\nSpectators never get a controller; they can chat and leave any time.")})
 	rows.append_array([
@@ -117,7 +135,8 @@ func build_rows() -> Array:
 		{"type": "text", "key": "watch_direct", "label": "Watch by code or IP", "value": "",
 			"placeholder": "room code or 1.2.3.4:2626",
 			"desc": "Watch a private lobby as a spectator: type its room code (or IP:port)."},
-		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the DRAGON NET menu."},
+		{"type": "action", "key": "back", "label": "Back",
+			"desc": "Back to the King of the Hill menu." if koth else "Back to the DRAGON NET menu."},
 	])
 	return rows
 
@@ -151,7 +170,8 @@ func _join(target: String, mode: String, watch := false) -> void:
 	if target == "":
 		return
 	var lobby: Control = load("res://scripts/screens/lobby.gd").new()
+	lobby.koth = koth
 	if watch:
-		app.push(lobby.setup("watch", Settings.watch_args(target), mode))
+		app.push(lobby.setup("watch", Settings.watch_args(target, koth), mode))
 	else:
-		app.push(lobby.setup("join", Settings.join_args(target), mode))
+		app.push(lobby.setup("join", Settings.join_args(target, koth), mode))

@@ -45,7 +45,7 @@ bool LobbyModesMatch(const std::string& wanted, const std::string& lobby)
 }
 
 std::string MakeLobbyName(const std::string& mode, const std::string& link,
-                          const std::string& host)
+                          const std::string& host, bool koth)
 {
   // '|' separates fields; keep it out of the host name.
   std::string clean = host;
@@ -54,7 +54,7 @@ std::string MakeLobbyName(const std::string& mode, const std::string& link,
     if (c == '|')
       c = '/';
   }
-  return fmt::format("{}|{}|{}|{}", TAG, mode, link, clean);
+  return fmt::format("{}|{}{}|{}|{}", TAG, koth ? "koth." : "", mode, link, clean);
 }
 
 std::optional<std::vector<LobbyInfo>> ListLobbies(std::string* error)
@@ -85,6 +85,11 @@ std::optional<std::vector<LobbyInfo>> ListLobbies(std::string* error)
     lobby.mode = s.name.substr(a + 1, b - a - 1);
     lobby.link = s.name.substr(b + 1, c - b - 1);
     lobby.host = s.name.substr(c + 1);
+    if (lobby.mode.starts_with("koth."))
+    {
+      lobby.format = "koth";
+      lobby.mode = lobby.mode.substr(5);
+    }
     if (!IsValidLobbyMode(lobby.mode) || lobby.mode == "training")  // solo, never listed
       continue;
     lobby.region = s.region;
@@ -111,10 +116,16 @@ std::string LobbyJson(const LobbyInfo& lobby)
       .Add("game_id", lobby.game_id)
       .Add("players", lobby.players)
       .Add("spectators", lobby.spectators)
+      .Add("format", lobby.format)
       .Add("in_game", lobby.in_game)
-      .Add("joinable", !lobby.in_game && lobby.players < 2)
-      // Dolphin can't let anyone in while a match runs, so watching starts in the lobby.
-      .Add("watchable", !lobby.in_game && lobby.spectators < 2)
+      // King of the Hill: anyone can get in line while there's room (joining during a set
+      // waits for it to end); classic: 2 players, and nobody gets in once a match runs.
+      .Add("joinable", lobby.format == "koth" ?
+                           lobby.players + lobby.spectators < KOTH_MAX_PEOPLE :
+                           !lobby.in_game && lobby.players < 2)
+      .Add("watchable", lobby.format == "koth" ?
+                            lobby.players + lobby.spectators < KOTH_MAX_PEOPLE :
+                            !lobby.in_game && lobby.spectators < 2)
       .Add("method", lobby.method)
       .Add("join", lobby.join)
       .Str();

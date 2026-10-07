@@ -95,6 +95,7 @@ def main():
     godot_user = user(os.path.join(data, "user"), 26300)
     joiner_user = user(os.path.join(work, "joiner"), 26301)
     piccolo_user = user(os.path.join(work, "piccolo"), 26310)
+    trunks_user = user(os.path.join(work, "trunks"), 26311)
 
     # The DOL's game ID, for its Gecko codes and texture pack.
     # It also captures the state Buffer Training boots ([Sparking.Modes] Training, below).
@@ -112,7 +113,7 @@ def main():
     probe.proc.wait(timeout=15)
     print("test game id:", game_id)
 
-    for u in (godot_user, joiner_user, piccolo_user):
+    for u in (godot_user, joiner_user, piccolo_user, trunks_user):
         os.makedirs(os.path.join(u, "GameSettings"), exist_ok=True)
         with open(os.path.join(u, "GameSettings", f"{game_id}.ini"), "w") as f:
             f.write("[Gecko]\n$Player 1 Splitscreen Remover\n04001000 00000001\n"
@@ -141,6 +142,13 @@ def main():
                                    "--link", "wired", *netplay_codes])
     piccolo.send("hello")
     piccolo.seen("public", lambda e: e.get("listed"))
+    # A public King of the Hill lobby (only the King of the Hill browser lists it).
+    trunks = Instance("trunks", [exe, *COMMON, "-u", trunks_user, "--netplay-host", dol,
+                                 "--netplay-direct", "--public", "--koth", "--mode", "single",
+                                 "--region", "EU", "--public-address", "127.0.0.1",
+                                 "--nickname", "Trunks", "--link", "wired", *netplay_codes])
+    trunks.send("hello")
+    trunks.seen("public", lambda e: e.get("listed"))
 
     # A stand-in for the Terminology Google Doc ("mobilebasic" HTML: one table per category,
     # rows of term | definition | GIF). Images only answer at the "=s650" URL, so the
@@ -275,7 +283,7 @@ def main():
         elif line.startswith("TOUR_RESULT"):
             result = line.split()[1]
     tour.wait(timeout=30)
-    for inst in (piccolo, joiner):
+    for inst in (piccolo, trunks, joiner):
         if inst and inst.proc.poll() is None:
             inst.send("quit")
             try:

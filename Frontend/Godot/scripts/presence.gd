@@ -17,12 +17,13 @@ extends Node
 
 const Style := preload("res://scripts/ui/style.gd")
 
-signal joined_from_discord(target: String)
+signal joined_from_discord(target: String, koth: bool)
 
 const CONFIG := "res://data/discord.json"
 const UPDATE_EVERY := 1.0
 const RETRY_EVERY := 15.0
 const JOIN_PREFIX := "spk1:"
+const KOTH_JOIN_PREFIX := "spk1k:"   # a King of the Hill lobby: joining waits out a running set
 
 var connected := false      # the Discord app accepted us
 var discord_user := ""      # "name" once connected
@@ -90,8 +91,10 @@ func _on_event(data: Dictionary) -> void:
 			connected = false
 		"join":
 			var secret := String(data.get("secret", ""))
-			if secret.begins_with(JOIN_PREFIX):
-				joined_from_discord.emit(secret.substr(JOIN_PREFIX.length()))
+			if secret.begins_with(KOTH_JOIN_PREFIX):
+				joined_from_discord.emit(secret.substr(KOTH_JOIN_PREFIX.length()), true)
+			elif secret.begins_with(JOIN_PREFIX):
+				joined_from_discord.emit(secret.substr(JOIN_PREFIX.length()), false)
 		"join_request":
 			# Only public lobbies offer "Ask to Join", so let them in.
 			Dolphin.helper_send(_helper, "respond %s yes" % String(data.get("user_id", "")))
@@ -140,6 +143,29 @@ func current() -> Dictionary:
 			p["details"] = tr("DRAGON NET: %s") % mode_name
 			p["state"] = tr("Practicing with pad buffer %d") % int(lobby._buffer) if int(lobby._buffer) > 0 \
 					else tr("Practicing")
+		elif bool(lobby.get("koth")) and not (lobby._koth as Dictionary).is_empty():
+			# King of the Hill: where you are in the line, the set score while it's on.
+			var k: Dictionary = lobby._koth
+			var line: Array = k.get("line", [])
+			var pos := int(k.get("local_pos", -1))
+			key = "koth_" + String(lobby._phase)
+			p["details"] = tr("King of the Hill: %s") % mode_name if lobby.mode != "any" else tr("King of the Hill")
+			if String(k.get("state", "")) in ["playing", "decided"] and line.size() >= 2:
+				var w: Array = k.get("wins", [0, 0])
+				p["state"] = tr("%s %d - %d %s") % [line[0].get("name", "?"), int(w[0]), int(w[1]), line[1].get("name", "?")]
+			elif pos == 0 and int(k.get("streak", 0)) > 0:
+				p["state"] = tr("Champion · %d in a row") % int(k.get("streak", 0))
+			elif pos >= 0:
+				p["state"] = tr("#%d in line") % (pos + 1)
+			else:
+				p["state"] = tr("Watching")
+			p["party_size"] = maxi(line.size(), 1)
+			p["party_max"] = 8
+			var ktarget := _join_target(lobby)
+			if ktarget != "":
+				p["party_id"] = "spk-" + ktarget.sha256_text().left(16)
+				if lobby._role == "host" and bool(lobby._public.get("listed", false)):
+					p["join_secret"] = KOTH_JOIN_PREFIX + ktarget
 		else:
 			match String(lobby._phase):
 				"playing":

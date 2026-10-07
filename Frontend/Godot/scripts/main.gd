@@ -367,6 +367,9 @@ func _netplay_menu() -> Control:
 		{"label": "Player Match", "glyph": "P", "color": "#f2b531",
 			"desc": "Host your own lobby, or find a match\nfor the mode you want to play.",
 			"action": func(): push(_player_match_menu())},
+		{"label": "King of the Hill", "glyph": "K", "color": "#e8663d",
+			"desc": "Winner stays on, loser goes to the back of the line.\nSingle Battle: first to 2 wins. Team Battle: 1 win.",
+			"action": func(): push(_koth_menu())},
 		{"label": "Buffer Training", "glyph": "T", "color": "#3fbf6b",
 			"desc": "Play in Training Mode, with the option to practice with pad buffering to emulate an online environment, so you can be prepared for anything! near or far!",
 			"action": open_buffer_training},
@@ -385,6 +388,28 @@ func open_buffer_training() -> void:
 		return
 	var lobby: Control = load(SCREENS % "lobby").new()
 	push(lobby.setup("training", Settings.training_args(), "training"))
+
+
+## King of the Hill: same Host / Find / browser as Player Match, but only KOTH lobbies.
+func _koth_menu() -> Control:
+	return _menu("King of the Hill", [
+		{"label": "Lobby Browser", "glyph": "L", "color": "#3fa9f5",
+			"desc": "King of the Hill lobbies only. Get in line in one with room:\nif a set is on, you join as soon as it ends.",
+			"action": func(): _open_koth("lobby_browser")},
+		{"label": "Host", "glyph": "H", "color": "#f2b531",
+			"desc": "Open a King of the Hill lobby: Single Battle (first to 2)\nor Team Battle (1 win). Up to 8 people in line.",
+			"action": func(): _open_koth("host_options")},
+		{"label": "Find", "glyph": "F", "color": "#e8663d",
+			"desc": "Get in line in the nearest King of the Hill lobby\n(or open one others can find).",
+			"action": func(): _open_koth("find_match")},
+		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
+			"desc": "Back to the DRAGON NET menu."},
+	], "netplay")
+
+
+func _open_koth(script_name: String) -> void:
+	if require_setup():
+		push(load(SCREENS % script_name).new().with_koth(true))
 
 
 func _player_match_menu() -> Control:
@@ -504,13 +529,14 @@ func _on_dolphin_event(name: String, data: Dictionary) -> void:
 
 
 ## "Ask to Join" accepted in Discord: open that lobby (unless something is already running).
-func _on_discord_join(target: String) -> void:
+func _on_discord_join(target: String, koth := false) -> void:
 	show_window()
 	if Dolphin.is_running():
 		toast("Leave the current lobby or game first, then join from Discord again.", 4.0)
 		return
 	var lobby: Control = load(SCREENS % "lobby").new()
-	push(lobby.setup("join", Settings.join_args(target), "any"))
+	lobby.koth = koth
+	push(lobby.setup("join", Settings.join_args(target, koth), "any"))
 
 
 ## Brings the menus back (after a game): in the player's chosen display mode.

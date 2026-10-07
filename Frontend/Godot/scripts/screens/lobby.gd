@@ -3,6 +3,9 @@ extends "res://scripts/screens/screen.gd"
 ## (slot, ping ± jitter, wired/Wi-Fi, quality), messages, pad buffer, Start (host), Leave.
 ## While the match runs, a held Select opens the small in-game version: messages, buffer and
 ## "Stop Match" (ends the match for everyone, back to this lobby).
+## King of the Hill (koth, or once Dolphin sends a "koth" event): the Players panel becomes the
+## line (P1 = champion, P2 = challenger, then everyone waiting), sets start on their own after a
+## short break, and joining during a set waits for it to end.
 ## kind "training" is Buffer Training: a solo, unlisted lobby that boots straight into the training
 ## state, so the player can feel a pad buffer of their choice (set live, also from the menu).
 
@@ -27,6 +30,7 @@ const ERRORS := {
 	"lobby_full": "That lobby already has 2 players. You can watch it instead.",
 	"spectators_full": "That lobby already has 2 spectators.",
 	"training_solo": "That's a Buffer Training session: it's solo.",
+	"koth_need_two": "King of the Hill needs 2 people in line to start.",
 }
 
 var kind := "host"            # host, join, find, watch (spectator: never plays), training (solo)
@@ -45,11 +49,15 @@ var _chat: PackedStringArray = []
 var _battle := {}
 var _logged_buffer := -1
 var _auto_started := false    # Buffer Training starts itself once the state is ready
+var koth := false             # King of the Hill lobby (set by the menus, or by a "koth" event)
+var _koth := {}               # last "koth" event: state, line, wins, streak, ...
+var _koth_waiting := false    # joiner: a set is on, Dolphin retries until it ends
 
 var _info: Label
 var _info_right: Label
 var _players_box: VBoxContainer
 var _players_status: Label
+var _players_head: Label
 var _actions: Control
 var _chat_log: RichTextLabel
 var _panel: Control           # in-game menu, while open
@@ -71,6 +79,8 @@ func screen_music() -> String:
 
 
 func screen_title() -> String:
+	if koth:
+		return tr("King of the Hill: %s") % (tr("Any Mode") if mode == "any" else Style.mode_name(mode))
 	if is_spectating():
 		return tr("Watching: %s") % (tr("Lobby") if mode == "any" else Style.mode_name(mode))
 	return "Lobby" if mode == "any" else Style.mode_name(mode)
@@ -82,6 +92,8 @@ func on_enter() -> void:
 	Dolphin.event.connect(_on_event)
 	_phase = "searching" if kind == "find" else "connecting"
 	_status = tr("Looking for a %s lobby...") % Style.mode_name(mode) if kind == "find" else "Connecting..."
+	if koth and kind == "find":
+		_status = tr("Looking for a King of the Hill lobby...")
 	if not Dolphin.launch(_args):
 		app.toast("Couldn't start Dolphin-Sparking (is the Dolphin folder next to the launcher?).")
 		app.pop.call_deferred()
@@ -116,6 +128,7 @@ func _build() -> void:
 	var ph := Style.label("Players", 24, Style.GOLD, 3, Style.DARK, true)
 	Style.place(ph, 18, 8, 200, 34)
 	pp.add_child(ph)
+	_players_head = ph
 	_players_status = Style.label("", 18, Style.INK_LINE, 0, Color.BLACK, true)
 	_players_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_players_status.clip_text = true
@@ -210,6 +223,14 @@ func _refresh_players() -> void:
 		_players_box.add_child(l)
 		_players_status.text = ""
 		return
+	if koth and not _koth.is_empty():
+		_refresh_line()
+		return
+	_players_head.text = tr("Players")
+	_players_head.size.x = 200
+	_players_status.position.x = 200
+	_players_status.size.x = 424
+	_players_box.add_theme_constant_override("separation", 6)
 	var sorted := _playing()
 	sorted.sort_custom(func(a, b):
 		var sa: int = a.get("gc_slot", -1)
@@ -224,6 +245,98 @@ func _refresh_players() -> void:
 		_players_box.add_child(head)
 		for p in watching:
 			_players_box.add_child(_player_row(p, true))
+
+
+## King of the Hill: the line in order (P1 champion, P2 challenger, #3... waiting), compact rows
+## so all 8 fit; watchers are counted in the corner.
+func _refresh_line() -> void:
+	var by_pid := {}
+	for p in _players:
+		by_pid[int(p.get("pid", 0))] = p
+	var line: Array = _koth.get("line", [])
+	var watching := _watching().size()
+	var head := tr("Line %d/8") % (line.size() + watching)
+	if watching > 0:
+		head += "  ·  " + tr("%d watching") % watching
+	_players_head.text = head
+	_players_head.size.x = 300
+	_players_status.position.x = 320
+	_players_status.size.x = 304
+	_players_box.add_theme_constant_override("separation", 1)
+	for e in line:
+		var pos := int(e.get("pos", 0))
+		var p: Dictionary = by_pid.get(int(e.get("pid", 0)), {"name": e.get("name", "?")})
+		_players_box.add_child(_line_row(pos, p, String(e.get("name", "?"))))
+
+
+func _line_row(pos: int, p: Dictionary, name: String) -> Control:
+	var row := Panel.new()
+	var mine := pos == int(_koth.get("local_pos", -1))
+	row.add_theme_stylebox_override("panel", Style.box(Color(0.25, 0.2, 0.05, 0.45) if mine else Color(0, 0, 0, 0.25 if pos < 2 else 0.15), 6))
+	row.custom_minimum_size = Vector2(612, 24)
+	var badge := Style.panel(Style.GOLD if pos == 0 else (Color("#3fa9f5") if pos == 1 else Style.MUTED), 6)
+	Style.place(badge, 4, 2, 44, 20)
+	row.add_child(badge)
+	var bl := Style.label("P%d" % (pos + 1) if pos < 2 else "#%d" % (pos + 1), 14, Style.DARK, 0, Color.BLACK, true)
+	bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	bl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	Style.place(bl, 0, 0, 44, 20)
+	badge.add_child(bl)
+	var text := ("★ " if p.get("is_host", false) else "") + name
+	if pos == 0 and int(_koth.get("streak", 0)) > 0 and String(_koth.get("champion", "")) == name:
+		text += "   " + tr("Champion · %d in a row") % int(_koth.get("streak", 0))
+	var nl := Style.label(text, 17, Style.GOLD if pos == 0 else Color.WHITE, 2, Style.DARK, true)
+	nl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	nl.clip_text = true
+	nl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	Style.place(nl, 58, 0, 330, 24)
+	row.add_child(nl)
+	var link: Control = LinkIcon.new()
+	link.link = String(p.get("link", ""))
+	Style.place(link, 400, 3, 18, 18)
+	row.add_child(link)
+	var ping_text := "%d ms" % int(p.get("ping", 0))
+	if int(p.get("jitter", -1)) >= 0:
+		ping_text += " ±%d" % int(p.get("jitter", -1))
+	if p.get("is_host", false) and _role == "host":
+		ping_text = "host"
+	var q := String(p.get("quality", "measuring"))
+	var pl := Style.label(ping_text, 16, Style.quality_color(q), 2, Style.DARK, true)
+	pl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	pl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	Style.place(pl, 430, 0, 150, 24)
+	row.add_child(pl)
+	var dot := Style.panel(Style.quality_color(q), 6)
+	Style.place(dot, 590, 7, 10, 10)
+	row.add_child(dot)
+	return row
+
+
+## What the King of the Hill is doing right now, for the status corner and the menus.
+func koth_status() -> String:
+	if _koth.is_empty():
+		return ""
+	var line: Array = _koth.get("line", [])
+	var cap := int(_koth.get("cap", 2))
+	var w: Array = _koth.get("wins", [0, 0])
+	var p1 := String(line[0].get("name", "?")) if line.size() > 0 else "?"
+	var p2 := String(line[1].get("name", "?")) if line.size() > 1 else "?"
+	match String(_koth.get("state", "")):
+		"waiting":
+			return tr("Waiting for a challenger (2 needed)")
+		"ready":
+			return tr("Ready: press Start Match") if _role == "host" else tr("Waiting for the host to start")
+		"next":
+			return tr("Next set: %s vs %s in %d") % [p1, p2, int(_koth.get("next_in", 0))]
+		"playing":
+			return tr("%s %d - %d %s  (first to %d)") % [p1, int(w[0]), int(w[1]), p2, cap]
+		"decided":
+			return tr("Set over: %s %d - %d %s") % [p1, int(w[0]), int(w[1]), p2]
+	return ""
+
+
+func _koth_line_size() -> int:
+	return (_koth.get("line", []) as Array).size()
 
 
 ## Players (they hold a controller port) and spectators (they only watch).
@@ -298,8 +411,10 @@ func _action_rows(in_game_menu: bool) -> Array:
 	if in_game_menu:
 		rows.append({"type": "action", "key": "resume", "label": "Back to the game"})
 	elif host:
+		var can_start: bool = _koth_line_size() >= 2 and String(_koth.get("state", "")) in ["ready", "next"] if koth \
+				else _playing().size() >= (1 if is_training() else 2)
 		rows.append({"type": "action", "key": "start", "label": "Start Training" if is_training() else "Start Match",
-			"color": "#3fbf6b", "disabled": _phase == "playing" or _playing().size() < (1 if is_training() else 2)})
+			"color": "#3fbf6b", "disabled": _phase == "playing" or not can_start})
 	if not is_training():   # nobody to talk to in a solo session
 		rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": tr("Press %s to type") % Pad.prompt("accept")["key"],
 			"max_length": 200})
@@ -318,6 +433,10 @@ func _action_rows(in_game_menu: bool) -> Array:
 			"value": str(_buffer) if _buffer > 0 else "?"})
 	# A spectator's Stop only ends their own view; the match goes on for the players.
 	var stop_label := "Stop Watching" if is_spectating() else ("Stop Training" if is_training() else "Stop Match")
+	if koth and _role != "host" and int(_koth.get("local_pos", -1)) >= 2:
+		stop_label = "Stop Watching"   # waiting in line: only this view stops, the set goes on
+	elif koth and _role == "host":
+		stop_label = "Stop Set"        # the host referees: pauses the ladder until Start
 	if in_game_menu:
 		rows.append({"type": "action", "key": "stop", "label": stop_label, "color": "#e8663d"})
 	else:
@@ -346,6 +465,10 @@ func _refresh_panel() -> void:
 
 
 func _players_line() -> String:
+	if koth and not _koth.is_empty():
+		var pos := int(_koth.get("local_pos", -1))
+		var where := tr("You're on pad %d") % (pos + 1) if pos in [0, 1] else (tr("You're #%d in line") % (pos + 1) if pos >= 2 else "")
+		return "[b]%s[/b]    %s" % [_esc(koth_status()), _esc(where)]
 	var parts: Array = []
 	for p in _players:
 		var slot: int = p.get("gc_slot", -1)
@@ -468,7 +591,26 @@ func _on_event(name: String, data: Dictionary) -> void:
 				_status = "Connecting..."
 		"matchmaking":
 			_on_matchmaking(data)
+		"koth":
+			_koth = data
+			if not koth:
+				koth = true
+				app.set_title(screen_title())
+			if _phase in ["lobby", "playing"]:
+				var st := koth_status()
+				if st != "":
+					_status = st
+		"koth_set":
+			var kw: Array = data.get("wins", [0, 0])
+			_system(tr("%s wins the set %d-%d! %s goes to the back of the line.") % [data.get("winner", "?"),
+					int(kw[0]), int(kw[1]), data.get("loser", "?")], "#f2b531")
+			if int(data.get("streak", 0)) >= 2:
+				_system(tr("%s: %d sets in a row.") % [data.get("winner", "?"), int(data.get("streak", 0))], "#f2b531")
+		"koth_waiting":
+			_koth_waiting = true
+			_status = "A set is being played: you'll get in line as soon as it ends..."
 		"lobby_ready":
+			_koth_waiting = false
 			_role = String(data.get("role", "client"))
 			_phase = "lobby"
 			_players = []
@@ -498,6 +640,8 @@ func _on_event(name: String, data: Dictionary) -> void:
 			if _phase == "lobby":
 				if is_training():
 					_status = "Ready" if _auto_started else "Loading Training Mode..."
+				elif koth and not _koth.is_empty():
+					_status = koth_status()
 				elif _role == "host":
 					_status = "Ready to start" if _playing().size() >= 2 else "Waiting for players..."
 		"player_joined":
@@ -573,6 +717,9 @@ func _on_event(name: String, data: Dictionary) -> void:
 			app.toast("Connection lost")
 		"error":
 			var code := String(data.get("code", "error"))
+			# King of the Hill: refused because a set is on. Dolphin retries; nothing to report.
+			if code == "game_running" or (_koth_waiting and code == "connect_failed"):
+				return
 			var msg: String = ERRORS.get(code, code.replace("_", " "))
 			if data.has("reason"):
 				msg += " (%s)" % data["reason"]

@@ -6,11 +6,21 @@ func screen_music() -> String:
 	return "netplay"
 
 
+var koth := false   # King of the Hill lobby
+
+
+func with_koth(value: bool) -> Node:
+	koth = value
+	return self
+
+
 func screen_title() -> String:
-	return "Host a Lobby"
+	return "Host King of the Hill" if koth else "Host a Lobby"
 
 
 func screen_desc() -> String:
+	if koth:
+		return "Set up your King of the Hill lobby, then Start.\nSingle Battle: first to 2 wins. Team Battle: 1 win."
 	return "Set up your lobby, then Start."
 
 
@@ -43,7 +53,8 @@ func build_rows() -> Array:
 			"desc": "Input delay in frames. Higher hides more lag but feels slower.\nRule of thumb: ping / 12 (can be changed in the lobby)."},
 		{"type": "action", "key": "start", "label": "Start Lobby", "color": "#3fbf6b",
 			"desc": "Open the lobby and wait for players."},
-		{"type": "action", "key": "back", "label": "Back", "desc": "Back to Player Match."},
+		{"type": "action", "key": "back", "label": "Back",
+			"desc": "Back to King of the Hill." if koth else "Back to Player Match."},
 	]
 
 
@@ -70,8 +81,9 @@ func on_press(key: String) -> void:
 			list.focus_key("public_address")
 			return
 		var args := Settings.host_args(Settings.get_value("netplay", "mode"),
-				Settings.get_value("netplay", "public"), Settings.get_value("netplay", "traversal"))
+				Settings.get_value("netplay", "public"), Settings.get_value("netplay", "traversal"), koth)
 		var lobby: Control = load("res://scripts/screens/lobby.gd").new()
+		lobby.koth = koth
 		app.push(lobby.setup("host", args, Settings.get_value("netplay", "mode")))
 	else:
 		super(key)
