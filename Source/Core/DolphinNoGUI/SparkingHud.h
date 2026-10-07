@@ -40,6 +40,11 @@ void SetHudLinkQuality(int jitter_ms, const std::string& rating);
 // Wired/Wi-Fi status of the players on ports 1 and 2 ("wired", "wireless", "virtual",
 // "unknown"): an icon next to each name. Any thread.
 void SetHudLinks(const std::array<std::string, 2>& links);
+// KOs counted since this process started (never reset) and whether a round is being fought
+// right now (both sides were back at 100%, nobody KO'd yet). Any thread. Used by the netplay
+// host's automatic pad buffer, which only changes between rounds.
+int HudResultCount();
+bool HudRoundLive();
 // When a game starts/ends: forget health values and scores.
 void ResetHud();
 // Scores back to 0-0.

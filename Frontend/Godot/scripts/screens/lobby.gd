@@ -261,8 +261,11 @@ func _action_rows(in_game_menu: bool) -> Array:
 	rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": tr("Press %s to type") % Pad.prompt("accept")["key"],
 		"max_length": 200})
 	if host:
+		var auto: bool = Settings.get_value("netplay", "buffer_auto")
+		rows.append({"type": "choice", "key": "buffer_mode", "label": "Pad buffer mode", "values": [false, true],
+			"names": ["Manual", "Automatic"], "value": auto})
 		rows.append({"type": "number", "key": "buffer", "label": "Pad buffer", "min": 1, "max": 20, "step": 1,
-			"value": _buffer if _buffer > 0 else int(Settings.get_value("netplay", "buffer"))})
+			"value": _buffer if _buffer > 0 else int(Settings.get_value("netplay", "buffer")), "disabled": auto})
 	else:
 		rows.append({"type": "info", "key": "buffer", "label": "Pad buffer",
 			"value": str(_buffer) if _buffer > 0 else "?"})
@@ -369,6 +372,19 @@ func _on_value(key: String, value: Variant) -> void:
 		"buffer":
 			Settings.set_value("netplay", "buffer", int(value))
 			Dolphin.send("buffer %d" % int(value))
+		"buffer_mode":
+			Settings.set_value("netplay", "buffer_auto", bool(value))
+			_send_buffer_mode()
+			_actions.update_row("buffer", {"disabled": bool(value)})
+			_refresh_panel()
+
+
+## Host: automatic ("buffer auto": Dolphin picks it at the start and after each KO) or the number.
+func _send_buffer_mode() -> void:
+	if Settings.get_value("netplay", "buffer_auto"):
+		Dolphin.send("buffer auto")
+	else:
+		Dolphin.send("buffer %d" % int(Settings.get_value("netplay", "buffer")))
 
 
 func _clear_chat_fields() -> void:
@@ -409,7 +425,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_status = "Waiting for players..." if _role == "host" else "Waiting for the host to start"
 			if _role == "host":
 				_buffer = int(Settings.get_value("netplay", "buffer"))
-				Dolphin.send("buffer %d" % _buffer)
+				_send_buffer_mode()
 			_system("Lobby open." if _role == "host" else "Joined the lobby.")
 		"room":
 			_room = data
@@ -443,6 +459,20 @@ func _on_event(name: String, data: Dictionary) -> void:
 					_add_chat("[color=#7fd0ff][b]%s:[/b][/color] %s" % [_esc(m.get_string(1)), _esc(m.get_string(2))])
 				else:
 					_system(text)
+		"buffer_mode":
+			_system(tr("Pad buffer: automatic (set at the start and after each KO).") if data.get("auto", false)
+					else tr("Pad buffer: manual."))
+		"buffer_auto":
+			if data.has("skipped"):
+				_system(tr("Automatic pad buffer: still measuring the ping, kept %d.") % _buffer)
+			else:
+				var to := int(data.get("to", _buffer))
+				var why: String = tr("ping %d ms ± %d") % [int(data.get("ping", 0)), int(data.get("jitter", 0))]
+				if data.get("reason", "") == "match_start":
+					_system(tr("Automatic pad buffer: %d (%s).") % [to, why])
+				else:
+					_system(tr("Pad buffer %d → %d after the KO (%s).") % [int(data.get("from", _buffer)), to, why])
+				_logged_buffer = to   # the buffer_changed that follows isn't news
 		"buffer_changed":
 			var b := int(data.get("buffer", _buffer))
 			if b != _logged_buffer:

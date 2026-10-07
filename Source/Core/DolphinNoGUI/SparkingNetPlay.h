@@ -16,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <thread>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -242,6 +243,30 @@ private:
   std::map<NetPlay::PlayerId, std::vector<u32>> m_ping_samples;
   std::chrono::steady_clock::time_point m_last_ping_sample{};
   LinkQuality QualityOf(NetPlay::PlayerId pid, u32 current_ping);
+
+  // Automatic pad buffer (host, "buffer auto"): chosen from the ping history when the match
+  // starts, and re-chosen once right after each KO (any number of steps), within 20 s and only
+  // while no round is being fought. Never during a fight.
+  struct AutoBufferChoice
+  {
+    int buffer;
+    u32 ping;     // worst player's high ping (90th percentile of the last ~10 s)
+    int jitter;
+  };
+  std::optional<AutoBufferChoice> AutoBufferTarget();
+  void ApplyAutoBuffer(std::string_view reason);  // host thread
+  void PumpAutoBuffer();                          // host thread
+  std::atomic<bool> m_auto_buffer{false};
+  std::atomic<int> m_buffer{-1};  // last pad buffer Dolphin reported
+  int m_seen_results = 0;
+  std::optional<std::chrono::steady_clock::time_point> m_auto_due, m_auto_deadline;
+  // While a match runs the lobby loop is parked: a ticker hands PumpAutoBuffer to the host
+  // thread (Core host jobs). `m_alive` keeps queued jobs from touching a destroyed session.
+  void StartAutoTicker();
+  void StopAutoTicker();
+  std::thread m_auto_ticker;
+  std::atomic<bool> m_ticking{false};
+  std::shared_ptr<std::atomic<bool>> m_alive = std::make_shared<std::atomic<bool>>(true);
 
   // Public lobby (Dolphin lobby server).
   void UpdatePublicListing();  // host thread

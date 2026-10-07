@@ -308,6 +308,9 @@ void StartSparkingHotkeys()
 }
 
 // In-game commands shared by solo and netplay mode. Host thread.
+// --test-hooks: automated tests may use debug commands (poke) during netplay.
+static bool s_test_hooks = false;
+
 void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
 {
   auto& system = Core::System::GetInstance();
@@ -425,8 +428,8 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     return;
   }
 
-  // Everything below would desync a netplay session.
-  if (NetPlay::IsNetPlayRunning())
+  // Everything below would desync a netplay session (tests may still poke: --test-hooks).
+  if (NetPlay::IsNetPlayRunning() && !(cmd.name == "poke" && s_test_hooks))
   {
     Emit("error", Json().Add("code", "not_allowed_in_netplay").Add("command", cmd.name));
     return;
@@ -768,6 +771,10 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .metavar("APP_ID")
       .help("Discord Rich Presence helper for the frontend: shows what it sends (\"presence "
             "{json}\") under this Discord application, until \"quit\"");
+  parser.add_option("--test-hooks")
+      .dest("test_hooks")
+      .action("store_true")
+      .help(optparse::SUPPRESS_HELP);
   parser.add_option("--input-test")
       .dest("input_test")
       .action("store_true")
@@ -1006,6 +1013,7 @@ void InitFromOptions(const optparse::Values& options)
   SetEnabled(netplay || options.is_set_by_user("sparking") || listing);
   if (options.is_set("state_dir"))
     s_state_dir = static_cast<const char*>(options.get("state_dir"));
+  s_test_hooks = options.is_set_by_user("test_hooks");
   if (IsEnabled())
   {
     ApplySessionOverrides(options, netplay);

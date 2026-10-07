@@ -183,6 +183,8 @@ NetPlaySession::NetPlaySession() = default;
 
 NetPlaySession::~NetPlaySession()
 {
+  StopAutoTicker();
+  *m_alive = false;
   Shutdown();
 }
 
@@ -328,6 +330,8 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
 
 void NetPlaySession::Shutdown()
 {
+  StopAutoTicker();
+  *m_alive = false;
   if (m_index)
   {
     m_index->Remove();  // take the lobby off the public list first
@@ -352,6 +356,7 @@ void NetPlaySession::Pump()
     BroadcastSaveCheck();
   if (m_server)
   {
+    PumpAutoBuffer();
     ApplyModeBattleState();
     UpdatePublicListing();
   }
@@ -554,8 +559,23 @@ bool NetPlaySession::HandleCommand(const Command& cmd)
   }
   else if (cmd.name == "buffer")
   {
+    // "buffer <n>": manual (turns automatic off). "buffer auto": chosen from the pings at the
+    // start of the match and again right after each KO.
     if (host_only())
-      m_server->AdjustPadBufferSize(static_cast<unsigned>(std::max(0, std::atoi(cmd.arg.c_str()))));
+    {
+      if (cmd.arg == "auto")
+      {
+        m_auto_buffer = true;
+        Emit("buffer_mode", Json().Add("auto", true));
+      }
+      else
+      {
+        const bool was_auto = m_auto_buffer.exchange(false);
+        if (was_auto)
+          Emit("buffer_mode", Json().Add("auto", false));
+        m_server->AdjustPadBufferSize(static_cast<unsigned>(std::max(0, std::atoi(cmd.arg.c_str()))));
+      }
+    }
   }
   else if (cmd.name == "kick")
   {
@@ -641,8 +661,111 @@ void NetPlaySession::CmdStart(bool force)
     return;
   }
 
+  if (m_auto_buffer)
+    ApplyAutoBuffer("match_start");
+  m_seen_results = HudResultCount();
+  m_auto_due.reset();
   if (!m_server->RequestStartGame())
     Emit("error", Json().Add("code", "start_rejected"));
+}
+
+std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget()
+{
+  // Worst player: the 90th percentile of its last ~10 pings (so short spikes are covered
+  // without chasing them) plus its jitter, then the usual rule of thumb: ping / 8.
+  std::map<NetPlay::PlayerId, std::vector<u32>> all;
+  {
+    std::lock_guard lk(m_quality_mutex);
+    all = m_ping_samples;
+  }
+  std::optional<AutoBufferChoice> worst;
+  for (auto& [pid, samples] : all)
+  {
+    if (samples.size() < 3)
+      continue;
+    const int jitter = QualityOf(pid, samples.back()).jitter_ms;
+    std::ranges::sort(samples);
+    const size_t at = std::min(samples.size() - 1, (samples.size() * 9 + 9) / 10 - 1);
+    const u32 high = samples[at];
+    const int buffer = std::clamp(static_cast<int>((high + std::max(jitter, 0) + 7) / 8), 2, 20);
+    if (!worst || buffer > worst->buffer)
+      worst = AutoBufferChoice{buffer, high, std::max(jitter, 0)};
+  }
+  return worst;
+}
+
+void NetPlaySession::ApplyAutoBuffer(std::string_view reason)
+{
+  if (!m_server)
+    return;
+  const auto choice = AutoBufferTarget();
+  if (!choice)
+  {
+    Emit("buffer_auto", Json().Add("reason", reason).Add("skipped", "measuring"));
+    return;
+  }
+  const int from = m_buffer;
+  if (choice->buffer == from && reason != "match_start")
+    return;
+  Emit("buffer_auto", Json()
+                          .Add("reason", reason)
+                          .Add("from", from)
+                          .Add("to", choice->buffer)
+                          .Add("ping", static_cast<int>(choice->ping))
+                          .Add("jitter", choice->jitter));
+  if (choice->buffer != from)
+    m_server->AdjustPadBufferSize(static_cast<unsigned>(choice->buffer));
+}
+
+void NetPlaySession::StartAutoTicker()
+{
+  StopAutoTicker();
+  m_ticking = true;
+  m_auto_ticker = std::thread([this, alive = m_alive] {
+    while (m_ticking)
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(250));
+      if (m_ticking && m_auto_buffer)
+      {
+        Core::QueueHostJob([this, alive](Core::System&) {
+          if (*alive)
+            PumpAutoBuffer();
+        });
+      }
+    }
+  });
+}
+
+void NetPlaySession::StopAutoTicker()
+{
+  m_ticking = false;
+  if (m_auto_ticker.joinable())
+    m_auto_ticker.join();
+}
+
+void NetPlaySession::PumpAutoBuffer()
+{
+  if (!m_server || !m_auto_buffer || !m_game_running)
+    return;
+  const auto now = std::chrono::steady_clock::now();
+  const int results = HudResultCount();
+  if (results != m_seen_results)
+  {
+    // A KO was just counted: decide a moment later (the KO animation is playing), and only
+    // within the next 20 s, before the next round starts.
+    m_seen_results = results;
+    m_auto_due = now + std::chrono::seconds(1);
+    m_auto_deadline = now + std::chrono::seconds(20);
+  }
+  if (!m_auto_due || now < *m_auto_due)
+    return;
+  if (HudRoundLive() || now > *m_auto_deadline)
+  {
+    m_auto_due.reset();   // the next fight already started: leave it alone
+    return;
+  }
+  m_auto_due.reset();
+  ApplyAutoBuffer("between_rounds");
 }
 
 std::unique_ptr<BootParameters> NetPlaySession::TakePendingBoot()
@@ -658,6 +781,7 @@ void NetPlaySession::OnGameEnded()
     m_client->RequestStopGame();
 
   m_game_running = false;
+  StopAutoTicker();
   m_got_stop_request = false;
   if (m_index && m_index_added)
     m_index->SetInGame(false);
@@ -676,6 +800,8 @@ void NetPlaySession::BootGame(const std::string& filename,
     m_index->SetInGame(true);
   m_got_stop_request = false;
   m_game_running = true;
+  if (m_server)
+    StartAutoTicker();
   m_pending_boot = BootParameters::GenerateFromFile(
       filename, boot_session_data ? std::move(*boot_session_data) : BootSessionData());
 
@@ -894,6 +1020,7 @@ void NetPlaySession::OnPlayerDisconnect(const std::string& player)
 
 void NetPlaySession::OnPadBufferChanged(u32 buffer)
 {
+  m_buffer = static_cast<int>(buffer);
   SetHudNetplayStats(-2, static_cast<int>(buffer));
   Emit("buffer_changed", Json().Add("buffer", buffer));
 }
@@ -931,6 +1058,7 @@ void NetPlaySession::OnTraversalStateChanged(Common::TraversalClient::State)
 void NetPlaySession::OnGameStartAborted()
 {
   m_game_running = false;
+  StopAutoTicker();
   Emit("game_start_aborted");
 }
 

@@ -302,6 +302,12 @@ func _tour() -> void:
 	await pick("buffer", lobby._actions)
 	await press("ui_right")
 	await wait_for("buffer change confirmed", func(): return lobby._buffer == 5)
+	# Automatic pad buffer: the host switches it on; the number row is then Dolphin's.
+	await pick("buffer_mode", lobby._actions)   # Accept on a choice row steps it: Manual -> Automatic
+	await wait_for("automatic pad buffer on", func():
+		return "\n".join(Dolphin.log_lines).contains('"event":"buffer_mode","auto":true'), 10)
+	check("buffer number locked while automatic", lobby._actions.row("buffer").get("disabled", false))
+	await shot("lobby_buffer_auto")
 	await wait_for("pings measured", func():
 		for p in lobby._players:
 			if not p.get("is_host", false) and String(p.get("quality", "measuring")) == "measuring":
@@ -326,6 +332,8 @@ func _tour() -> void:
 	check("in-game menu closed", not app.is_ingame_menu_open() and not Pad.menu_open)
 	check("music back after the match", not Music.is_muted_for_game() and Music.is_audible())
 	check("window restored", get_window().content_scale_size == Vector2i(1280, 720))
+	check("match started with the automatic pad buffer",
+			"\n".join(lobby._chat).contains(tr("Automatic pad buffer: %d (%s).").split(":")[0]))
 	await shot("lobby_after_match")
 	print("TOUR_EVENT joiner_leave")   # Vegeta leaves: the player_leave sound
 	await wait_for("player_leave sound when Vegeta leaves", func(): return Sfx.played.has("player_leave"), 20)

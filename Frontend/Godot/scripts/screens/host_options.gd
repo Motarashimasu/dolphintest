@@ -35,8 +35,11 @@ func build_rows() -> Array:
 		{"type": "choice", "key": "region", "label": "Region", "values": Settings.REGIONS,
 			"names": Settings.REGION_NAMES, "value": Settings.get_value("player", "region"),
 			"desc": "Shown with public lobbies; matchmaking prefers the same region."},
+		{"type": "choice", "key": "buffer_auto", "label": "Pad buffer mode", "values": [false, true],
+			"names": ["Manual", "Automatic"], "value": Settings.get_value("netplay", "buffer_auto"),
+			"desc": "Automatic: picked from the ping when the match starts, and again right\nafter each KO (never during a fight). Manual: the number below."},
 		{"type": "number", "key": "buffer", "label": "Pad buffer", "min": 1, "max": 20, "step": 1,
-			"value": Settings.get_value("netplay", "buffer"),
+			"value": Settings.get_value("netplay", "buffer"), "disabled": Settings.get_value("netplay", "buffer_auto"),
 			"desc": "Input delay in frames. Higher hides more lag but feels slower.\nRule of thumb: ping / 8 (can be changed in the lobby)."},
 		{"type": "action", "key": "start", "label": "Start Lobby", "color": "#3fbf6b",
 			"desc": "Open the lobby and wait for players."},
@@ -52,6 +55,8 @@ func on_value(key: String, value: Variant) -> void:
 			Settings.set_value("player", "region", value)
 		_:
 			Settings.set_value("netplay", key, value)
+			if key == "buffer_auto":
+				list.update_row("buffer", {"disabled": value})
 			if key == "traversal" or key == "public":
 				list.update_row("public_address", {"disabled": Settings.get_value("netplay", "traversal")
 						or not Settings.get_value("netplay", "public")})

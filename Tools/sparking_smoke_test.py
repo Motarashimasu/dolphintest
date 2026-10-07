@@ -133,7 +133,9 @@ def main():
                     "$Splitscreen Remover P2 [Sparking]\n04001004 00000002\n"
                     "$Infinite Health [Sparking]\n04001008 00000003\n"
                     "[Gecko_Enabled]\n$Infinite Health\n"
-                    "[Sparking.Watch]\np1_marker = u32 0x8000310C\np2_marker = u32 0x8000310C\n")
+                    "[Sparking.Watch]\np1_marker = u32 0x8000310C\np2_marker = u32 0x8000310C\n"
+                    # health, for round counting in netplay (automatic pad buffer test)
+                    "p1_health_pct = f32 0x80001100\np2_health_pct = f32 0x80001104\n")
 
     common = ["-p", "headless", "-v", "Null"]
     nands = {n: os.path.join(work, f"nand-{n}") for n in ("solo", "host", "joiner")}
@@ -498,7 +500,7 @@ def main():
 
         host = Instance("host", [exe, *common, "-u", user_dir("host"), "--netplay-host", dol,
                                  "--state-dir", states["host"], "--nand", nands["host"],
-                                 "--nickname", "Goku", "--automap", "gc", "--netplay-direct",
+                                 "--nickname", "Goku", "--automap", "gc", "--netplay-direct", "--test-hooks",
                                  "--link", "wired",
                                  "--netplay-gecko", "1=Splitscreen Remover P1",
                                  "--netplay-gecko", "2=Splitscreen Remover P2"])
@@ -641,7 +643,43 @@ def main():
             n = inst.seen("game_info")["session"]["gecko_active_count"]
             check(f"{inst.name}: exactly 2 codes live (default + own port), other port's off", n == 2)
 
-        time.sleep(3)
+        print("netplay: automatic pad buffer (host, between rounds only)")
+        FULL, ZERO = "42C80000", "00000000"   # 100.0, 0.0
+        HP1, HP2 = "80001100", "80001104"
+
+        def hpoke(addr, val):  # changes only the host's memory: enough for its round counter
+            host.send(f"poke {addr} {val}")
+            host.wait_for("poked", lambda e: e["address"] == addr and e["value"] == val)
+            time.sleep(0.15)
+
+        def auto_events(reason):
+            return [e for e in host.history if e["event"] == "buffer_auto" and e.get("reason") == reason]
+
+        host.send("buffer 9")
+        host.wait_for("buffer_changed", lambda e: e["buffer"] == 9)
+        host.send("buffer auto")
+        check("host turns the automatic buffer on", host.wait_for("buffer_mode")["auto"] is True)
+        hpoke(HP1, FULL); hpoke(HP2, FULL)
+        host.seen("round_started", lambda e: e["round"] == 1)
+        # KO, but the next round starts right away: no change in the middle of a fight.
+        hpoke(HP2, ZERO)
+        host.seen("round_result", lambda e: e["round"] == 1)
+        hpoke(HP2, FULL)
+        time.sleep(2)
+        check("no change once the next round has started",
+              not auto_events("between_rounds") and
+              [e for e in host.history if e["event"] == "buffer_changed"][-1]["buffer"] == 9)
+        # KO and a calm moment after it: re-chosen from the pings, any number of steps.
+        hpoke(HP1, ZERO)
+        host.seen("round_result", lambda e: e["round"] == 2)
+        ba = host.seen("buffer_auto", lambda e: e.get("reason") == "between_rounds", timeout=10)
+        check(f"after a KO: buffer re-chosen from the pings {ba}",
+              ba["from"] == 9 and 2 <= ba["to"] <= 4 and ba["ping"] >= 0)
+        host.seen("buffer_changed", lambda e: e["buffer"] == ba["to"])
+        joiner.seen("buffer_changed", lambda e: e["buffer"] == ba["to"])
+        check("everyone gets the new buffer", True)
+
+        time.sleep(1)
         joiner.send("stop")  # a client-initiated stop ends the match for everyone
         host.wait_for("game_stopped", timeout=30)
         joiner.wait_for("game_stopped", timeout=30)
@@ -649,6 +687,23 @@ def main():
 
         again = host.wait_for("players", lambda e: len(e["players"]) == 2 and not e["in_game"])
         check("session survives the match (still 2 players, not in game)", bool(again))
+
+        # Automatic buffer at the start of a match: picked before the game boots.
+        host.send("buffer 9")
+        host.wait_for("buffer_changed", lambda e: e["buffer"] == 9)
+        modes = [e["auto"] for e in host.history if e["event"] == "buffer_mode"]
+        check(f"a number turns the automatic buffer off {modes}", modes[-1] is False)
+        host.send("buffer auto")
+        host.wait_for("buffer_mode", lambda e: e["auto"] is True)
+        host.send("start")
+        ms = host.wait_for("buffer_auto", lambda e: e.get("reason") == "match_start", timeout=20)
+        check(f"match start: buffer chosen before boot {ms}", ms["from"] == 9 and 2 <= ms["to"] <= 4)
+        host.wait_for("game_started", timeout=40)
+        joiner.wait_for("game_started", timeout=40)
+        time.sleep(1)
+        joiner.send("stop")
+        host.wait_for("game_stopped", timeout=30)
+        joiner.wait_for("game_stopped", timeout=30)
 
         joiner.send("quit")
         check("joiner exit 0", joiner.wait_for("exit")["code"] == 0)

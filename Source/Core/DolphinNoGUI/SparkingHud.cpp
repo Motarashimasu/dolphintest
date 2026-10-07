@@ -48,6 +48,7 @@ std::atomic<int> s_jitter{-1};        // ping jitter in ms (-1: not measured yet
 std::string s_rating;                 // guarded by s_mutex: good/ok/poor/measuring
 std::array<std::string, 2> s_links;   // guarded by s_mutex: wired/wireless/virtual/unknown, "" = none
 int s_rounds = 0;
+std::atomic<int> s_result_count{0};  // every confirmed KO, never reset
 
 std::string DisplayName(const Side& side, int port)
 {
@@ -384,6 +385,17 @@ void SetHudLocalPort(int port)
   s_local_port = port;
 }
 
+int HudResultCount()
+{
+  return s_result_count;
+}
+
+bool HudRoundLive()
+{
+  std::lock_guard lk(s_mutex);
+  return s_round_live;
+}
+
 void ResetHud()
 {
   std::lock_guard lk(s_mutex);
@@ -469,6 +481,7 @@ void HudTick()
   s_pending_loser = 0;
   s_round_live = false;
   ++s_rounds;
+  ++s_result_count;
   const std::string winner = DisplayName(s_sides[winner_port - 1], winner_port);
   const std::string loser = DisplayName(s_sides[loser_port - 1], loser_port);
   ++s_wins[winner];

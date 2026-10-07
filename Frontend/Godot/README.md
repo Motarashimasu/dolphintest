@@ -77,6 +77,9 @@ they're plugged in.
 quality dot) and messages. You can also send a message, change the pad buffer (host), Start
 Match (host), copy the room code, and Leave Lobby. Press B once to jump to Leave Lobby, and
 press B again to leave.
+- **Pad buffer mode** (host): Manual uses the number you set. Automatic picks it from the ping
+  when you press Start Match, and again right after each KO (any number of steps, within 20 s,
+  never while a round is being fought). Every change is explained in the messages.
 
 **In game.** Hold **Select / Back / Share** for about 1 s. This window shrinks to a small menu
 on top of the game:
