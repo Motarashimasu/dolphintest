@@ -27,6 +27,8 @@ extends Resource
 @export var background_lobby: Texture2D
 ## The Battle Lounge (King of the Hill) lobby. Empty = the lobby picture.
 @export var background_battle_lounge: Texture2D
+## Ranked Match lobbies. Empty = the lobby picture.
+@export var background_ranked: Texture2D
 @export var background_terminology: Texture2D
 
 @export_group("Title")

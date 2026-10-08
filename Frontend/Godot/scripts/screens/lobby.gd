@@ -31,6 +31,7 @@ const ERRORS := {
 	"spectators_full": "That lobby already has 2 spectators.",
 	"training_solo": "That's a Buffer Training session: it's solo.",
 	"koth_need_two": "Battle Lounge needs 2 people in line to start.",
+	"ranked_no_spectators": "Ranked matches can't be watched.",
 }
 
 var kind := "host"            # host, join, find, watch (spectator: never plays), training (solo)
@@ -52,6 +53,15 @@ var _auto_started := false    # Buffer Training starts itself once the state is 
 var koth := false             # Battle Lounge lobby (set by the menus, or by a "koth" event)
 var _koth := {}               # last "koth" event: state, line, wins, streak, ...
 var _koth_waiting := false    # joiner: a set is on, Dolphin retries until it ends
+## Ranked Match: Dolphin's King of the Hill set engine for 2 players (Single Battle FT2, Team
+## Battle 1 win, no spectators), listed and rated by the ranked server.
+var ranked := false
+var ranked_lobby := 0         # the lobby's id on the ranked server (host: once listed)
+var _ranked := {}             # last lobby status from the ranked server
+var _ranked_busy := false
+var _reported := false        # this match's result already sent
+var _announced := -1          # ranked match id whose result was already shown
+var _ranked_timer: Timer
 
 var _info: Label
 var _info_right: Label
@@ -75,12 +85,16 @@ func screen_fade() -> String:
 
 
 func screen_music() -> String:
+	if ranked:
+		return "ranked"   # music/ranked.* and the look's ranked picture (else the lobby's)
 	# Battle Lounge has its own track and background (music/battle_lounge.*; without a file it
 	# plays the lobby track).
 	return "battle_lounge" if koth else "lobby"
 
 
 func screen_title() -> String:
+	if ranked:
+		return tr("Ranked: %s") % Ranked.mode_title(mode)
 	if koth:
 		return tr("Battle Lounge: %s") % (tr("Any Mode") if mode == "any" else Style.mode_name(mode))
 	if is_spectating():
@@ -100,12 +114,106 @@ func on_enter() -> void:
 		app.toast("Couldn't start Dolphin-Sparking (is the Dolphin folder next to the launcher?).")
 		app.pop.call_deferred()
 		return
+	if ranked:
+		koth = true   # Dolphin runs the ranked match with the Battle Lounge set engine
+		_system(tr("Ranked %s: first to 2 wins (FT2).") % Style.mode_name("single") if mode == "single"
+				else tr("Ranked %s: one match decides it.") % Style.mode_name(mode), "#f2b531")
+		_system("Leaving or stopping during a ranked match counts as a loss.")
+		_ranked_timer = Timer.new()
+		_ranked_timer.wait_time = 5.0
+		_ranked_timer.timeout.connect(_ranked_tick)
+		add_child(_ranked_timer)
+		_ranked_timer.start()
 	_refresh_all()
 
 
 func _exit_tree() -> void:
 	if Dolphin.event.is_connected(_on_event):
 		Dolphin.event.disconnect(_on_event)
+	if ranked and ranked_lobby > 0:
+		# Off the ranked list / give the seat back. (Ranked.api runs on the autoload: it outlives us.)
+		Ranked.api("lobby.php", {"action": "close" if _role == "host" else "leave", "lobby": ranked_lobby})
+
+
+# --- Ranked --------------------------------------------------------------------------------
+
+## Every few seconds: the host lists its lobby once the room is up (then keeps it listed), the
+## guest keeps its seat; both get the opponent's rating and the last match's result.
+func _ranked_tick() -> void:
+	if _ranked_busy or _phase in ["connecting", "searching", "closing"]:
+		return
+	_ranked_busy = true
+	var res := {}
+	if _role == "host" and ranked_lobby == 0:
+		var join := _ranked_join_target()
+		if join == "":
+			_ranked_busy = false
+			return
+		var link := "unknown"
+		for p in _players:
+			if p.get("is_host", false):
+				link = String(p.get("link", "unknown"))
+		res = await Ranked.api("lobby.php", {"action": "open", "mode": mode,
+			"region": Settings.get_value("player", "region"), "join": join, "link": link})
+		if res.get("ok", false):
+			ranked_lobby = int(res["lobby"]["id"])
+			_system("Your ranked lobby is listed in the Ranked Lobby Browser.", "#3fbf6b")
+		else:
+			_system(tr("Couldn't list the ranked lobby: %s") % Ranked.error_text(String(res.get("error", ""))), "#e8663d")
+	elif ranked_lobby > 0:
+		res = await Ranked.api("lobby.php", {"action": "heartbeat" if _role == "host" else "status",
+			"lobby": ranked_lobby})
+		if res.get("error", "") == "lobby_gone" and _role != "host":
+			_system("The ranked lobby closed.", "#e8663d")
+	_ranked_busy = false
+	if not is_inside_tree() or not res.get("ok", false) or not res.has("lobby"):
+		return
+	_ranked = res["lobby"]
+	_announce_result(_ranked.get("last_match"))
+	_refresh_all()
+
+
+## Where the opponent connects: the room code, or (Direct IP) your public address and port.
+func _ranked_join_target() -> String:
+	if _room.get("state", "") != "ready":
+		return ""
+	if _room.get("type") == "traversal":
+		return String(_room.get("code", ""))
+	var public := String(Settings.get_value("netplay", "public_address")).strip_edges()
+	if public == "":
+		return ""
+	return public if ":" in public else "%s:%d" % [public, int(_room.get("port", 2626))]
+
+
+func _report(result: String, why := "") -> void:
+	if _reported or ranked_lobby <= 0:
+		return
+	_reported = true
+	var res := await Ranked.api("match.php", {"action": "forfeit" if result == "forfeit" else "report",
+		"lobby": ranked_lobby, "result": result})
+	if not is_inside_tree():
+		return
+	if res.get("ok", false):
+		_system(why if why != "" else "Result sent to the ranked server.", "#cfe9ee")
+		_announce_result(res.get("match"))
+	_ranked_tick()
+
+
+func _announce_result(m: Variant) -> void:
+	if typeof(m) != TYPE_DICTIONARY or int(m.get("id", -1)) == _announced:
+		return
+	match String(m.get("state", "")):
+		"done":
+			_announced = int(m["id"])
+			var d := int(m.get("rating_change", 0))
+			if m.get("you_won", false):
+				_system(tr("Ranked win! Rating %+d.") % d, "#3fbf6b")
+			else:
+				_system(tr("Ranked loss. Rating %+d.") % d, "#e8663d")
+			Ranked.refresh()
+		"void":
+			_announced = int(m["id"])
+			_system("That ranked match didn't count (the two results didn't match).", "#e8663d")
 
 
 # --- Layout ------------------------------------------------------------------------------
@@ -197,8 +305,11 @@ func _refresh_info() -> void:
 	if left == "":
 		left = _status if _phase in ["connecting", "searching"] else ("Hosting" if _role == "host" else "Joined lobby")
 	_info.text = tr(left)
-	var right: Array = [Style.mode_name(mode)]
-	if is_training():
+	var right: Array = [Ranked.mode_title(mode) if ranked else Style.mode_name(mode)]
+	if ranked:
+		right.append(tr("Ranked · %s") % String(Settings.get_value("player", "region")) if ranked_lobby > 0 or _role != "host"
+				else tr("Ranked · listing..."))
+	elif is_training():
 		right.append(tr("Solo"))
 	elif _role == "host":
 		if _public.get("listed", false):
@@ -257,7 +368,7 @@ func _refresh_line() -> void:
 		by_pid[int(p.get("pid", 0))] = p
 	var line: Array = _koth.get("line", [])
 	var watching := _watching().size()
-	var head := tr("Line %d/8") % (line.size() + watching)
+	var head := tr("Players %d/2") % line.size() if ranked else tr("Line %d/8") % (line.size() + watching)
 	if watching > 0:
 		head += "  ·  " + tr("%d watching") % watching
 	_players_head.text = head
@@ -285,7 +396,11 @@ func _line_row(pos: int, p: Dictionary, name: String) -> Control:
 	Style.place(bl, 0, 0, 44, 20)
 	badge.add_child(bl)
 	var text := ("★ " if p.get("is_host", false) else "") + name
-	if pos == 0 and int(_koth.get("streak", 0)) > 0 and String(_koth.get("champion", "")) == name:
+	if ranked:
+		for who in [_ranked.get("host"), _ranked.get("guest")]:
+			if typeof(who) == TYPE_DICTIONARY and String(who.get("name", "")) == name:
+				text += "   " + tr("Rating %d") % int(who.get("rating", 1000))
+	elif pos == 0 and int(_koth.get("streak", 0)) > 0 and String(_koth.get("champion", "")) == name:
 		text += "   " + tr("Champion · %d in a row") % int(_koth.get("streak", 0))
 	var nl := Style.label(text, 17, Style.GOLD if pos == 0 else Color.WHITE, 2, Style.DARK, true)
 	nl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -325,7 +440,7 @@ func koth_status() -> String:
 	var p2 := String(line[1].get("name", "?")) if line.size() > 1 else "?"
 	match String(_koth.get("state", "")):
 		"waiting":
-			return tr("Waiting for a challenger (2 needed)")
+			return tr("Waiting for an opponent") if ranked else tr("Waiting for a challenger (2 needed)")
 		"ready":
 			return tr("Ready: press Start Match") if _role == "host" else tr("Waiting for the host to start")
 		"next":
@@ -435,7 +550,9 @@ func _action_rows(in_game_menu: bool) -> Array:
 			"value": str(_buffer) if _buffer > 0 else "?"})
 	# A spectator's Stop only ends their own view; the match goes on for the players.
 	var stop_label := "Stop Watching" if is_spectating() else ("Stop Training" if is_training() else "Stop Match")
-	if koth and _role != "host" and int(_koth.get("local_pos", -1)) >= 2:
+	if ranked:
+		stop_label = "Forfeit Match"   # stopping a ranked match is a loss
+	elif koth and _role != "host" and int(_koth.get("local_pos", -1)) >= 2:
 		stop_label = "Stop Watching"   # waiting in line: only this view stops, the set goes on
 	elif koth and _role == "host":
 		stop_label = "Stop Set"        # the host referees: pauses the ladder until Start
@@ -484,7 +601,7 @@ func _players_line() -> String:
 func make_ingame_panel() -> Control:
 	if _phase != "playing":
 		return null
-	var panel: Control = InGamePanel.new().setup("Training Menu" if is_training() else "Match Menu",
+	var panel: Control = InGamePanel.new().setup("Training Menu" if is_training() else ("Ranked Match" if ranked else "Match Menu"),
 			_action_rows(true), 170, Vector2(560, 560))
 	var box := RichTextLabel.new()
 	box.name = "Log"
@@ -519,21 +636,42 @@ func on_back() -> void:
 func _on_press(key: String) -> void:
 	match key:
 		"start":
-			Dolphin.send("start")
+			if ranked:
+				_start_ranked()
+			else:
+				Dolphin.send("start")
 		"copy":
 			DisplayServer.clipboard_set(String(_room.get("code", "")))
 			app.toast("Room code copied")
 		"stop":
+			if ranked and _phase == "playing":
+				_report("forfeit", "You forfeited the ranked match.")
 			Dolphin.send("stop")
 			app.close_ingame_menu(false)
 		"resume":
 			app.close_ingame_menu()
 		"leave":
+			if ranked and _phase == "playing":
+				_report("forfeit", "You left the ranked match: it counts as a loss.")
 			_phase = "closing"
 			_status = "Leaving..."
 			app.close_ingame_menu(false)
 			Dolphin.quit_session()
 			_refresh_all()
+
+
+## Ranked: the server opens the match first (both players checked in), then Dolphin starts it.
+func _start_ranked() -> void:
+	if ranked_lobby <= 0:
+		_system("The ranked lobby isn't listed yet. Try again in a moment.", "#e8663d")
+		return
+	var res := await Ranked.api("match.php", {"action": "start", "lobby": ranked_lobby})
+	if not is_inside_tree():
+		return
+	if res.get("ok", false):
+		Dolphin.send("start")
+	else:
+		_system(Ranked.error_text(String(res.get("error", ""))), "#e8663d")
 
 
 func _on_value(key: String, value: Variant) -> void:
@@ -595,6 +733,12 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_on_matchmaking(data)
 		"koth":
 			_koth = data
+			# Ranked: the deciding KO. Each player reports from their own side.
+			if ranked and String(data.get("state", "")) == "decided":
+				var pos := int(data.get("local_pos", -1))
+				var w: Array = data.get("wins", [0, 0])
+				if pos in [0, 1]:
+					_report("win" if int(w[pos]) >= int(data.get("cap", 2)) else "loss")
 			if not koth:
 				koth = true   # joined by code / Discord: the lounge's title, music and background
 				app.refresh_chrome()
@@ -604,9 +748,12 @@ func _on_event(name: String, data: Dictionary) -> void:
 					_status = st
 		"koth_set":
 			var kw: Array = data.get("wins", [0, 0])
-			_system(tr("%s wins the set %d-%d! %s goes to the back of the line.") % [data.get("winner", "?"),
-					int(kw[0]), int(kw[1]), data.get("loser", "?")], "#f2b531")
-			if int(data.get("streak", 0)) >= 2:
+			if ranked:
+				_system(tr("%s wins the ranked match %d-%d!") % [data.get("winner", "?"), int(kw[0]), int(kw[1])], "#f2b531")
+			else:
+				_system(tr("%s wins the set %d-%d! %s goes to the back of the line.") % [data.get("winner", "?"),
+						int(kw[0]), int(kw[1]), data.get("loser", "?")], "#f2b531")
+			if int(data.get("streak", 0)) >= 2 and not ranked:
 				_system(tr("%s: %d sets in a row.") % [data.get("winner", "?"), int(data.get("streak", 0))], "#f2b531")
 		"koth_waiting":
 			_koth_waiting = true
@@ -652,6 +799,8 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_system(tr("%s joined.") % data.get("name", "?"))
 		"player_left":
 			Sfx.play("player_leave")
+			if ranked and _phase == "playing":
+				_report("win", "Your opponent left the ranked match: it counts as your win.")
 			_system(tr("%s left.") % data.get("name", "?"))
 		"chat":
 			if data.get("self", false):
@@ -689,6 +838,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_battle = data
 			_maybe_auto_start()
 		"game_starting":
+			_reported = false
 			_status = "Match starting..."
 			_system("Training starting..." if is_training() else "Match starting...")
 		"sync_begin":
@@ -727,7 +877,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_system(msg, "#e8663d")
 			if _phase in ["connecting", "searching"]:
 				_status = msg
-			if code in ["lobby_full", "spectators_full"]:
+			if code in ["lobby_full", "spectators_full", "ranked_no_spectators"]:
 				_closed_because = msg   # turned away: say why instead of "The lobby closed."
 		"process_exited":
 			if _closed_because != "":

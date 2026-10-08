@@ -6,6 +6,7 @@ Menu music. Put a file here named after the track (ogg, mp3 or wav):
   netplay      Netplay, Player Match, Host, Find, Lobby Browser
   lobby        The lobby screen
   battle_lounge  The Battle Lounge lobby (no file = the lobby track)
+  ranked       Ranked Match lobbies (no file = the lobby track)
   terminology  Tenkaichi Terminology
 
 e.g. music/main_menu.ogg. Files in SparkingData\music\ (ogg or mp3) with the same names

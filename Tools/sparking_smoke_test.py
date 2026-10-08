@@ -717,6 +717,7 @@ def main():
         training_check(exe, dol, work, game_id, os.path.join(states["solo"], "battle.sst"))
         koth_check(exe, dol, work, game_id)
         gecko_state_check(exe, dol, work, game_id)
+        ranked_check(exe, dol, work, game_id)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
@@ -890,6 +891,93 @@ def spectator_check(exe, dol, work, game_id):
         for inst in (vegeta, kaio, bulma, host):
             inst.send("quit")
             inst.wait_for("exit", timeout=20)
+    finally:
+        for inst in insts:
+            if inst.proc.poll() is None:
+                inst.proc.kill()
+
+
+def ranked_check(exe, dol, work, game_id):
+    """Ranked lobbies: 2 players only (no spectators, a 3rd is turned away), Single Battle first
+    to 2, and after the set nothing starts again until the host does."""
+    print("netplay: ranked lobby")
+    common = ["-p", "headless", "-v", "Null"]
+    FULL, ZERO = "42C80000", "00000000"
+    HP1, HP2 = "80001100", "80001104"
+
+    def setup(name):
+        d = os.path.join(work, "rk-" + name)
+        os.makedirs(os.path.join(d, "Config"), exist_ok=True)
+        os.makedirs(os.path.join(d, "GameSettings"), exist_ok=True)
+        with open(os.path.join(d, "Config", "Dolphin.ini"), "w") as f:
+            f.write("[NetPlay]\nTraversalChoice = direct\nHostPort = 26335\nSyncSaves = False\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        with open(os.path.join(d, "GameSettings", f"{game_id}.ini"), "w") as f:
+            f.write("[Sparking.Watch]\np1_health_pct = f32 0x80001100\np2_health_pct = f32 0x80001104\n")
+        return ["-u", d, "--nand", os.path.join(work, "rk-nand-" + name)]
+
+    def joiner(name, *extra):
+        inst = Instance("rk-" + name, [exe, *common, *setup(name), "--netplay-join", "127.0.0.1:26335",
+                                       "--netplay-game", dol, "--nickname", name, *extra])
+        inst.send("hello")
+        return inst
+
+    def count(inst, event, pred=lambda e: True):
+        return len([e for e in list(inst.history) if e["event"] == event and pred(e)])
+
+    host = Instance("rk-host", [exe, *common, *setup("host"), "--netplay-host", dol, "--netplay-direct",
+                                "--ranked", "--mode", "single", "--public", "--nickname", "Goku",
+                                "--automap", "gc", "--test-hooks"])
+    insts = [host]
+
+    def hpoke(addr, val):
+        host.send(f"poke {addr} {val}")
+        host.wait_for("poked", lambda e: e["address"] == addr and e["value"] == val)
+        time.sleep(0.15)
+
+    def ko(loser):
+        hpoke(HP1, FULL); hpoke(HP2, FULL)
+        n = count(host, "round_result")
+        hpoke(loser, ZERO)
+        deadline = time.time() + 10
+        while count(host, "round_result") <= n and time.time() < deadline:
+            time.sleep(0.1)
+
+    try:
+        host.send("hello")
+        host.wait_for("lobby_ready")
+        room = host.seen("room")
+        check("ranked lobby never goes on Dolphin's lobby list", room.get("public") is False)
+        vegeta = joiner("Vegeta"); insts.append(vegeta)
+        host.seen("koth", lambda e: [x["name"] for x in e["line"]] == ["Goku", "Vegeta"], timeout=20)
+        kaio = joiner("Kaio", "--spectate"); insts.append(kaio)
+        err = kaio.wait_for("error", lambda e: e["code"] not in ("connection_error",), timeout=20)
+        check(f"no spectators in ranked ({err['code']})", err["code"] == "ranked_no_spectators")
+        piccolo = joiner("Piccolo"); insts.append(piccolo)
+        err = piccolo.wait_for("error", lambda e: e["code"] not in ("connection_error",), timeout=20)
+        check(f"a 3rd player is turned away ({err['code']})", err["code"] == "lobby_full")
+        for inst in (kaio, piccolo):
+            inst.proc.wait(timeout=20)
+        host.seen("players", lambda e: len(e["players"]) == 2 and
+                  all(p["save_status"] == "ok" for p in e["players"] if not p["is_host"]), timeout=20)
+        host.send("start")
+        host.wait_for("game_started", timeout=40)
+        vegeta.wait_for("game_started", timeout=40)
+        ko(HP1)
+        ko(HP2)
+        time.sleep(1)
+        check("1-1 isn't over (first to 2)", count(host, "koth_set") == 0)
+        ko(HP1)
+        ks = host.seen("koth_set", timeout=10)
+        check(f"ranked match decided 2-1 {ks}", ks["winner"] == "Vegeta" and ks["wins"] == [2, 1])
+        host.wait_for("game_stopped", timeout=20)
+        k = host.seen("koth", lambda e: e["state"] == "ready", timeout=10)
+        check("back in the lobby, waiting for the host", bool(k))
+        time.sleep(12)
+        check("no automatic next match in ranked", count(host, "game_started") == 1)
+        for inst in (vegeta, host):
+            inst.send("quit")
+            inst.proc.wait(timeout=20)
     finally:
         for inst in insts:
             if inst.proc.poll() is None:

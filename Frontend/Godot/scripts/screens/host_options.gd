@@ -7,6 +7,7 @@ func screen_music() -> String:
 
 
 var koth := false   # Battle Lounge lobby
+var ranked := false  # Ranked Match lobby (listed by the ranked server, 2 players)
 
 
 func with_koth(value: bool) -> Node:
@@ -14,18 +15,28 @@ func with_koth(value: bool) -> Node:
 	return self
 
 
+func with_ranked(value: bool) -> Node:
+	ranked = value
+	return self
+
+
 func screen_title() -> String:
+	if ranked:
+		return "Host a Ranked Match"
 	return "Host a Battle Lounge" if koth else "Host a Lobby"
 
 
 func screen_desc() -> String:
+	if ranked:
+		return "Ranked: Single Battle is first to 2 wins (FT2), Team Battle is one match.
+You play as your Discord name; leaving a match counts as a loss."
 	if koth:
 		return "Set up your Battle Lounge lobby, then Start.\nSingle Battle: first to 2 wins. Team Battle: 1 win."
 	return "Set up your lobby, then Start."
 
 
 func build_rows() -> Array:
-	return [
+	var rows: Array = [
 		{"type": "choice", "key": "traversal", "label": "Connection", "values": [true, false],
 			"names": ["Room code", "Direct IP"], "value": Settings.get_value("netplay", "traversal"),
 			"desc": "Room code: players join with a code, no router setup needed.\nDirect IP: they join your IP address (port 2626 must be open)."},
@@ -56,6 +67,30 @@ func build_rows() -> Array:
 		{"type": "action", "key": "back", "label": "Back",
 			"desc": "Back to Battle Lounge." if koth else "Back to Player Match."},
 	]
+	return _ranked_rows(rows) if ranked else rows
+
+
+## Ranked: no name (your Discord name is used) and always listed (on the ranked server);
+## a Direct IP lobby needs the address the opponent joins.
+func _ranked_rows(rows: Array) -> Array:
+	var out: Array = []
+	for r in rows:
+		match String(r.get("key", "")):
+			"nickname", "public":
+				continue
+			"mode":
+				r["names"] = ["Single Battle FT2", "Team Battle"]
+				r["desc"] = "Single Battle FT2: first to 2 wins. Team Battle: one match.\nShown in the Ranked Lobby Browser."
+			"public_address":
+				r["disabled"] = Settings.get_value("netplay", "traversal")
+				r["placeholder"] = "needed for a Direct IP ranked lobby"
+			"start":
+				r["label"] = "Open Ranked Lobby"
+				r["desc"] = "Open the lobby; it shows in the Ranked Lobby Browser."
+			"back":
+				r["desc"] = "Back to Ranked Match."
+		out.append(r)
+	return out
 
 
 func on_value(key: String, value: Variant) -> void:
@@ -70,11 +105,21 @@ func on_value(key: String, value: Variant) -> void:
 				list.update_row("buffer", {"disabled": value})
 			if key == "traversal" or key == "public":
 				list.update_row("public_address", {"disabled": Settings.get_value("netplay", "traversal")
-						or not Settings.get_value("netplay", "public")})
+						or not (ranked or Settings.get_value("netplay", "public"))})
 
 
 func on_press(key: String) -> void:
-	if key == "start":
+	if key == "start" and ranked:
+		if not Settings.get_value("netplay", "traversal") \
+				and String(Settings.get_value("netplay", "public_address")) == "":
+			app.toast("A Direct IP ranked lobby needs your public IP.")
+			list.focus_key("public_address")
+			return
+		var mode: String = Settings.get_value("netplay", "mode")
+		var rl: Control = load("res://scripts/screens/lobby.gd").new()
+		rl.ranked = true
+		app.push(rl.setup("host", Settings.ranked_host_args(mode, Settings.get_value("netplay", "traversal")), mode))
+	elif key == "start":
 		if Settings.get_value("netplay", "public") and not Settings.get_value("netplay", "traversal") \
 				and String(Settings.get_value("netplay", "public_address")) == "":
 			app.toast("A public Direct IP lobby needs your public IP.")

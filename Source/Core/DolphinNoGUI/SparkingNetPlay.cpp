@@ -202,7 +202,10 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
   m_public_address = options.public_address;
   m_automap = options.automap;
   m_spectate = options.spectate && !options.host_game_path;
-  m_koth = options.koth && m_mode != "training";
+  m_ranked = options.ranked && options.host_game_path.has_value() && m_mode != "training";
+  m_koth = (options.koth || m_ranked) && m_mode != "training";
+  if (m_ranked)
+    m_public = false;  // listed by the ranked server instead
   m_koth_cap = m_mode == "team" ? 1 : 2;  // Team Battle: 1 win takes the set; otherwise first to 2
   m_state_dir = options.state_dir;
   m_port_gecko = options.port_gecko;
@@ -1513,7 +1516,8 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
       return;
     {
       std::lock_guard lk(m_links_mutex);
-      m_reject_reason = parts[2] == "spectators_full" || parts[2] == "training_solo" ?
+      m_reject_reason = parts[2] == "spectators_full" || parts[2] == "training_solo" ||
+                                parts[2] == "ranked_no_spectators" ?
                              std::string(parts[2]) :
                              "lobby_full";
     }
@@ -1942,7 +1946,12 @@ void NetPlaySession::KothMap(NetPlay::PadMappingArray& map, bool& changed,
     }
     if (role == "spectator")
     {
-      // Watchers never get in line or on a pad.
+      // Watchers never get in line or on a pad. Ranked: nobody watches.
+      if (m_ranked)
+      {
+        RejectPlayer(p->pid, "ranked_no_spectators");
+        continue;
+      }
       if (++watchers > MAX_SPECTATORS)
       {
         --watchers;
@@ -1955,7 +1964,8 @@ void NetPlaySession::KothMap(NetPlay::PadMappingArray& map, bool& changed,
       }
       continue;
     }
-    if (static_cast<int>(m_line.size()) + watchers >= KOTH_MAX_PEOPLE)
+    const int max_people = m_ranked ? MAX_PLAYERS : KOTH_MAX_PEOPLE;
+    if (static_cast<int>(m_line.size()) + watchers >= max_people)
     {
       RejectPlayer(p->pid, "lobby_full");
       continue;
@@ -2177,6 +2187,12 @@ void NetPlaySession::OnSetEnded()
     m_streak = w == 0 && m_streak > 0 && m_champion == winner.pid ? m_streak + 1 : 1;
     m_champion = winner.pid;
     m_next_set_at = now + std::chrono::seconds(10);
+    if (m_ranked)
+    {
+      // One ranked match per Start: back to the lobby, the host starts the next one.
+      m_koth_paused = true;
+      m_next_set_at.reset();
+    }
   }
   else if (!present(m_set_players[0]) || !present(m_set_players[1]))
   {
@@ -2187,6 +2203,11 @@ void NetPlaySession::OnSetEnded()
       m_champion = 0;
     }
     m_next_set_at = now + std::chrono::seconds(10);
+    if (m_ranked)
+    {
+      m_koth_paused = true;
+      m_next_set_at.reset();
+    }
   }
   else
   {

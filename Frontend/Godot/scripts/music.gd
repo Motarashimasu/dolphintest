@@ -10,7 +10,7 @@ extends Node
 
 const FALLBACK := "main_menu"
 ## Tracks that are a variant of another: without their own file they play the other one.
-const TRACK_PARENT := {"battle_lounge": "lobby"}
+const TRACK_PARENT := {"battle_lounge": "lobby", "ranked": "lobby"}
 const FADE := 0.6
 const SILENT_DB := -60.0
 

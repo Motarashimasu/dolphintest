@@ -140,7 +140,7 @@ static func item_color(label: String, fallback: Color) -> Color:
 
 
 ## Picture for a menu (by its music track name: main_menu, game_menu, ...), or null.
-const BACKGROUND_PARENT := {"battle_lounge": "lobby"}   # same as Music.TRACK_PARENT
+const BACKGROUND_PARENT := {"battle_lounge": "lobby", "ranked": "lobby"}   # same as Music.TRACK_PARENT
 
 
 static func background(track: String) -> Texture2D:

@@ -745,6 +745,12 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .dest("spectate")
       .action("store_true")
       .help("With --netplay-join: watch only (never gets a controller port, no per-port codes)");
+  parser.add_option("--ranked")
+      .dest("ranked")
+      .action("store_true")
+      .help("Netplay host: a ranked lobby (King of the Hill set engine for 2 players: Single "
+            "Battle first to 2, Team Battle 1 win; no spectators; one set per Start; never on "
+            "Dolphin's lobby list)");
   parser.add_option("--koth")
       .dest("koth")
       .action("store_true")
@@ -1228,6 +1234,7 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
   np.is_public = options.is_set_by_user("public");
   np.mode = static_cast<const char*>(find ? options.get("netplay_find") : options.get("mode"));
   np.koth = options.is_set_by_user("koth");
+  np.ranked = options.is_set_by_user("ranked");
   np.region = static_cast<const char*>(options.get("region"));
   if (options.is_set("public_address"))
     np.public_address = static_cast<const char*>(options.get("public_address"));

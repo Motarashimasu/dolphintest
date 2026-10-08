@@ -76,6 +76,10 @@ struct NetPlayOptions
   // goes to the back of the line and the next in line takes pad 2. Host: the lobby's format.
   // Joiner: joining while a set is being played waits and retries until it ends.
   bool koth = false;
+  // Ranked (host): the King of the Hill set engine for exactly 2 players: no spectators, no
+  // line, and no automatic next set (each set is one ranked match the host starts). Never on
+  // Dolphin's lobby list (ranked lobbies are listed by the ranked server).
+  bool ranked = false;
 };
 
 // Lobby size: 2 players (GameCube ports 1-2) and up to 2 spectators.
@@ -129,6 +133,7 @@ public:
 
   bool WantsQuit() const { return m_quit; }
   bool IsKoth() const { return m_koth; }
+  bool IsRanked() const { return m_ranked; }
   // The host refused us because a game is running (King of the Hill: wait for the set to end).
   bool JoinRefusedGameRunning() const { return m_refused_game_running; }
   // King of the Hill joiner: the host has put this player in the line.
@@ -354,6 +359,7 @@ private:
   void BroadcastKoth(bool force);  // host
   void EmitKoth(const KothView& view);
   bool m_koth = false;
+  bool m_ranked = false;
   int m_koth_cap = 2;
   std::vector<LineEntry> m_line;  // host thread (and host jobs on it)
   NetPlay::PlayerId m_champion = 0;

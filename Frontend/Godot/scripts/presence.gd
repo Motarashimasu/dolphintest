@@ -143,6 +143,21 @@ func current() -> Dictionary:
 			p["details"] = tr("DRAGON NET: %s") % mode_name
 			p["state"] = tr("Practicing with pad buffer %d") % int(lobby._buffer) if int(lobby._buffer) > 0 \
 					else tr("Practicing")
+		elif bool(lobby.get("ranked")):
+			# Ranked: the mode (FT2) and the opponent; never a way in (the ranked browser lists it).
+			key = "ranked_" + String(lobby._phase)
+			p["details"] = tr("Ranked: %s") % Ranked.mode_title(String(lobby.mode))
+			var me := Ranked.display_name()
+			var opp := ""
+			for pl in players:
+				if String(pl.get("name", "")) != me:
+					opp = String(pl.get("name", ""))
+			if String(lobby._phase) == "playing" and opp != "":
+				p["state"] = tr("vs %s") % opp
+			elif opp != "":
+				p["state"] = tr("In the lobby")
+			else:
+				p["state"] = tr("Waiting for an opponent")
 		elif bool(lobby.get("koth")) and not (lobby._koth as Dictionary).is_empty():
 			# Battle Lounge: where you are in the line, the set score while it's on.
 			var k: Dictionary = lobby._koth

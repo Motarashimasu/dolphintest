@@ -20,6 +20,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "Tools"))
 from sparking_smoke_test import FakeLobbyServer, Instance, make_test_dol  # noqa: E402
+from ranked_server_test import RankedServer, call as ranked_call, login as ranked_login  # noqa: E402
 
 FAKE_GAME = "Dragon Ball Z Budokai Tenkaichi 3 (RDSPAF)"
 COMMON = ["-p", "headless", "-v", "Null"]
@@ -96,6 +97,7 @@ def main():
     joiner_user = user(os.path.join(work, "joiner"), 26301)
     piccolo_user = user(os.path.join(work, "piccolo"), 26310)
     trunks_user = user(os.path.join(work, "trunks"), 26311)
+    ranked_user = user(os.path.join(work, "rkvegeta"), 26312)
 
     # The DOL's game ID, for its Gecko codes and texture pack.
     # It also captures the state Buffer Training boots ([Sparking.Modes] Training, below).
@@ -113,7 +115,7 @@ def main():
     probe.proc.wait(timeout=15)
     print("test game id:", game_id)
 
-    for u in (godot_user, joiner_user, piccolo_user, trunks_user):
+    for u in (godot_user, joiner_user, piccolo_user, trunks_user, ranked_user):
         os.makedirs(os.path.join(u, "GameSettings"), exist_ok=True)
         with open(os.path.join(u, "GameSettings", f"{game_id}.ini"), "w") as f:
             f.write("[Gecko]\n$Player 1 Splitscreen Remover\n04001000 00000001\n"
@@ -121,6 +123,9 @@ def main():
                     "$16:9 aspect ratio\n04001008 00000003\n"
                     "[Gecko_Enabled]\n$16:9 aspect ratio\n"
                     "[Sparking.Modes]\nTraining = training.sst\n")
+    # The ranked host counts KOs from these health watches (the harness pokes them).
+    with open(os.path.join(ranked_user, "GameSettings", f"{game_id}.ini"), "a") as f:
+        f.write("[Sparking.Watch]\np1_health_pct = f32 0x80001100\np2_health_pct = f32 0x80001104\n")
     # Texture pack with the frontend's variant groups (empty placeholder textures).
     png = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
                         "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
@@ -149,6 +154,42 @@ def main():
                                  "--nickname", "Trunks", "--link", "wired", *netplay_codes])
     trunks.send("hello")
     trunks.seen("public", lambda e: e.get("listed"))
+    # Ranked: the real ranked server (PHP on SQLite, fake Discord), and Vegeta hosting a ranked
+    # Single Battle lobby listed there. The tour logs in with Discord, joins it and wins 2-0.
+    ranked_dir = os.path.join(work, "ranked")
+    os.makedirs(ranked_dir)
+    ranked = RankedServer(ranked_dir)
+    vegeta_session, _ = ranked_login(ranked, "vegeta")
+    vegeta_token = vegeta_session["token"]
+    rk_vegeta = Instance("rk-vegeta", [exe, *COMMON, "-u", ranked_user, "--netplay-host", dol,
+                                       "--netplay-direct", "--ranked", "--mode", "single",
+                                       "--nickname", "Vegeta", "--link", "wired", "--test-hooks",
+                                       *netplay_codes])
+    rk_vegeta.send("hello")
+    rk_vegeta.seen("lobby_ready")
+    _, rk_open = ranked_call(ranked, "lobby.php", vegeta_token, action="open", mode="single",
+                             region="EU", join="127.0.0.1:26312", link="wired")
+    rk_lobby = rk_open["lobby"]["id"]
+
+    def rk_heartbeat():
+        while True:
+            time.sleep(10)
+            ranked_call(ranked, "lobby.php", vegeta_token, action="heartbeat", lobby=rk_lobby)
+    threading.Thread(target=rk_heartbeat, daemon=True).start()
+
+    def rk_match():
+        """Vegeta (host) starts the ranked match; the tour (pad 2) wins 2-0; Vegeta reports."""
+        ranked_call(ranked, "match.php", vegeta_token, action="start", lobby=rk_lobby)
+        rk_vegeta.send("start")
+        rk_vegeta.seen("game_started", timeout=60)
+        time.sleep(1)
+        for _ in range(2):
+            for addr, val in (("80001100", "42C80000"), ("80001104", "42C80000"), ("80001100", "00000000")):
+                rk_vegeta.send(f"poke {addr} {val}")
+                time.sleep(0.4)
+            time.sleep(1.5)
+        rk_vegeta.seen("koth_set", timeout=20)
+        ranked_call(ranked, "match.php", vegeta_token, action="report", lobby=rk_lobby, result="loss")
 
     # A stand-in for the Terminology Google Doc ("mobilebasic" HTML: one table per category,
     # rows of term | definition | GIF). Images only answer at the "=s650" URL, so the
@@ -238,6 +279,7 @@ def main():
                 "options": {"minimize_while_playing": False, "buttons": "Vanilla", "language": "en"},
                 "controller": {"preset": "keep"},
                 "terminology": {"source": doc_url + "/doc/mobilebasic"},
+                "ranked": {"server": ranked.url},
             },
         }, f)
 
@@ -280,10 +322,13 @@ def main():
             joiner.send("chat hello from Vegeta")
         elif line in ("TOUR_EVENT joiner_leave", "TOUR_EVENT host_left") and joiner and joiner.proc.poll() is None:
             joiner.send("quit")
+        elif line == "TOUR_EVENT ranked_ready":
+            threading.Thread(target=rk_match, daemon=True).start()
         elif line.startswith("TOUR_RESULT"):
             result = line.split()[1]
     tour.wait(timeout=30)
-    for inst in (piccolo, trunks, joiner):
+    ranked.stop()
+    for inst in (piccolo, trunks, joiner, rk_vegeta):
         if inst and inst.proc.poll() is None:
             inst.send("quit")
             try:
@@ -304,6 +349,7 @@ def main():
         ("netplay match vs the other player", lambda a: a.get("details") == "DRAGON NET: Single Battle" and a.get("state") == "vs Vegeta"),
         ("buffer training", lambda a: a.get("details") == "DRAGON NET: Buffer Training"
             and str(a.get("state", "")).startswith("Practicing") and not a.get("secrets") and not a.get("party")),
+        ("ranked match", lambda a: a.get("details") == "Ranked: Single Battle FT2" and not a.get("secrets")),
         ("offline game", lambda a: a.get("state") == "Playing offline"),
     ]:
         ok = seen(pred)

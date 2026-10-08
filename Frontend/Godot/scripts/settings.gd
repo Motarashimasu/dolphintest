@@ -58,6 +58,9 @@ var defaults := {
 		"buffer": 4, "public_address": "",
 		"buffer_auto": false},   # host: pad buffer picked from the pings (match start + after each KO)
 	"gecko": {"custom": false, "enabled": []},
+	# DRAGON NET Ranked: the ranked server (Server/ranked) and this install's Discord session.
+	"ranked": {"server": "https://tecshideout.ct.ws/sparking/", "token": "", "name": "",
+		"mode": "single", "board_mode": "single", "board_region": "global"},
 	"controller": {"preset": "auto"},    # auto, keep, or a preset name (scripts/controllers.gd)
 	"terminology": {"source": "https://docs.google.com/document/d/1QYI1z6ukEn-8PBvgysOUYB4-6EpmVy0HhpQmGjAmarU/mobilebasic"},
 }
@@ -222,11 +225,11 @@ func solo_args() -> PackedStringArray:
 	return a
 
 
-func _netplay_base() -> PackedStringArray:
+func _netplay_base(nickname := "") -> PackedStringArray:
 	var a := common_args()
 	a.append_array(["--hud", "on"])   # score bar + ping always on in netplay matches
 	a.append_array(["--nand", data_path("saves/netplay"), "--state-dir", data_path("states")])
-	a.append_array(["--nickname", get_value("player", "nickname")])
+	a.append_array(["--nickname", nickname if nickname != "" else String(get_value("player", "nickname"))])
 	for port in GAME["port_codes"]:
 		a.append_array(["--netplay-gecko", "%d=%s" % [port, GAME["port_codes"][port]]])
 	return a
@@ -246,6 +249,28 @@ func host_args(mode: String, public: bool, traversal: bool, koth := false) -> Pa
 			a.append_array(["--public-address", get_value("netplay", "public_address")])
 	a.append_array(["--netplay-host", get_value("paths", "game")])
 	return a
+
+
+## Ranked: never on Dolphin's lobby list (the ranked server lists it), 2 players, no spectators.
+## Everyone plays under their Discord name.
+func ranked_host_args(mode: String, traversal: bool) -> PackedStringArray:
+	var a := _netplay_base(ranked_nickname())
+	a.append_array(["--mode", mode, "--ranked"])
+	if not traversal:
+		a.append("--netplay-direct")
+	a.append_array(["--netplay-host", get_value("paths", "game")])
+	return a
+
+
+func ranked_join_args(target: String) -> PackedStringArray:
+	var a := _netplay_base(ranked_nickname())
+	a.append_array(["--netplay-game", get_value("paths", "game"), "--netplay-join", target])
+	return a
+
+
+func ranked_nickname() -> String:
+	var n := String(get_value("ranked", "name")).strip_edges()
+	return (n if n != "" else String(get_value("player", "nickname"))).left(24)
 
 
 ## Buffer Training: solo direct-IP host, never listed; Dolphin refuses anyone else who joins.

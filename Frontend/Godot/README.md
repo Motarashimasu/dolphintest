@@ -91,6 +91,17 @@ press B again to leave.
   Match once; after that each set starts by itself after a 10-second break. Up to 8 people; you
   can join while a set is on and get in line as soon as it ends. Hold Select: the host's Stop Set
   pauses the ladder, and someone waiting in line can Stop Watching (only their own view).
+- **Ranked Match** (DRAGON NET > Ranked Match): rated 1-on-1 matches on the ranked server
+  (`Server/ranked`, PHP + MySQL; `[ranked] server` in the settings). Needs a Discord login
+  (Profile, or the first time you open a ranked screen): Discord opens in the browser, you press
+  Authorize, and your Discord name becomes your ranked name. Its own Lobby Browser (ranked lobbies
+  only, with the host's rating), Host and Find; 2 players, no spectators. Single Battle is first
+  to 2 wins (FT2, shown in the lobby title), Team Battle is one match. The host presses Start
+  Match for each ranked match; both launchers report the result, and the lobby shows the rating
+  change. Leaving or stopping a running match counts as a loss. Leaderboard: Single Battle FT2 /
+  Team Battle by rating, or the all-time record, Global or per region (where the lobby was
+  hosted); Open in browser shows the same on the website. Ranked lobbies have their own music
+  track and background.
 - **Buffer Training** (DRAGON NET > Buffer Training): a solo, unlisted lobby that boots
   `states\RDSPAF-BufferTraining.sst` (Training Mode) on its own, so you can feel a pad buffer
   like an online match's. Change the buffer in the lobby or from the Training Menu (hold
@@ -157,7 +168,7 @@ tutorial open it on A.
   covers the title, the menu wheel (highlight band color or picture, text colors and size,
   letter icons, arrows), per-item colors, the description bar, panels and rows, toasts,
   fonts, and a background picture per menu (main_menu, game_menu, netplay, lobby,
-  battle_lounge (falls back to lobby's), terminology, or one default).
+  battle_lounge and ranked (both fall back to lobby's), terminology, or one default).
   The highlight band fades out to the right; Band Fade / Band Fade Start / Band Width in the
   Menu wheel group set it (Band Fade off = the old hard edge).
   Menu changes fade in from black, and entering a DRAGON NET lobby fades in from white: colors
@@ -222,6 +233,7 @@ best; it's scaled to cover the window.
 | `netplay` | Netplay, Player Match, Host, Find, Lobby Browser |
 | `lobby` | the lobby screen |
 | `battle_lounge` | the Battle Lounge lobby (no file: the `lobby` track plays) |
+| `ranked` | Ranked Match lobbies (no file: the `lobby` track plays) |
 | `terminology` | Tenkaichi Terminology |
 
 - Put files named after them in `music/` (`main_menu.ogg`, ...; ogg, mp3 or wav), or in

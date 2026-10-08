@@ -379,9 +379,9 @@ func _netplay_menu() -> Control:
 		{"label": "Buffer Training", "glyph": "T", "color": "#3fbf6b",
 			"desc": "Play in Training Mode, with the option to practice with pad buffering to emulate an online environment, so you can be prepared for anything! near or far!",
 			"action": open_buffer_training},
-		{"label": "Ranked Match", "glyph": "R", "color": "#c94bd6", "disabled": true,
-			"disabled_text": "Ranked Match is a work in progress.",
-			"desc": "Work in progress."},
+		{"label": "Ranked Match", "glyph": "R", "color": "#c94bd6",
+			"desc": "Rated 1-on-1 matches with a leaderboard. Single Battle is first to 2 wins\n(FT2), Team Battle is one match. Needs a Discord login.",
+			"action": func(): push(_ranked_menu())},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the game menu."},
 	], "netplay")
@@ -394,6 +394,41 @@ func open_buffer_training() -> void:
 		return
 	var lobby: Control = load(SCREENS % "lobby").new()
 	push(lobby.setup("training", Settings.training_args(), "training"))
+
+
+## Ranked Match: its own lobby browser, host and find (ranked lobbies only, 2 players, no
+## spectators), the leaderboard, and the Discord profile. Everything but the leaderboard needs
+## the Discord login first.
+func _ranked_menu() -> Control:
+	return _menu("Ranked Match", [
+		{"label": "Lobby Browser", "glyph": "L", "color": "#3fa9f5",
+			"desc": "Ranked lobbies only: the host's rating, mode and region.\nPick one to play a ranked match.",
+			"action": func(): _open_ranked(func(): open("ranked_browser"))},
+		{"label": "Host", "glyph": "H", "color": "#f2b531",
+			"desc": "Open a ranked lobby: Single Battle FT2 (first to 2 wins)\nor Team Battle (one match).",
+			"action": func(): _open_ranked(func(): push(load(SCREENS % "host_options").new().with_ranked(true)))},
+		{"label": "Find", "glyph": "F", "color": "#e8663d",
+			"desc": "Join the best open ranked lobby for your mode and region,\nor open one others can find.",
+			"action": func(): _open_ranked(func(): open("ranked_find"))},
+		{"label": "Leaderboard", "glyph": "T", "color": "#3fbf6b",
+			"desc": "Standings by mode and region, and the all-time record.",
+			"action": func(): open("leaderboard")},
+		{"label": "Profile", "glyph": "P", "color": "#5865f2",
+			"desc": "Your Discord login, ratings and records.",
+			"action": func(): open("ranked_account")},
+		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
+			"desc": "Back to the DRAGON NET menu."},
+	], "netplay")
+
+
+## Ranked screens need the game set up and a Discord login (the login screen continues on).
+func _open_ranked(then: Callable) -> void:
+	if not require_setup():
+		return
+	if Ranked.logged_in():
+		then.call()
+	else:
+		push(load(SCREENS % "ranked_account").new().setup(then))
 
 
 ## Battle Lounge: same Host / Find / browser as Player Match, but only KOTH lobbies.

@@ -41,6 +41,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
 | `--public` | off | Host: list the lobby on Dolphin's lobby server (browser + matchmaking). Name on the server: `SPK1\|<mode>\|<link>\|<nickname>`. |
 | `--spectate` | off | With `--netplay-join`: watch only. Lobbies hold 2 players (GameCube ports 1-2) and up to 2 spectators. A spectator never gets a port (not even when a player leaves), runs the game's default codes without any per-port code (no splitscreen remover), and `stop` only ends their own game. A 3rd player or 3rd spectator is turned away (`error` `lobby_full` / `spectators_full`). The public listing's player count is players + 10 × spectators. |
+| `--ranked` | off | Host: a ranked lobby. Uses the King of the Hill set engine for exactly 2 players: Single Battle first to 2 wins, Team Battle 1 win; spectators are turned away (`ranked_no_spectators`), a 3rd player gets `lobby_full`; after each set the lobby waits for the host's `start` (no automatic next set). Never listed on Dolphin's lobby server: the ranked server (`Server/ranked`) lists ranked lobbies and rates the results the launchers report. |
 | `--koth` | off | King of the Hill. Host: a KOTH lobby (see *King of the Hill*). `--netplay-find` / `--list-lobbies`: only KOTH lobbies (without it, only regular ones). `--netplay-join`: if a set is being played (Dolphin lets nobody in during a game), wait (`koth_waiting`) and retry every 3 s until it ends. |
 | `--mode single\|team\|training\|any` | `any` | Host: lobby mode, shown in the browser; `single`/`team`/`training` also auto-select that battle state from the game ini's `[Sparking.Modes]`. `training` is Buffer Training: a solo lobby that is never listed (even with `--public`) and turns anyone who joins away (`error` `training_solo`); `start` works with just the host, and `buffer <n>` changes the pad buffer live. |
 | `--region EA\|CN\|EU\|NA\|SA\|OC\|AF` | `NA` | Public lobby region; matchmaking prefers lobbies in the same region. |
@@ -374,6 +375,16 @@ Notes:
   list from the codes active now whenever a state loads, so each player's per-port codes apply.
   A code that was on at capture time can still leave its last written values in memory (turning
   it off doesn't undo them), so capture battle states with no per-port code on.
+
+### Ranked server
+
+`Server/ranked` (PHP 8.1+, MySQL/MariaDB; see its README.txt) runs ranked play for the
+launcher: Discord OAuth login (one Discord account = one profile), the ranked lobby list
+(host opens / heartbeats, guest joins a seat), matches (the host starts one; each player reports
+win / loss; agreeing reports count, a lone report counts after 2 minutes, disagreeing reports void
+it; a forfeit is a loss), Elo per mode (K=32, start 1000), per-region records and the
+leaderboard (JSON + web page). `Tools/ranked_server_test.py` runs it on SQLite with a fake
+Discord.
 
 ### King of the Hill
 

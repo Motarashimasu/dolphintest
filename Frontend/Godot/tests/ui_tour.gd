@@ -67,8 +67,9 @@ func _check_translations() -> void:
 		# Text built from a translated template ("Pad buffer: 5" from "Pad buffer: %d") is fine.
 		var templates: Array[RegEx] = []
 		for k in table:
-			if "%s" in k or "%d" in k:
-				var rx := "(?s)^" + _regex_escape(k).replace("%s", ".*?").replace("%d", "-?\\d+") + "$"
+			if "%s" in k or "%d" in k or "%+d" in k:
+				var rx := "(?s)^" + _regex_escape(k).replace("%\\+d", "[+-]\\d+").replace("%s", ".*?") \
+						.replace("%d", "-?\\d+") + "$"
 				templates.append(RegEx.create_from_string(rx))
 		var missing: Array = []
 		for s in seen:
@@ -77,7 +78,7 @@ func _check_translations() -> void:
 			if JSON.stringify(s).trim_prefix("\"").trim_suffix("\"") in term_text:
 				continue
 			if s.begins_with("◀") or s.begins_with("★") or s.begins_with("[b]") or "   ·   " in s \
-					or RegEx.create_from_string("^\\d+ ms|^[A-Z]{2}$|Sparking Standard|^Tecbox layout|^\\S+  \\(.+\\)$").search(s):
+					or RegEx.create_from_string("^\\d+ ms|^[A-Z]{2}$|Sparking Standard|^Tecbox layout|^\\S+  \\(.+\\)$|^#\\d+   |   Rating \\d+$| \\([a-z_]+\\)$").search(s):
 				continue   # composed from translated pieces
 			if templates.any(func(rx): return rx.search(s) != null):
 				continue
@@ -203,6 +204,14 @@ func back() -> void:
 	await frames(4)
 
 
+## B leaves a lobby: the first press goes to Leave Lobby, the next one leaves. (When the focus is
+## already on Leave, from the "Cancel" row while connecting, one press does it.)
+func leave_lobby(lobby: Control) -> void:
+	await back()
+	if is_instance_valid(lobby) and app.top() == lobby and lobby._phase != "closing":
+		await back()
+
+
 # --- the tour ----------------------------------------------------------------------------
 
 func _tour() -> void:
@@ -268,9 +277,7 @@ func _tour() -> void:
 		if r.modulate.a > 0.01:
 			rows_y.append(int(r.position.y))
 	check("no two visible rows overlap", rows_y.size() == Array(rows_y).reduce(func(acc, y): return acc if y in acc else acc + [y], []).size())
-	await choose("Ranked Match")
-	check("Ranked shows WIP toast", app._toast.visible and "work in progress" in app._toast.text)
-	await shot("netplay_menu_ranked_wip")
+	await shot("netplay_menu")
 	await choose("Player Match")
 	await shot("player_match")
 
@@ -370,8 +377,7 @@ func _tour() -> void:
 		check("joined lobby shows Team Battle", joined.mode == "team")
 		await frames(30)
 		await shot("lobby_joined_as_guest")
-		await back()
-		await back()
+		await leave_lobby(joined)
 		await wait_for("left Piccolo's lobby", func(): return app.top() == browser, 15)
 		await wait_for("Dolphin exited (guest)", func(): return not Dolphin.is_running(), 10)
 		# Watch the same lobby: a spectator, listed apart from the players, can't start anything.
@@ -393,8 +399,7 @@ func _tour() -> void:
 			check("title says watching", app._title.text.begins_with(tr("Watching: %s").split(":")[0]))
 			await frames(30)
 			await shot("lobby_watching")
-			await back()
-			await back()
+			await leave_lobby(watcher)
 			await wait_for("stopped watching", func(): return app.top() == browser, 15)
 			await wait_for("Dolphin exited (spectator)", func(): return not Dolphin.is_running(), 10)
 
@@ -444,8 +449,7 @@ func _tour() -> void:
 		check("Battle Lounge has its own music track", Music.current_track() == "battle_lounge")
 		await frames(30)
 		await shot("koth_lobby_line")
-		await back()
-		await back()
+		await leave_lobby(kl)
 		await wait_for("left Trunks' lobby", func(): return app.top() == kb, 15)
 		await wait_for("Dolphin exited (Battle Lounge)", func(): return not Dolphin.is_running(), 10)
 	await back()   # browser -> Battle Lounge menu
@@ -455,6 +459,85 @@ func _tour() -> void:
 	await shot("koth_host_options")
 	await back()   # -> Battle Lounge menu
 	await back()   # -> DRAGON NET
+
+	# --- Ranked Match: Discord login, ranked lobby browser, an FT2 match, leaderboard -------
+	# The "browser" for the Discord login: follows the authorize link as the fake Discord's Goku.
+	Ranked.open_url = func(url: String):
+		var req := HTTPRequest.new()
+		add_child(req)
+		req.request(url + "&as=goku")
+	await choose("Ranked Match")
+	check("Ranked Match menu", app._title.text == "Ranked Match")
+	await shot("ranked_menu")
+	await choose("Leaderboard")
+	var lb: Control = top()
+	await wait_for("leaderboard loaded", func(): return not lb._loading, 15)
+	check("leaderboard: nobody yet", lb._rows.is_empty() and lb._error == "")
+	await back()
+	await choose("Lobby Browser")
+	var rlogin: Control = top()
+	check("ranked asks for the Discord login first", app._title.text == "Ranked Login")
+	await shot("ranked_login")
+	await pick("login", rlogin.list)
+	await wait_for("logged in with Discord", func(): return app.top() != rlogin, 30)
+	check("Discord name is the ranked name", Ranked.display_name() == "Goku" and Ranked.logged_in())
+	var rb: Control = top()
+	check("on to the Ranked Lobby Browser", app._title.text == "Ranked Lobbies")
+	await wait_for("ranked lobbies loaded", func(): return not rb._loading, 15)
+	var vk := ""
+	for r in rb.list.rows:
+		if String(r.get("key", "")).begins_with("lobby:") and r.get("label") == "Vegeta":
+			vk = r["key"]
+	check("Vegeta's ranked lobby listed with his rating", vk != "" and "1000" in String(rb.list.row(vk).get("value", "")))
+	await shot("ranked_lobby_browser")
+	if vk != "":
+		await pick(vk, rb.list)
+		var rl: Control = top()
+		check("in a ranked lobby", rl != rb and rl.ranked)
+		check("title says FT2", "FT2" in app._title.text)
+		check("ranked lobby has its own music track", Music.current_track() == "ranked")
+		check("players are told it's first to 2", "\n".join(rl._chat).contains("FT2"))
+		await wait_for("both players in the ranked lobby", func(): return rl._koth_line_size() == 2, 30)
+		await wait_for("ratings from the ranked server", func(): return not rl._ranked.is_empty(), 20)
+		await frames(30)
+		await shot("ranked_lobby")
+		print("TOUR_EVENT ranked_ready")
+		await wait_for("ranked match running", func(): return rl._phase == "playing", 60)
+		await wait_for("ranked win reported and rated", func():
+			return "\n".join(rl._chat).contains(tr("Ranked win! Rating %+d.") % 16), 60)
+		await wait_for("profile shows the new rating", func(): return Ranked.rating("single") == 1016, 20)
+		await wait_for("back in the ranked lobby", func(): return rl._phase == "lobby", 30)
+		await frames(20)
+		await shot("ranked_after_match")
+		await leave_lobby(rl)
+		await wait_for("left the ranked lobby", func(): return app.top() == rb, 20)
+		await wait_for("Dolphin exited (ranked)", func(): return not Dolphin.is_running(), 10)
+	await back()   # ranked browser -> Ranked Match menu
+	await choose("Leaderboard")
+	lb = top()
+	await wait_for("leaderboard loaded again", func(): return not lb._loading, 15)
+	check("Goku leads Single Battle FT2 with 1016, 1-0", not lb._rows.is_empty()
+			and lb._rows[0].get("name") == "Goku" and int(lb._rows[0].get("rating", 0)) == 1016
+			and int(lb._rows[0].get("wins", 0)) == 1)
+	await shot("ranked_leaderboard")
+	await pick("board_region", lb.list)   # Global -> the first region (EA): nothing played there
+	await wait_for("region board loaded", func(): return not lb._loading, 15)
+	check("a region where nobody played is empty", lb._rows.is_empty())
+	lb.on_value("board_region", "EU")
+	await wait_for("EU board loaded", func(): return not lb._loading, 15)
+	check("EU (where the lobby was hosted) has both players", lb._rows.size() == 2)
+	lb.on_value("board_mode", "all")
+	await wait_for("all-time board loaded", func(): return not lb._loading, 15)
+	check("all-time record board", lb._rows.size() == 2 and not lb._rows[0].has("rating"))
+	await shot("ranked_leaderboard_alltime")
+	lb.on_value("board_mode", "single")
+	lb.on_value("board_region", "global")
+	await back()
+	await choose("Profile")
+	await wait_for("profile loaded", func(): return top()._status == "", 15)
+	await shot("ranked_profile")
+	await back()
+	await back()   # Ranked Match -> DRAGON NET
 
 	# --- Buffer Training: solo, boots the training state, buffer changed live ------------
 	var c: Control = top().carousel
