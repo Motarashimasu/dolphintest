@@ -102,6 +102,8 @@ press B again to leave.
   Team Battle by rating, or the all-time record, Global or per region (where the lobby was
   hosted); Open in browser shows the same on the website. Ranked lobbies have their own music
   track and background.
+  While logged in, selecting Ranked Match in the DRAGON NET menu slides in your rating plates
+  (Ranked Rating = Single Battle FT2, and Team Battle; `scripts/ui/rating_bumper.gd`).
 - **Buffer Training** (DRAGON NET > Buffer Training): a solo, unlisted lobby that boots
   `states\RDSPAF-BufferTraining.sst` (Training Mode) on its own, so you can feel a pad buffer
   like an online match's. Change the buffer in the lobby or from the Training Menu (hold

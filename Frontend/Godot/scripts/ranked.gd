@@ -114,6 +114,8 @@ func refresh() -> Dictionary:
 	if me.get("ok", false):
 		profile = me
 		Settings.set_value("ranked", "name", String(me["player"]["name"]))
+		for mode in ["single", "team"]:
+			Settings.set_value("ranked", "last_" + mode, rating(mode))
 		changed.emit()
 	return me
 
@@ -126,6 +128,8 @@ func logout() -> void:
 
 func _forget() -> void:
 	Settings.set_value("ranked", "token", "")
+	Settings.set_value("ranked", "last_single", 0)
+	Settings.set_value("ranked", "last_team", 0)
 	profile = {}
 	changed.emit()
 

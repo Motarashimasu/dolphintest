@@ -3,11 +3,13 @@ extends "res://scripts/screens/screen.gd"
 ## `action: Callable` (called on Accept) or `back: true`.
 
 const Carousel := preload("res://scripts/ui/carousel.gd")
+const RatingBumper := preload("res://scripts/ui/rating_bumper.gd")
 
 var title := ""
 var music := ""
 var items: Array = []
 var carousel: Control
+var bumper: Control      # the ranked rating plate, for menus with a `bumper: true` item
 var _start := 0
 
 
@@ -39,8 +41,27 @@ func on_enter() -> void:
 	carousel.position = Vector2(0, 112)
 	add_child(carousel)
 	carousel.set_items(items, _start)
-	carousel.changed.connect(func(_i): app.set_desc(screen_desc()))
+	carousel.changed.connect(func(_i):
+		app.set_desc(screen_desc())
+		_update_bumper())
 	carousel.activated.connect(_on_activated)
+	if items.any(func(it): return it.get("bumper", false)):
+		bumper = RatingBumper.new()
+		add_child(bumper)
+		_update_bumper()
+
+
+func on_resume() -> void:
+	super()
+	if bumper:
+		bumper.refresh()
+		_update_bumper()
+
+
+## The rating plate slides in while a `bumper: true` item (Ranked Match) is selected.
+func _update_bumper() -> void:
+	if bumper:
+		bumper.set_shown(bool(carousel.current().get("bumper", false)))
 
 
 func on_input(event: InputEvent) -> bool:

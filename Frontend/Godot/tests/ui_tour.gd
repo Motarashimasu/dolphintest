@@ -538,6 +538,15 @@ func _tour() -> void:
 	await shot("ranked_profile")
 	await back()
 	await back()   # Ranked Match -> DRAGON NET
+	# Logged in: the rating plate slides in while Ranked Match is selected, out when it isn't.
+	var nm: Control = top()
+	await wait_for("rating plate shown on Ranked Match", func():
+		return nm.bumper and nm.bumper.is_shown() and nm.bumper._values[0].text == "1016", 10)
+	await frames(30)
+	await shot("ranked_rating_bumper")
+	await press("ui_up")
+	await frames(30)
+	check("rating plate slides away off Ranked Match", not nm.bumper.is_shown())
 
 	# --- Buffer Training: solo, boots the training state, buffer changed live ------------
 	var c: Control = top().carousel

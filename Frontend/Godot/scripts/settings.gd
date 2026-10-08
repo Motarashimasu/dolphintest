@@ -60,7 +60,8 @@ var defaults := {
 	"gecko": {"custom": false, "enabled": []},
 	# DRAGON NET Ranked: the ranked server (Server/ranked) and this install's Discord session.
 	"ranked": {"server": "https://tecshideout.ct.ws/sparking/", "token": "", "name": "",
-		"mode": "single", "board_mode": "single", "board_region": "global"},
+		"mode": "single", "board_mode": "single", "board_region": "global",
+		"last_single": 0, "last_team": 0},   # last known ratings, for the menu's rating plate
 	"controller": {"preset": "auto"},    # auto, keep, or a preset name (scripts/controllers.gd)
 	"terminology": {"source": "https://docs.google.com/document/d/1QYI1z6ukEn-8PBvgysOUYB4-6EpmVy0HhpQmGjAmarU/mobilebasic"},
 }

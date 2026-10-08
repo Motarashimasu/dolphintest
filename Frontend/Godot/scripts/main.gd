@@ -379,7 +379,7 @@ func _netplay_menu() -> Control:
 		{"label": "Buffer Training", "glyph": "T", "color": "#3fbf6b",
 			"desc": "Play in Training Mode, with the option to practice with pad buffering to emulate an online environment, so you can be prepared for anything! near or far!",
 			"action": open_buffer_training},
-		{"label": "Ranked Match", "glyph": "R", "color": "#c94bd6",
+		{"label": "Ranked Match", "glyph": "R", "color": "#c94bd6", "bumper": true,
 			"desc": "Rated 1-on-1 matches with a leaderboard. Single Battle is first to 2 wins\n(FT2), Team Battle is one match. Needs a Discord login.",
 			"action": func(): push(_ranked_menu())},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
