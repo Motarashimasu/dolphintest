@@ -5,8 +5,9 @@ extends Control
 
 const Style := preload("res://scripts/ui/style.gd")
 
-const TARGET_X := 790.0     # where the plates rest (upper centre-right, the menu's empty space)
-const OFF_X := 1300.0       # off the right edge
+const SCREEN_W := 1280.0
+const OVERHANG := 40.0      # the square end runs this far past the right edge of the screen
+const OFF_X := 1300.0       # fully off the right edge
 const SLIDE := 0.28
 
 var _plates: Array[Control] = []
@@ -18,8 +19,9 @@ var _tween: Tween
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_plates.append(_plate(Vector2(440, 104), 136, "Ranked Rating", 30, 58))
-	_plates.append(_plate(Vector2(330, 74), 252, "Team Battle", 22, 40))
+	# Width includes the overhang: the visible part is OVERHANG narrower.
+	_plates.append(_plate(Vector2(480, 104), 136, "Single Battle", 30, 58))
+	_plates.append(_plate(Vector2(370, 74), 252, "Team Battle", 22, 40))
 	for p in _plates:
 		p.position.x = OFF_X
 		p.modulate.a = 0.0
@@ -33,10 +35,11 @@ func _plate(size: Vector2, y: float, title: String, title_size: int, value_size:
 	var plate := Panel.new()
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var body := Style.box(Color("#0e4a66"), 0, 4, Color("#8ff0b4"))
-	body.corner_radius_top_left = 12
-	body.corner_radius_bottom_left = 12
-	body.corner_radius_top_right = int(size.y / 2)
-	body.corner_radius_bottom_right = int(size.y / 2)
+	# Rounded end on the left; the square end sits past the right edge of the screen.
+	body.corner_radius_top_left = int(size.y / 2)
+	body.corner_radius_bottom_left = int(size.y / 2)
+	body.corner_radius_top_right = 0
+	body.corner_radius_bottom_right = 0
 	body.shadow_color = Color(0, 0, 0, 0.45)
 	body.shadow_size = 10
 	body.shadow_offset = Vector2(0, 5)
@@ -68,13 +71,13 @@ func _plate(size: Vector2, y: float, title: String, title_size: int, value_size:
 	plate.add_child(band)
 	var head := Style.label(title, title_size, Color("#fff1c4"), 6, Color("#8a3b06"), true)
 	head.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	Style.place(head, 22, 0, size.x - 44, size.y * 0.44)
+	Style.place(head, size.y * 0.42, 0, size.x - size.y * 0.42 - OVERHANG - 20, size.y * 0.44)
 	plate.add_child(head)
 
 	var value := Style.label("", value_size, Color("#ffb52e"), 9, Color("#4a1a00"), true, 3)
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	Style.place(value, 20, size.y * 0.30, size.x - 20 - size.y * 0.42, size.y * 0.72)
+	Style.place(value, size.y * 0.42, size.y * 0.30, size.x - size.y * 0.42 - OVERHANG - 24, size.y * 0.72)
 	plate.add_child(value)
 	_values.append(value)
 
@@ -106,7 +109,7 @@ func set_shown(on: bool) -> void:
 	for i in _plates.size():
 		var p := _plates[i]
 		var delay := 0.07 * i if on else 0.0
-		_tween.tween_property(p, "position:x", TARGET_X + (440 - p.size.x) if on else OFF_X, SLIDE).set_delay(delay)
+		_tween.tween_property(p, "position:x", SCREEN_W + OVERHANG - p.size.x if on else OFF_X, SLIDE).set_delay(delay)
 		_tween.tween_property(p, "modulate:a", 1.0 if on else 0.0, SLIDE * 0.8).set_delay(delay)
 
 
