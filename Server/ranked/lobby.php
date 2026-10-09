@@ -79,13 +79,14 @@ guard(function () {
         case 'list':
             settle_due();
             $mode = arg('mode');
-            $sql = 'SELECT * FROM lobbies WHERE closed = 0 AND heartbeat >= ?';
+            $sql = 'SELECT l.* FROM lobbies l JOIN players p ON p.id = l.host_id
+                    WHERE l.closed = 0 AND l.heartbeat >= ? AND p.banned = 0';
             $params = [now() - LOBBY_TIMEOUT];
             if ($mode !== null && $mode !== '' && $mode !== 'any') {
-                $sql .= ' AND mode = ?';
+                $sql .= ' AND l.mode = ?';
                 $params[] = valid_mode($mode);
             }
-            $st = $db->prepare($sql . ' ORDER BY created DESC LIMIT 100');
+            $st = $db->prepare($sql . ' ORDER BY l.created DESC LIMIT 100');
             $st->execute($params);
             $rows = [];
             foreach ($st->fetchAll() as $l) {

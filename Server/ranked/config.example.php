@@ -13,4 +13,7 @@ return [
     'discord_client_secret' => 'PUT-YOUR-DISCORD-CLIENT-SECRET-HERE',
     // Must match a Redirect added under OAuth2 > Redirects, exactly.
     'discord_redirect' => 'https://tecshideout.ct.ws/sparking/discord.php',
+
+    // Password for admin.php (12+ characters). Leave empty to turn the admin panel off.
+    'admin_key' => '',
 ];

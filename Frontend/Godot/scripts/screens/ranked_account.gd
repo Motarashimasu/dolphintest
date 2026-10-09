@@ -68,6 +68,12 @@ func build_rows() -> Array:
 		return rows
 	var p: Dictionary = Ranked.profile.get("player", {})
 	rows.append({"type": "info", "key": "name", "label": "Discord", "value": String(p.get("name", Ranked.display_name()))})
+	if p.get("banned", false):
+		rows.append({"type": "info", "key": "banned", "label": "Your ranked profile is suspended.",
+			"value": String(p.get("ban_reason", "")), "desc": "You can't play ranked matches until an admin lifts it."})
+	var season: Dictionary = Ranked.profile.get("season", {})
+	if not season.is_empty():
+		rows.append({"type": "info", "key": "season", "label": "Season", "value": String(season.get("name", ""))})
 	for mode in ["single", "team"]:
 		var r: Dictionary = Ranked.profile.get("ratings", {}).get(mode, {})
 		rows.append({"type": "info", "key": "rating_" + mode, "label": Ranked.mode_title(mode),

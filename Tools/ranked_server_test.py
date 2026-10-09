@@ -155,6 +155,85 @@ def login(server, who):
     return p, page
 
 
+def admin_checks(server, check, tokens):
+    """admin.php: sign in, edit stats, void a match, ban / unban, new season, log."""
+    import http.cookiejar
+    import re
+    server.write_config(admin_key="admin-test-key-123")
+    time.sleep(3)
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+
+    def page(q="", **form):
+        data = urllib.parse.urlencode(form).encode() if form else None
+        try:
+            with opener.open(server.url + "admin.php" + q, data=data, timeout=10) as r:
+                return r.read().decode()
+        except urllib.error.HTTPError as e:
+            return e.read().decode()
+
+    def act(**form):
+        csrf = re.search(r"name=csrf value='([0-9a-f]+)'", page("?p=players")).group(1)
+        return page("", csrf=csrf, **form)
+
+    def me(who):
+        return call(server, "me.php", tokens[who])[1]
+
+    check("admin: locked before signing in", "Sign in" in page() and "Players" not in page("?p=players").split("Sign in")[0][-50:])
+    check("admin: wrong password refused", "Wrong password" in page("", a="login", key="nope"))
+    page("", a="login", key="admin-test-key-123")
+    lst = page("?p=players")
+    check("admin: player list after signing in", "Goku" in lst and "Vegeta" in lst and "krillin" in lst)
+    gid = me("goku")["player"]["id"]
+    vid = me("vegeta")["player"]["id"]
+    kid = me("krillin")["player"]["id"]
+
+    act(a="stats", player=vid, mode="single", rating=1234, wins=7, losses=3)
+    check(f"admin: edit stats {me('vegeta')['ratings']['single']}",
+          me("vegeta")["ratings"]["single"] == {"rating": 1234, "wins": 7, "losses": 3})
+
+    # Void the Team Battle match Goku won against krillin (+16 / -16): both back to 1000, 0-0.
+    tm = re.findall(r"name=match value=(\d+)>", page("?p=matches&state=done"))
+    team_before = (me("goku")["ratings"]["team"], me("krillin")["ratings"]["team"])
+    life_before = me("goku")["lifetime"]
+    act(a="void", match=tm[0])
+    check(f"admin: void undoes the rating change {team_before} -> {me('goku')['ratings']['team']}",
+          me("goku")["ratings"]["team"] == {"rating": 1000, "wins": 0, "losses": 0}
+          and me("krillin")["ratings"]["team"] == {"rating": 1000, "wins": 0, "losses": 0})
+    check("admin: void also undoes the all-time record",
+          me("goku")["lifetime"]["wins"] == life_before["wins"] - 1)
+
+    act(a="ban", player=kid, reason="exploiting")
+    code, b = call(server, "lobby.php", tokens["krillin"], action="list")
+    check(f"admin: banned player can't play ranked ({code})", code in (401, 403))
+    k2, _ = login(server, "krillin")
+    _, kme = call(server, "me.php", k2["token"])
+    check("admin: banned player sees why", kme["player"]["banned"] is True and kme["player"]["ban_reason"] == "exploiting")
+    _, lb = call(server, "leaderboard.php?mode=all&region=global")
+    check("admin: banned player off the leaderboards", all(r["name"] != "krillin" for r in lb["rows"]))
+    act(a="unban", player=kid)
+    _, kme = call(server, "me.php", k2["token"])
+    check("admin: unban", kme["player"]["banned"] is False)
+
+    life = me("goku")["lifetime"]
+    out = act(a="season", name="Season 2", confirm="nope")
+    check("admin: new season needs RESET typed", "Type RESET" in out and me("vegeta")["ratings"]["single"]["rating"] == 1234)
+    act(a="season", name="Season 2", confirm="RESET")
+    v = me("vegeta")
+    check(f"admin: new season resets ratings and records {v['ratings']}",
+          v["ratings"]["single"] == {"rating": 1000, "wins": 0, "losses": 0} and v["season"]["name"] == "Season 2")
+    check("admin: the all-time record survives the reset", me("goku")["lifetime"] == life)
+    _, lb = call(server, "leaderboard.php?mode=single&region=global")
+    check("admin: season boards start empty", lb["rows"] == [] and lb["season"]["number"] == 2)
+    seasons = page("?p=seasons")
+    check("admin: past season archived with final standings", "Season 1" in seasons and "Final standings" in seasons)
+    sid = re.search(r"view=(\d+)", seasons).group(1)
+    check("admin: final standings kept", "1234" in page(f"?p=seasons&view={sid}"))
+    log = page("?p=log")
+    check("admin: every action logged", all(w in log for w in ("edit_stats", "void_match", "ban", "unban", "new_season")))
+    server.write_config(admin_key="")
+
+
 def main():
     work = tempfile.mkdtemp(prefix="ranked-")
     server = RankedServer(work)
@@ -275,9 +354,12 @@ def main():
         call(server, "lobby.php", G, action="close", lobby=lob)
         _, ls = call(server, "lobby.php", V, action="list")
         check("closed lobby unlisted", all(x["id"] != lob for x in ls["lobbies"]))
+        G2 = login(server, "goku")[0]["token"]   # a second session (the first logs out next)
         call(server, "auth.php", G, action="logout")
         code, _ = call(server, "me.php", G)
         check("logged out", code == 401)
+
+        admin_checks(server, check, {"goku": G2, "vegeta": V, "krillin": K})
 
         server.write_config(discord_client_secret="PUT-YOUR-DISCORD-CLIENT-SECRET-HERE")
         time.sleep(3)   # PHP's file cache notices the change after a moment

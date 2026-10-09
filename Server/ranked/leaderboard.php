@@ -13,6 +13,6 @@ guard(function () {
     if ($region !== 'global') {
         $region = valid_region($region);
     }
-    out(['ok' => true, 'mode' => $mode, 'region' => $region,
+    out(['ok' => true, 'mode' => $mode, 'region' => $region, 'season' => season_info(),
          'rows' => leaderboard($mode, $region, (int)arg('limit', '100'))]);
 });

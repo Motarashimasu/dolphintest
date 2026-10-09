@@ -7,9 +7,12 @@
 // reports agree; a lone report counts after a grace period (the other player left / crashed);
 // reports that disagree void the match. Leaving a running match counts as a loss.
 // Ratings: Elo, separate for Single Battle and Team Battle, starting at 1000.
+// Seasons: ratings, records and region records belong to the current season (admin.php starts
+// a new one: final standings are archived, everyone goes back to 1000 and 0-0). The career table
+// (the all-time record) never resets. Banned players can't play ranked and aren't listed.
 declare(strict_types=1);
 
-const SCHEMA_VERSION = '1';
+const SCHEMA_VERSION = '2';
 const MODES = ['single', 'team'];
 const REGIONS = ['EA', 'CN', 'EU', 'NA', 'SA', 'OC', 'AF'];
 const START_RATING = 1000;
@@ -90,6 +93,13 @@ function migrate(PDO $db): void
             link VARCHAR(16) NOT NULL, created INTEGER NOT NULL, heartbeat INTEGER NOT NULL,
             guest_seen INTEGER NOT NULL DEFAULT 0, closed INTEGER NOT NULL DEFAULT 0,
             match_id INTEGER NULL, last_match INTEGER NULL)",
+        "career (player_id INTEGER NOT NULL, mode VARCHAR(8) NOT NULL,
+            region VARCHAR(4) NOT NULL, wins INTEGER NOT NULL DEFAULT 0,
+            losses INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (player_id, mode, region))",
+        "seasons (id $id, number INTEGER NOT NULL, name VARCHAR(64) NOT NULL,
+            started INTEGER NOT NULL, ended INTEGER NOT NULL, standings TEXT NOT NULL)",
+        "admin_log (id $id, at INTEGER NOT NULL, action VARCHAR(32) NOT NULL,
+            detail VARCHAR(255) NOT NULL)",
         "matches (id $id, lobby_id INTEGER NOT NULL, mode VARCHAR(8) NOT NULL,
             region VARCHAR(4) NOT NULL, p1 INTEGER NOT NULL, p2 INTEGER NOT NULL,
             state VARCHAR(8) NOT NULL, r1 VARCHAR(8) NULL, r2 VARCHAR(8) NULL,
@@ -99,6 +109,27 @@ function migrate(PDO $db): void
     ];
     foreach ($tables as $t) {
         $db->exec("CREATE TABLE IF NOT EXISTS $t$tail");
+    }
+    // Version 2 columns (bans, seasons). Already there on a fresh install from these tables'
+    // older versions? ALTER fails harmlessly then.
+    foreach (['players ADD COLUMN banned INTEGER NOT NULL DEFAULT 0',
+              'players ADD COLUMN ban_reason VARCHAR(255) NULL',
+              'matches ADD COLUMN season INTEGER NOT NULL DEFAULT 1'] as $alter) {
+        try {
+            $db->exec("ALTER TABLE $alter");
+        } catch (Throwable $e) {
+            // column exists
+        }
+    }
+    // The all-time record starts from everything played so far.
+    if (!(int)$db->query('SELECT COUNT(*) FROM career')->fetchColumn()) {
+        $db->exec('INSERT INTO career (player_id, mode, region, wins, losses)
+                   SELECT player_id, mode, region, wins, losses FROM region_records');
+    }
+    if ($db->query("SELECT v FROM meta WHERE k = 'season'")->fetchColumn() === false) {
+        $db->prepare('INSERT INTO meta (k, v) VALUES (?, ?)')->execute(['season', '1']);
+        $db->prepare('INSERT INTO meta (k, v) VALUES (?, ?)')->execute(['season_name', 'Season 1']);
+        $db->prepare('INSERT INTO meta (k, v) VALUES (?, ?)')->execute(['season_started', (string)now()]);
     }
     $db->prepare('DELETE FROM meta WHERE k = ?')->execute(['schema']);
     $db->prepare('INSERT INTO meta (k, v) VALUES (?, ?)')->execute(['schema', SCHEMA_VERSION]);
@@ -154,7 +185,8 @@ function token_hash(string $token): string
 }
 
 /** The logged-in player (X-Sparking-Token header, or "token" in the body), or a 401. */
-function auth(): array
+/** The logged-in player, or a 401. Banned players get a 403 unless $allow_banned. */
+function auth(bool $allow_banned = false): array
 {
     $token = $_SERVER['HTTP_X_SPARKING_TOKEN'] ?? arg('token') ?? '';
     if (strlen($token) < 32) {
@@ -170,6 +202,9 @@ function auth(): array
     $t = now();
     db()->prepare('UPDATE sessions SET last_used = ? WHERE token_hash = ?')->execute([$t, token_hash($token)]);
     db()->prepare('UPDATE players SET last_seen = ? WHERE id = ?')->execute([$t, $p['id']]);
+    if ((int)($p['banned'] ?? 0) && !$allow_banned) {
+        fail('banned', 403, ['reason' => (string)($p['ban_reason'] ?? '')]);
+    }
     return $p;
 }
 
@@ -238,21 +273,127 @@ function elo_changes(int $winner_rating, int $loser_rating): array
     return [$d, -$d];
 }
 
-function add_record(int $player_id, string $mode, string $region, bool $won, int $delta): void
+/** +1 (or -1) win or loss in region_records / career, creating the row when needed. */
+function bump_record(string $table, int $player_id, string $mode, string $region, string $col, int $by): void
 {
     $db = db();
-    rating_row($player_id, $mode);
-    $col = $won ? 'wins' : 'losses';
-    $db->prepare("UPDATE ratings SET rating = rating + ?, $col = $col + 1 WHERE player_id = ? AND mode = ?")
-        ->execute([$delta, $player_id, $mode]);
-    $st = $db->prepare('SELECT 1 FROM region_records WHERE player_id = ? AND mode = ? AND region = ?');
+    $st = $db->prepare("SELECT 1 FROM $table WHERE player_id = ? AND mode = ? AND region = ?");
     $st->execute([$player_id, $mode, $region]);
     if (!$st->fetchColumn()) {
-        $db->prepare('INSERT INTO region_records (player_id, mode, region, wins, losses) VALUES (?, ?, ?, 0, 0)')
+        $db->prepare("INSERT INTO $table (player_id, mode, region, wins, losses) VALUES (?, ?, ?, 0, 0)")
             ->execute([$player_id, $mode, $region]);
     }
-    $db->prepare("UPDATE region_records SET $col = $col + 1 WHERE player_id = ? AND mode = ? AND region = ?")
-        ->execute([$player_id, $mode, $region]);
+    $db->prepare("UPDATE $table SET $col = CASE WHEN $col + ? < 0 THEN 0 ELSE $col + ? END
+                  WHERE player_id = ? AND mode = ? AND region = ?")
+        ->execute([$by, $by, $player_id, $mode, $region]);
+}
+
+function add_record(int $player_id, string $mode, string $region, bool $won, int $delta): void
+{
+    rating_row($player_id, $mode);
+    $col = $won ? 'wins' : 'losses';
+    db()->prepare("UPDATE ratings SET rating = rating + ?, $col = $col + 1 WHERE player_id = ? AND mode = ?")
+        ->execute([$delta, $player_id, $mode]);
+    bump_record('region_records', $player_id, $mode, $region, $col, 1);
+    bump_record('career', $player_id, $mode, $region, $col, 1);
+}
+
+// --- Seasons / admin --------------------------------------------------------------------------
+
+function meta_get(string $k, string $default = ''): string
+{
+    $st = db()->prepare('SELECT v FROM meta WHERE k = ?');
+    $st->execute([$k]);
+    $v = $st->fetchColumn();
+    return $v === false ? $default : (string)$v;
+}
+
+function meta_set(string $k, string $v): void
+{
+    db()->prepare('DELETE FROM meta WHERE k = ?')->execute([$k]);
+    db()->prepare('INSERT INTO meta (k, v) VALUES (?, ?)')->execute([$k, $v]);
+}
+
+function current_season(): int
+{
+    return (int)meta_get('season', '1');
+}
+
+function season_info(): array
+{
+    return ['number' => current_season(), 'name' => meta_get('season_name', 'Season 1'),
+            'started' => (int)meta_get('season_started', '0')];
+}
+
+function admin_log(string $action, string $detail): void
+{
+    db()->prepare('INSERT INTO admin_log (at, action, detail) VALUES (?, ?, ?)')
+        ->execute([now(), substr($action, 0, 32), mb_substr($detail, 0, 255)]);
+}
+
+/** Undoes a counted match: its rating changes and records (this season's only if it was played
+ *  this season; the all-time record always). The match becomes void. */
+function void_match(array $m, string $reason): bool
+{
+    $db = db();
+    $db->beginTransaction();
+    try {
+        $claim = $db->prepare("UPDATE matches SET state = 'void', reason = ? WHERE id = ? AND state = 'done'");
+        $claim->execute([$reason, $m['id']]);
+        if ($claim->rowCount() !== 1) {
+            $db->rollBack();
+            return false;
+        }
+        $same_season = (int)($m['season'] ?? 1) === current_season();
+        foreach ([[(int)$m['p1'], (int)$m['d1']], [(int)$m['p2'], (int)$m['d2']]] as [$pid, $delta]) {
+            $col = (int)$m['winner'] === $pid ? 'wins' : 'losses';
+            if ($same_season) {
+                rating_row($pid, $m['mode']);
+                $db->prepare("UPDATE ratings SET rating = rating - ?,
+                              $col = CASE WHEN $col > 0 THEN $col - 1 ELSE 0 END
+                              WHERE player_id = ? AND mode = ?")->execute([$delta, $pid, $m['mode']]);
+                bump_record('region_records', $pid, $m['mode'], $m['region'], $col, -1);
+            }
+            bump_record('career', $pid, $m['mode'], $m['region'], $col, -1);
+        }
+        $db->commit();
+        return true;
+    } catch (Throwable $e) {
+        $db->rollBack();
+        throw $e;
+    }
+}
+
+/** Archives the season's final standings, then everyone back to 1000 and 0-0. */
+function start_new_season(string $new_name): int
+{
+    $db = db();
+    // Matches still running don't belong to either season.
+    foreach ($db->query("SELECT * FROM matches WHERE state = 'live'")->fetchAll() as $m) {
+        finish_match($m, null, 'season_reset');
+    }
+    $old = season_info();
+    $standings = [];
+    foreach (MODES as $mode) {
+        $standings[$mode] = leaderboard($mode, 'global', 200);
+    }
+    $db->beginTransaction();
+    try {
+        $db->prepare('INSERT INTO seasons (number, name, started, ended, standings) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$old['number'], $old['name'], $old['started'], now(),
+                       json_encode($standings, JSON_UNESCAPED_UNICODE)]);
+        $db->prepare('UPDATE ratings SET rating = ?, wins = 0, losses = 0')->execute([START_RATING]);
+        $db->exec('DELETE FROM region_records');
+        $next = $old['number'] + 1;
+        meta_set('season', (string)$next);
+        meta_set('season_name', $new_name !== '' ? mb_substr($new_name, 0, 64) : "Season $next");
+        meta_set('season_started', (string)now());
+        $db->commit();
+        return $next;
+    } catch (Throwable $e) {
+        $db->rollBack();
+        throw $e;
+    }
 }
 
 /** Ends a live match: $winner = player id, or null to void it. Safe to call twice. */
@@ -365,23 +506,17 @@ function leaderboard(string $mode, string $region, int $limit = 100): array
     $limit = max(1, min(200, $limit));
     $global = $region === 'global';
     if ($mode === 'all') {
-        if ($global) {
-            $st = $db->prepare("SELECT p.id, p.name, SUM(r.wins) AS wins, SUM(r.losses) AS losses
-                FROM ratings r JOIN players p ON p.id = r.player_id
-                GROUP BY p.id, p.name HAVING SUM(r.wins) + SUM(r.losses) > 0
-                ORDER BY wins DESC, losses ASC, p.name ASC LIMIT $limit");
-            $st->execute();
-        } else {
-            $st = $db->prepare("SELECT p.id, p.name, SUM(r.wins) AS wins, SUM(r.losses) AS losses
-                FROM region_records r JOIN players p ON p.id = r.player_id WHERE r.region = ?
-                GROUP BY p.id, p.name HAVING SUM(r.wins) + SUM(r.losses) > 0
-                ORDER BY wins DESC, losses ASC, p.name ASC LIMIT $limit");
-            $st->execute([$region]);
-        }
+        // The all-time record: every season, every mode (career never resets).
+        $where = $global ? '' : 'AND r.region = ?';
+        $st = $db->prepare("SELECT p.id, p.name, SUM(r.wins) AS wins, SUM(r.losses) AS losses
+            FROM career r JOIN players p ON p.id = r.player_id WHERE p.banned = 0 $where
+            GROUP BY p.id, p.name HAVING SUM(r.wins) + SUM(r.losses) > 0
+            ORDER BY wins DESC, losses ASC, p.name ASC LIMIT $limit");
+        $st->execute($global ? [] : [$region]);
     } elseif ($global) {
         $st = $db->prepare("SELECT p.id, p.name, r.rating, r.wins, r.losses
             FROM ratings r JOIN players p ON p.id = r.player_id
-            WHERE r.mode = ? AND r.wins + r.losses > 0
+            WHERE r.mode = ? AND r.wins + r.losses > 0 AND p.banned = 0
             ORDER BY r.rating DESC, r.wins DESC, p.name ASC LIMIT $limit");
         $st->execute([$mode]);
     } else {
@@ -389,7 +524,7 @@ function leaderboard(string $mode, string $region, int $limit = 100): array
         $st = $db->prepare("SELECT p.id, p.name, r.rating, g.wins, g.losses
             FROM region_records g JOIN players p ON p.id = g.player_id
             JOIN ratings r ON r.player_id = g.player_id AND r.mode = g.mode
-            WHERE g.mode = ? AND g.region = ? AND g.wins + g.losses > 0
+            WHERE g.mode = ? AND g.region = ? AND g.wins + g.losses > 0 AND p.banned = 0
             ORDER BY r.rating DESC, g.wins DESC, p.name ASC LIMIT $limit");
         $st->execute([$mode, $region]);
     }

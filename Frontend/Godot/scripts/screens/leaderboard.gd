@@ -3,6 +3,7 @@ extends "res://scripts/screens/form_screen.gd"
 ## (wins across every mode); Global or one region (where the ranked lobby was hosted).
 
 var _rows: Array = []
+var _season := ""
 var _loading := false
 var _error := ""
 
@@ -34,6 +35,7 @@ func _load() -> void:
 		return
 	_loading = false
 	_rows = res.get("rows", []) if res.get("ok", false) else []
+	_season = String(res.get("season", {}).get("name", "")) if res.get("ok", false) else ""
 	_error = "" if res.get("ok", false) else Ranked.error_text(String(res.get("error", "")))
 	list.set_rows(build_rows(), list.current_key())
 
@@ -52,6 +54,9 @@ func build_rows() -> Array:
 			"value": Settings.get_value("ranked", "board_region"),
 			"desc": "Global: every region. A region: ranked lobbies hosted there."},
 	]
+	if _season != "" and mode != "all":
+		rows.append({"type": "info", "key": "season", "label": "Season", "value": _season,
+			"desc": "Ratings and records reset each season; the all-time record keeps everything."})
 	if _loading:
 		rows.append({"type": "info", "key": "status", "label": "Loading the leaderboard...", "value": ""})
 	elif _error != "":

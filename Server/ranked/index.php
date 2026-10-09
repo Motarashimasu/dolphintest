@@ -13,10 +13,12 @@ $region = $region === 'GLOBAL' || !isset($region_names[$region]) ? 'global' : $r
 try {
     settle_due();
     $rows = leaderboard($mode, $region, 100);
+    $season = season_info()['name'];
     $error = '';
 } catch (Throwable $e) {
     error_log('ranked index: ' . $e->getMessage());
     $rows = [];
+    $season = '';
     $error = 'The leaderboard is unavailable right now.';
 }
 $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
@@ -40,6 +42,7 @@ tr:nth-child(even) td{background:rgba(0,0,0,.15)}td.n{text-align:right;font-vari
 .empty,.err{color:var(--muted);padding:24px;text-align:center}.err{color:#e8663d}
 </style></head><body><main>
 <h1>DRAGON NET Ranked</h1>
+<?php if ($season !== '' && $mode !== 'all'): ?><p style="color:var(--gold);margin:-8px 0 14px"><?= $h($season) ?></p><?php endif ?>
 <form method="get">
   <select name="mode" aria-label="Mode">
     <?php foreach ($modes as $k => $v): ?><option value="<?= $h($k) ?>"<?= $k === $mode ? ' selected' : '' ?>><?= $h($v) ?></option><?php endforeach ?>

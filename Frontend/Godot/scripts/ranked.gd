@@ -154,5 +154,6 @@ static func error_text(code: String) -> String:
 		"own_lobby": "That's your own lobby.",
 		"no_opponent": "Your opponent hasn't checked in with the ranked server yet.",
 		"database_error": "The ranked server had a problem. Try again in a moment.",
+		"banned": "Your ranked profile is suspended.",
 	}
 	return TranslationServer.translate(t.get(code, code.replace("_", " ")))

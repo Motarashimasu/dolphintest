@@ -68,9 +68,9 @@ try {
                           VALUES (?, ?, ?, ?, 'stat-test', 'unknown', ?, ?, ?, 1)")
                 ->execute([$winner, $loser, $mode, $region, $t, $t, $t]);
             $lobby = (int)$db->lastInsertId();
-            $db->prepare("INSERT INTO matches (lobby_id, mode, region, p1, p2, state, created, r1, r1_at, r2, r2_at)
-                          VALUES (?, ?, ?, ?, ?, 'live', ?, 'win', ?, 'loss', ?)")
-                ->execute([$lobby, $mode, $region, $winner, $loser, $t, $t, $t]);
+            $db->prepare("INSERT INTO matches (lobby_id, mode, region, p1, p2, state, created, r1, r1_at, r2, r2_at, season)
+                          VALUES (?, ?, ?, ?, ?, 'live', ?, 'win', ?, 'loss', ?, ?)")
+                ->execute([$lobby, $mode, $region, $winner, $loser, $t, $t, $t, current_season()]);
             $mid = (int)$db->lastInsertId();
             $db->prepare('UPDATE lobbies SET match_id = ? WHERE id = ?')->execute([$mid, $lobby]);
             settle(get_match($mid));

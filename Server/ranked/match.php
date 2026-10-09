@@ -58,9 +58,9 @@ guard(function () {
                     out(['ok' => true, 'match' => match_json($m, $me)]);  // already started
                 }
             }
-            $db->prepare("INSERT INTO matches (lobby_id, mode, region, p1, p2, state, created)
-                          VALUES (?, ?, ?, ?, ?, 'live', ?)")
-                ->execute([$l['id'], $l['mode'], $l['region'], $me, (int)$l['guest_id'], now()]);
+            $db->prepare("INSERT INTO matches (lobby_id, mode, region, p1, p2, state, created, season)
+                          VALUES (?, ?, ?, ?, ?, 'live', ?, ?)")
+                ->execute([$l['id'], $l['mode'], $l['region'], $me, (int)$l['guest_id'], now(), current_season()]);
             $id = (int)$db->lastInsertId();
             $db->prepare('UPDATE lobbies SET match_id = ? WHERE id = ?')->execute([$id, $l['id']]);
             out(['ok' => true, 'match' => match_json(get_match($id), $me)]);
