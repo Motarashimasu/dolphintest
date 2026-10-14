@@ -11,8 +11,6 @@ func build_rows() -> Array:
 		{"type": "choice", "key": "aspect", "label": "Aspect ratio", "values": ["16:9", "4:3"],
 			"value": Settings.get_value("options", "aspect"),
 			"desc": "The picture's shape when the game starts.\nF3 switches it during a game."},
-		{"type": "toggle", "key": "hud_fix", "label": "Life bars fit the screen", "value": Settings.get_value("options", "hud_fix"),
-			"desc": "On a wide screen, the life bars and portraits keep their true shape\nand sit in the corners instead of being stretched. F4 switches it during a game."},
 		{"type": "number", "key": "music_volume", "label": "Music volume", "min": 0, "max": 10, "step": 1,
 			"value": Settings.get_value("options", "music_volume"),
 			"desc": "Menu music (0 = off). It fades out while you play\nand comes back when the game closes."},

@@ -192,7 +192,6 @@ protected:
   u32 GetRemainingIndices(OpcodeDecoder::Primitive primitive) const;
 
   void CalculateZSlope(NativeVertexFormat* format);
-  void ApplySparkingHudFix(NativeVertexFormat* format, bool hud_texture);  // SparkingHudFix.h
   void CalculateNormals(NativeVertexFormat* format);
 
   BitSet32 UsedTextures() const;
@@ -243,14 +242,6 @@ private:
 
   // CPU access tracking
   u32 m_draw_counter = 0;
-  struct SparkingHudRegion
-  {
-    float min_x, max_x, min_y, max_y;
-    int side;
-    bool orthographic;
-  };
-  std::vector<SparkingHudRegion> m_sparking_hud_regions;       // this frame
-  std::vector<SparkingHudRegion> m_sparking_hud_regions_prev;  // the last one
   u32 m_last_efb_copy_draw_counter = 0;
   bool m_unflushed_efb_copy = false;
   std::vector<u32> m_cpu_accesses_this_frame;

@@ -23,7 +23,6 @@
 #include "Core/HW/Memmap.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/SparkingHud.h"
-#include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "VideoCommon/VideoEvents.h"
 
@@ -401,17 +400,6 @@ void LoadWatches(const std::string& game_id, u16 revision)
   {
     collect(ini, "Sparking.Watch", &watch_specs);
     collect(ini, "Sparking.Trigger", &trigger_specs);
-  }
-  // HUD fix: [Sparking.HudFix] Textures = the HUD's texture hashes (local ini overrides).
-  {
-    std::string textures;
-    for (const Common::IniFile& ini : {SConfig::LoadDefaultGameIni(game_id, revision),
-                                       SConfig::LoadLocalGameIni(game_id, revision)})
-    {
-      if (const auto* section = ini.GetSection("Sparking.HudFix"))
-        section->Get("Textures", &textures, textures);
-    }
-    SetHudFixTextures(textures);
   }
 
   for (const auto& [name, spec] : watch_specs)

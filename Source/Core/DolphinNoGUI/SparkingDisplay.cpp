@@ -12,16 +12,11 @@
 
 #include <fmt/format.h>
 
-#include <cctype>
-#include <string>
-#include <vector>
 #include "Common/Config/Config.h"
-#include "Common/StringUtil.h"
 #include "Core/Config/GraphicsSettings.h"
 #include "Core/Core.h"
 #include "Core/System.h"
 #include "VideoCommon/PerformanceMetrics.h"
-#include "VideoCommon/SparkingHudFix.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "VideoCommon/VideoConfig.h"
 
@@ -64,30 +59,6 @@ void ToggleWidescreen()
   SetWidescreen(!s_wide);
 }
 
-void SetHudFix(bool on)
-{
-  SparkingHudFix::enabled = on;
-  Emit("hud_fix", Json().Add("enabled", on));
-}
-
-void ToggleHudFix()
-{
-  SetHudFix(!SparkingHudFix::enabled.load());
-}
-
-void SetHudFixTextures(const std::string& list)
-{
-  std::vector<std::string> hashes;
-  for (std::string item : SplitString(list, ','))
-  {
-    item = std::string(StripWhitespace(item));
-    std::ranges::transform(item, item.begin(), [](unsigned char c) { return std::tolower(c); });
-    if (!item.empty())
-      hashes.push_back(std::move(item));
-  }
-  SparkingHudFix::SetTextures(std::move(hashes));
-}
-
 void StartHotkeys(std::vector<Hotkey> hotkeys)
 {
 #ifdef _WIN32
@@ -103,8 +74,7 @@ void StartHotkeys(std::vector<Hotkey> hotkeys)
       {
         const int vk = hotkeys[i].key == HotkeyKey::F1 ? VK_F1 :
                        hotkeys[i].key == HotkeyKey::F2 ? VK_F2 :
-                       hotkeys[i].key == HotkeyKey::F3 ? VK_F3 :
-                                                         VK_F4;
+                                                         VK_F3;
         const bool down = (GetAsyncKeyState(vk) & 0x8000) != 0;
         if (down && !was_down[i])
         {

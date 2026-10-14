@@ -48,7 +48,7 @@ var defaults := {
 	"player": {"nickname": "Player", "region": "NA"},
 	"video": {"renderer": "Vulkan", "resolution": 3, "window": "1280x720", "borderless": false,
 		"menu_display": "fullscreen"},   # these menus: fullscreen (borderless) or window
-	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9", "hud_fix": true,
+	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9",
 		"hud": false,             # score bar offline (netplay always shows it)
 		"hud_health": true,       # health % in the corners
 		"show_fps": false, "minimize_while_playing": true, "music_volume": 7,
@@ -201,7 +201,6 @@ func common_args() -> PackedStringArray:
 	a.append_array(["--resolution", str(get_value("video", "resolution"))])
 	a.append_array(["--window", get_value("video", "window")])
 	a.append_array(["--aspect", get_value("options", "aspect")])
-	a.append_array(["--hud-fix", "on" if get_value("options", "hud_fix") else "off"])
 	a.append_array(["--hud-health", "on" if get_value("options", "hud_health") else "off"])
 	a.append_array(["--textures-dir", data_path("textures")])
 	a.append_array(["--textures", "Graphics=" + get_value("options", "graphics")])

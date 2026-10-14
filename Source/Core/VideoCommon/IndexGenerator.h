@@ -23,8 +23,6 @@ public:
   // returns numprimitives
   u32 GetNumVerts() const { return m_base_index; }
   u32 GetIndexLen() const { return static_cast<u32>(m_index_buffer_current - m_base_index_ptr); }
-  // Sparking: the batch's indices (GetIndexLen() of them), for the HUD fix.
-  const u16* GetIndexStart() const { return m_base_index_ptr; }
   u32 GetRemainingIndices(OpcodeDecoder::Primitive primitive) const;
 
 private:

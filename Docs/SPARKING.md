@@ -56,7 +56,6 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
 | `--aspect 16:9\|4:3` | `16:9` | Starting aspect ratio. **F3** in the game window (or the `aspect` command) flips it. See *Display*. |
-| `--hud-fix on\|off` | `on` | Life bars fit the screen: on a wide screen each HUD piece keeps its true width and sits at its edge (see *Display*). **F4** in the game window (or `hud_fix`) flips it. |
 | `--resolution <n>` | `3` | Internal resolution as a multiple of native: `3` = 1080p, `2` = 720p, `4` = 1440p, `6` = 4K. |
 | `--window <W>x<H>\|borderless` | `1280x720` | Size of the game window, or `borderless`: a frameless window covering the whole monitor (Windows; X11 uses its fullscreen). Rendering stays at `--resolution` regardless. |
 | `--netplay-saves host-readonly\|keep` | `host-readonly` | Netplay: every player plays on the **host's** save, which is never written back. |
@@ -190,7 +189,6 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `save_state <1-10>` / `load_state <1-10>` | solo | Slot save states |
 | `save_state_file <file.sst>` / `load_state_file <file.sst>` | solo | Capture / test a battle state in `--state-dir` |
 | `aspect 16:9\|4:3\|toggle` | any, in game (netplay too) | Same as F3. Each player chooses their own. |
-| `hud_fix on\|off\|toggle` | any (netplay too) | Life bars fit the screen; same as F4 → `hud_fix` event `{enabled}`. Visual only, per player. |
 | `watch_values` | any | Send every memory-watch value now |
 | `stats <ms>` | any | Start (`stats 500`) or stop (`stats 0`) the periodic `stats` event |
 | `textures <Group>=<Option>` | any, in game (netplay too) | Switch a texture variant live; `<Group>=` clears it (no option loaded) |
@@ -304,23 +302,6 @@ Sparking mode renders at 1080p (`--resolution 3`) with Dolphin's output forced t
 BT3's "16:9 aspect ratio") stays on whichever is chosen. The choice carries over to the next
 match in the same netplay session, and each netplay player has their own.
 
-**Life bars fit the screen** (`--hud-fix`, on by default; **F4** / `hud_fix`). The game draws
-its HUD for 4:3, so on a 16:9 screen the life bars and portraits get stretched with the picture.
-With the fix on, Dolphin narrows the HUD back to its true width and pins each side to its edge of
-the screen (`VideoCommon/SparkingHudFix.h`, applied in `VertexManagerBase::Flush` to the vertex
-positions on their way to the GPU):
-- HUD draws are found by their textures: `[Sparking.HudFix] Textures` in the game ini lists the
-  texture hashes (the `<hash>` in a custom texture's name, `tex1_256x64_<hash>_..._9`) of the
-  life-bar frames, fills and gauge pieces. They're the game's own textures, so this works with
-  any texture pack or none;
-- anything else drawn inside the area those textures covered (this frame or the last), with the
-  same kind of projection (the portraits, the ki-bar numbers) moves with them;
-- a piece (one quad) entirely on the left half is narrowed towards the left edge, one on the right
-  half towards the right edge; one crossing the middle (the timer) is untouched;
-- the amount is the game's aspect / the shown aspect (16:9 output of a 4:3 HUD: 0.75), so 4:3
-  output (F3) changes nothing. The 3D scene is never touched.
-It changes only what each player sees: never emulation, so it can't desync netplay.
-
 ## Texture variants (graphics pack, button layouts, ...)
 
 Normal Dolphin loads every texture under `Load/Textures/<GAMEID>/`, and when two files have the
@@ -354,8 +335,7 @@ Rules:
 - In game, `textures Graphics=Legacy` / `textures Buttons=Xbox` switch live; the new textures
   appear within a frame or two.
 - Hotkeys in the game window (Windows): **F1** cycles `@Graphics`, **F2** cycles `@Buttons`
-  (options in alphabetical order, wrapping), **F3** toggles 16:9 / 4:3, **F4** toggles the life
-  bars fitting the screen. Every switch emits a
+  (options in alphabetical order, wrapping), **F3** toggles 16:9 / 4:3. Every switch emits a
   `textures` event with the new selection so the frontend can remember it.
 - Purely visual, so each netplay player can use their own.
 - Godot settings: `--list-textures RDSPAF` gives the groups and choices; launch with one
@@ -446,7 +426,7 @@ Dolphin draws no UI of its own and feeds the overlay:
 
 Notes for the Godot side:
 - Make the overlay window non-activating/click-through except when it shows something
-  interactive (pause menu). While the overlay has focus, the F1-F4 hotkeys (which only fire
+  interactive (pause menu). While the overlay has focus, the F1-F3 hotkeys (which only fire
   when the game window is focused) don't trigger, so the overlay should offer the same actions
   via the `textures_cycle`, `textures` and `aspect` commands.
 - Use the game in a borderless/maximized window, not exclusive fullscreen (nothing can be drawn

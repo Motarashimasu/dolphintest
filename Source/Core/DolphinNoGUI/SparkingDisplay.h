@@ -7,7 +7,6 @@
 #pragma once
 
 #include <functional>
-#include <string>
 #include <vector>
 
 namespace Sparking
@@ -21,19 +20,11 @@ void ApplyAspectForBoot();
 void SetWidescreen(bool wide);
 void ToggleWidescreen();
 
-// Life bars / HUD fit to the screen's shape (VideoCommon/SparkingHudFix.h). Any thread; the
-// setters emit a "hud_fix" event.
-void SetHudFix(bool on);
-void ToggleHudFix();
-// The HUD's texture hashes, comma-separated, from the game ini's [Sparking.HudFix] Textures.
-void SetHudFixTextures(const std::string& list);
-
 enum class HotkeyKey
 {
   F1,
   F2,
   F3,
-  F4,
 };
 struct Hotkey
 {
