@@ -7,6 +7,7 @@
 #pragma once
 
 #include <functional>
+#include <string>
 #include <vector>
 
 namespace Sparking
@@ -24,8 +25,8 @@ void ToggleWidescreen();
 // setters emit a "hud_fix" event.
 void SetHudFix(bool on);
 void ToggleHudFix();
-// HUD strips (fractions of the screen height) from the game ini's [Sparking.HudFix].
-void SetHudFixBands(float top, float bottom);
+// The HUD's texture hashes, comma-separated, from the game ini's [Sparking.HudFix] Textures.
+void SetHudFixTextures(const std::string& list);
 
 enum class HotkeyKey
 {

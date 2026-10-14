@@ -305,19 +305,20 @@ BT3's "16:9 aspect ratio") stays on whichever is chosen. The choice carries over
 match in the same netplay session, and each netplay player has their own.
 
 **Life bars fit the screen** (`--hud-fix`, on by default; **F4** / `hud_fix`). The game draws
-its 2D HUD for 4:3, so on a 16:9 screen the life bars and portraits get stretched with the
-picture. With the fix on, Dolphin narrows each HUD piece back to its true width and pins it to its
-side of the screen (`VideoCommon/SparkingHudFix.h`, applied in `VertexManagerBase::Flush` to the
-vertex positions on their way to the GPU):
-- only flat 2D drawing (orthographic), full-width, and only while a battle is on screen (both
-  health watches read and someone is standing), so menus are never touched;
-- only pieces inside the HUD strips: `[Sparking.HudFix] Top` / `Bottom` in the game ini, as a
-  fraction of the screen height (BT3: the top 30%);
-- a piece is one connected primitive (a quad). Entirely on the left half: narrowed towards the
-  left edge; right half: towards the right edge; crossing the middle (the timer): untouched. So
-  mirrored or shared textures and every character's portrait work, with no texture list;
+its HUD for 4:3, so on a 16:9 screen the life bars and portraits get stretched with the picture.
+With the fix on, Dolphin narrows the HUD back to its true width and pins each side to its edge of
+the screen (`VideoCommon/SparkingHudFix.h`, applied in `VertexManagerBase::Flush` to the vertex
+positions on their way to the GPU):
+- HUD draws are found by their textures: `[Sparking.HudFix] Textures` in the game ini lists the
+  texture hashes (the `<hash>` in a custom texture's name, `tex1_256x64_<hash>_..._9`) of the
+  life-bar frames, fills and gauge pieces. They're the game's own textures, so this works with
+  any texture pack or none;
+- anything else drawn inside the area those textures covered (this frame or the last), with the
+  same kind of projection (the portraits, the ki-bar numbers) moves with them;
+- a piece (one quad) entirely on the left half is narrowed towards the left edge, one on the right
+  half towards the right edge; one crossing the middle (the timer) is untouched;
 - the amount is the game's aspect / the shown aspect (16:9 output of a 4:3 HUD: 0.75), so 4:3
-  output (F3) changes nothing.
+  output (F3) changes nothing. The 3D scene is never touched.
 It changes only what each player sees: never emulation, so it can't desync netplay.
 
 ## Texture variants (graphics pack, button layouts, ...)

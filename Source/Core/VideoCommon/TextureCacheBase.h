@@ -168,6 +168,10 @@ struct TCacheEntry
   u32 pending_efb_copy_height = 0;
 
   std::string texture_info_name = "";
+  // Dolphin-Sparking HUD fix: is this a HUD texture (checked for this list generation)?
+  u32 sparking_hud_generation = 0;
+  bool sparking_hud = false;
+  bool IsSparkingHud();
 
   VideoCommon::CustomAsset::TimeType last_load_time;
   std::shared_ptr<HiresTexture> hires_texture;

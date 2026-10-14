@@ -12,7 +12,11 @@
 
 #include <fmt/format.h>
 
+#include <cctype>
+#include <string>
+#include <vector>
 #include "Common/Config/Config.h"
+#include "Common/StringUtil.h"
 #include "Core/Config/GraphicsSettings.h"
 #include "Core/Core.h"
 #include "Core/System.h"
@@ -71,10 +75,17 @@ void ToggleHudFix()
   SetHudFix(!SparkingHudFix::enabled.load());
 }
 
-void SetHudFixBands(float top, float bottom)
+void SetHudFixTextures(const std::string& list)
 {
-  SparkingHudFix::band_top = std::clamp(top, 0.0f, 0.5f);
-  SparkingHudFix::band_bottom = std::clamp(bottom, 0.0f, 0.5f);
+  std::vector<std::string> hashes;
+  for (std::string item : SplitString(list, ','))
+  {
+    item = std::string(StripWhitespace(item));
+    std::ranges::transform(item, item.begin(), [](unsigned char c) { return std::tolower(c); });
+    if (!item.empty())
+      hashes.push_back(std::move(item));
+  }
+  SparkingHudFix::SetTextures(std::move(hashes));
 }
 
 void StartHotkeys(std::vector<Hotkey> hotkeys)

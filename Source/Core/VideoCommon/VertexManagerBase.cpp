@@ -568,6 +568,7 @@ void VertexManagerBase::Flush()
   std::vector<std::string> texture_names;
   Common::SmallVector<u32, 8> texture_units;
   std::array<SamplerState, 8> samplers;
+  bool hud_texture = false;  // Dolphin-Sparking HUD fix
   if (!m_cull_all)
   {
     if (!g_ActiveConfig.bGraphicMods)
@@ -577,6 +578,7 @@ void VertexManagerBase::Flush()
         const auto cache_entry = g_texture_cache->Load(i);
         if (!cache_entry)
           continue;
+        hud_texture = hud_texture || cache_entry->IsSparkingHud();
         const float custom_tex_scale = cache_entry->GetWidth() / float(cache_entry->native_width);
         samplers[i] = TextureCacheBase::GetSamplerState(
             i, custom_tex_scale, cache_entry->is_custom_tex, cache_entry->has_arbitrary_mips);
@@ -589,6 +591,7 @@ void VertexManagerBase::Flush()
         const auto cache_entry = g_texture_cache->Load(i);
         if (cache_entry)
         {
+          hud_texture = hud_texture || cache_entry->IsSparkingHud();
           if (!Common::Contains(texture_names, cache_entry->texture_info_name))
           {
             texture_names.push_back(cache_entry->texture_info_name);
@@ -604,7 +607,7 @@ void VertexManagerBase::Flush()
   }
   vertex_shader_manager.SetConstants(texture_names, xf_state_manager);
   if (!m_cull_all)
-    ApplySparkingHudFix(VertexLoaderManager::GetCurrentVertexFormat());  // after SetConstants
+    ApplySparkingHudFix(VertexLoaderManager::GetCurrentVertexFormat(), hud_texture);  // after SetConstants
   if (!bpmem.genMode.zfreeze)
   {
     // Must be done after VertexShaderManager::SetConstants()
@@ -766,16 +769,16 @@ void VertexManagerBase::CalculateZSlope(NativeVertexFormat* format)
   m_zslope.dirty = true;
 }
 
-void VertexManagerBase::ApplySparkingHudFix(NativeVertexFormat* format)
+void VertexManagerBase::ApplySparkingHudFix(NativeVertexFormat* format, bool hud_texture)
 {
-  if (!SparkingHudFix::enabled.load(std::memory_order_relaxed) ||
-      !SparkingHudFix::in_battle.load(std::memory_order_relaxed))
-  {
+  if (!SparkingHudFix::enabled.load(std::memory_order_relaxed))
     return;
-  }
-  if (xfmem.projection.type != ProjectionType::Orthographic ||
-      (m_current_primitive_type != PrimitiveType::Triangles &&
-       m_current_primitive_type != PrimitiveType::TriangleStrip))
+  // Only HUD draws: drawn with a HUD texture, or (portraits, numbers) drawn inside the area the
+  // HUD textures covered this frame or the last one. Nothing else is ever touched.
+  if (!hud_texture && m_sparking_hud_regions.empty() && m_sparking_hud_regions_prev.empty())
+    return;
+  if (m_current_primitive_type != PrimitiveType::Triangles &&
+      m_current_primitive_type != PrimitiveType::TriangleStrip)
   {
     return;
   }
@@ -800,7 +803,7 @@ void VertexManagerBase::ApplySparkingHudFix(NativeVertexFormat* format)
   {
     return;
   }
-  // Full-width 2D only (the whole screen's HUD; not a split view or a small sub-picture).
+  // Full-width drawing only (the whole screen's HUD; not a split view or a small sub-picture).
   const float half_w = std::abs(xfmem.viewport.wd);
   const float half_h = std::abs(xfmem.viewport.ht);
   if (half_w * 2.0f < 560.0f || half_h < 1.0f)
@@ -810,26 +813,27 @@ void VertexManagerBase::ApplySparkingHudFix(NativeVertexFormat* format)
   const u32 default_mtx = g_main_cp_state.matrix_index_a.PosNormalMtxIdx;
   struct Vert
   {
-    float fx, fy;      // 0..1 across the viewport, from the left / top
-    float dfx_dx;      // change of fx per unit of model-space x (0 = can't move this one)
+    float fx, fy;  // 0..1 across the viewport, from the left / top
+    float dfx_dx;  // change of fx per unit of model-space x (0 = can't move this one)
   };
   std::vector<Vert> verts(num_verts);
   const auto clip = [&](const float* pos, u32 mtx, float* fx, float* fy) {
     float out[4];
     vertex_shader_manager.TransformToClipSpace(pos, out, mtx);
-    if (out[3] == 0.0f)
+    if (!(out[3] > 0.0f))
       return false;
     const float sx = out[0] / out[3] * xfmem.viewport.wd + xfmem.viewport.xOrig;
     const float sy = out[1] / out[3] * xfmem.viewport.ht + xfmem.viewport.yOrig;
     *fx = (sx - (xfmem.viewport.xOrig - half_w)) / (2.0f * half_w);
     *fy = (sy - (xfmem.viewport.yOrig - half_h)) / (2.0f * half_h);
-    return true;
+    return std::isfinite(*fx) && std::isfinite(*fy);
   };
   for (u32 i = 0; i < num_verts; ++i)
   {
     u8* v = m_base_buffer_pointer + static_cast<size_t>(i) * stride;
     float pos[3] = {0.0f, 0.0f, 0.0f};
-    std::memcpy(pos, v + decl.position.offset, sizeof(float) * std::min(decl.position.components, 3));
+    std::memcpy(pos, v + decl.position.offset,
+                sizeof(float) * std::min(decl.position.components, 3));
     const u32 mtx = decl.posmtx.enable ? (v[decl.posmtx.offset] & 0x3f) : default_mtx;
     Vert& out = verts[i];
     out.dfx_dx = 0.0f;
@@ -838,8 +842,11 @@ void VertexManagerBase::ApplySparkingHudFix(NativeVertexFormat* format)
     // One unit to the right in model space: how far does it move on screen (and only sideways)?
     float moved[3] = {pos[0] + 1.0f, pos[1], pos[2]};
     float fx1, fy1;
-    if (clip(moved, mtx, &fx1, &fy1) && std::abs(fy1 - out.fy) < 1e-4f * std::abs(fx1 - out.fx))
+    if (clip(moved, mtx, &fx1, &fy1) && std::abs(fx1 - out.fx) > 1e-7f &&
+        std::abs(fy1 - out.fy) < 1e-3f * std::abs(fx1 - out.fx))
+    {
       out.dfx_dx = fx1 - out.fx;
+    }
   }
 
   // Pieces: vertices connected by the batch's primitives (one quad = one piece).
@@ -887,6 +894,7 @@ void VertexManagerBase::ApplySparkingHudFix(NativeVertexFormat* format)
   {
     float min_x = 2.0f, max_x = -2.0f, min_y = 2.0f, max_y = -2.0f;
     bool movable = true;
+    int side = 0;  // -1 left half, 1 right half, 0 = leave alone
   };
   std::vector<Piece> pieces(num_verts);
   for (u32 i = 0; i < num_verts; ++i)
@@ -899,23 +907,56 @@ void VertexManagerBase::ApplySparkingHudFix(NativeVertexFormat* format)
     p.movable = p.movable && verts[i].dfx_dx != 0.0f;
   }
 
-  const float top = SparkingHudFix::band_top.load(std::memory_order_relaxed);
-  const float bottom = SparkingHudFix::band_bottom.load(std::memory_order_relaxed);
   constexpr float EDGE = 0.002f;
+  constexpr float MARGIN = 0.01f;
+  const bool orthographic = xfmem.projection.type == ProjectionType::Orthographic;
+  const auto inside_hud = [&](const Piece& p, int side) {
+    for (const auto* regions : {&m_sparking_hud_regions, &m_sparking_hud_regions_prev})
+    {
+      for (const SparkingHudRegion& r : *regions)
+      {
+        if (r.side == side && r.orthographic == orthographic && p.min_x >= r.min_x - MARGIN && p.max_x <= r.max_x + MARGIN &&
+            p.min_y >= r.min_y - MARGIN && p.max_y <= r.max_y + MARGIN)
+        {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  for (u32 i = 0; i < num_verts; ++i)
+  {
+    if (find(i) != i)
+      continue;
+    Piece& p = pieces[i];
+    // Whole piece on the screen, on one half; crossing the middle (the timer): as drawn.
+    if (!p.movable || p.min_x < -EDGE || p.max_x > 1.0f + EDGE || p.min_y < -EDGE ||
+        p.max_y > 1.0f + EDGE)
+    {
+      continue;
+    }
+    const int side = p.max_x <= 0.5f + EDGE ? -1 : p.min_x >= 0.5f - EDGE ? 1 : 0;
+    if (side == 0)
+      continue;
+    if (hud_texture)
+    {
+      if (m_sparking_hud_regions.size() < 64)
+        m_sparking_hud_regions.push_back({p.min_x, p.max_x, p.min_y, p.max_y, side, orthographic});
+      p.side = side;
+    }
+    else if (inside_hud(p, side))
+    {
+      p.side = side;
+    }
+  }
+
   for (u32 i = 0; i < num_verts; ++i)
   {
     const Piece& p = pieces[find(i)];
-    const bool in_band = (top > 0.0f && p.max_y <= top + EDGE) ||
-                         (bottom > 0.0f && p.min_y >= 1.0f - bottom - EDGE);
-    if (!p.movable || !in_band)
+    if (p.side == 0)
       continue;
-    float target;
-    if (p.max_x <= 0.5f + EDGE)
-      target = verts[i].fx * squeeze;  // left half: true width, pinned to the left edge
-    else if (p.min_x >= 0.5f - EDGE)
-      target = 1.0f - (1.0f - verts[i].fx) * squeeze;  // right half: pinned to the right edge
-    else
-      continue;  // crosses the middle (the timer): as the game drew it
+    const float target = p.side < 0 ? verts[i].fx * squeeze :  // true width, at the left edge
+                             1.0f - (1.0f - verts[i].fx) * squeeze;  // at the right edge
     u8* v = m_base_buffer_pointer + static_cast<size_t>(i) * stride;
     float x;
     std::memcpy(&x, v + decl.position.offset, sizeof(float));
@@ -1162,6 +1203,11 @@ void VertexManagerBase::OnEFBCopyToRAM()
 
 void VertexManagerBase::OnEndFrame()
 {
+  // Dolphin-Sparking HUD fix: the HUD area seen this frame (kept one more frame, for HUD parts
+  // drawn before the textures that mark it).
+  m_sparking_hud_regions_prev.swap(m_sparking_hud_regions);
+  m_sparking_hud_regions.clear();
+
   m_draw_counter = 0;
   m_last_efb_copy_draw_counter = 0;
   m_scheduled_command_buffer_kicks.clear();

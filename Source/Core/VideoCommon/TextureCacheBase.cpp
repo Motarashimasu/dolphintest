@@ -50,6 +50,7 @@
 #include "VideoCommon/Resources/CustomResourceManager.h"
 #include "VideoCommon/ShaderCache.h"
 #include "VideoCommon/Statistics.h"
+#include "VideoCommon/SparkingHudFix.h"
 #include "VideoCommon/TMEM.h"
 #include "VideoCommon/TextureConversionShader.h"
 #include "VideoCommon/TextureConverterShaderGen.h"
@@ -1306,6 +1307,9 @@ TCacheEntry* TextureCacheBase::LoadImpl(u32 stage, bool force_reload)
       action->OnTextureLoad(&texture_load);
     }
   }
+  // Dolphin-Sparking HUD fix: name the texture so the HUD's textures can be recognised.
+  if (entry->texture_info_name.empty() && SparkingHudFix::enabled.load(std::memory_order_relaxed))
+    entry->texture_info_name = texture_info.CalculateTextureName().GetFullName();
   m_bound_textures[texture_info.GetStage()] = entry;
 
   // We need to keep track of invalided textures until they have actually been replaced or
@@ -1630,6 +1634,18 @@ RcTcacheEntry TextureCacheBase::GetTexture(const int textureCacheSafetyColorSamp
   entry->last_load_time = load_time;
   entry->texture_info_name = std::move(texture_name);
   return entry;
+}
+
+bool TCacheEntry::IsSparkingHud()
+{
+  const u32 generation = SparkingHudFix::textures_generation.load(std::memory_order_relaxed);
+  if (sparking_hud_generation != generation)
+  {
+    sparking_hud = SparkingHudFix::IsHudTexture(texture_info_name);
+    if (!texture_info_name.empty())  // not named yet: check again next time
+      sparking_hud_generation = generation;
+  }
+  return sparking_hud;
 }
 
 // Note: the following function assumes all CustomTextureData has a single slice.  This is verified
