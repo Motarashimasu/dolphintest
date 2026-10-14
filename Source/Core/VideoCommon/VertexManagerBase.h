@@ -192,6 +192,7 @@ protected:
   u32 GetRemainingIndices(OpcodeDecoder::Primitive primitive) const;
 
   void CalculateZSlope(NativeVertexFormat* format);
+  void ApplySparkingHudFix(NativeVertexFormat* format);  // see SparkingHudFix.h
   void CalculateNormals(NativeVertexFormat* format);
 
   BitSet32 UsedTextures() const;

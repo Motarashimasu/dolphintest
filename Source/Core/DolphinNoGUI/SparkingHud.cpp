@@ -11,6 +11,8 @@
 #include <mutex>
 #include <optional>
 
+#include "VideoCommon/SparkingHudFix.h"
+
 #include <fmt/format.h>
 #include <imgui.h>
 
@@ -404,6 +406,7 @@ bool HudRoundLive()
 
 void ResetHud()
 {
+  SparkingHudFix::in_battle = false;
   std::lock_guard lk(s_mutex);
   s_sides = {};
   s_round_live = false;
@@ -432,6 +435,9 @@ void HudOnWatch(const std::string& name, int port, const std::string& player, do
 
   const auto& h1 = s_sides[0].health;
   const auto& h2 = s_sides[1].health;
+  // A battle is on screen while both health values read and someone is still standing (menus
+  // and loading clear them): the HUD fix only works then.
+  SparkingHudFix::in_battle = h1 && h2 && (*h1 > 0.0 || *h2 > 0.0);
   if (!s_round_live)
   {
     // New round once both bars are full again.

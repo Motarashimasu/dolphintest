@@ -1,7 +1,7 @@
 // Copyright 2026 Dolphin-Sparking Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Output aspect ratio: 16:9 by default, F5 toggles 4:3. Only Dolphin's output stretch changes;
+// Output aspect ratio: 16:9 by default, F3 toggles 4:3. Only Dolphin's output stretch changes;
 // the game's own widescreen Gecko code (if enabled) keeps running either way.
 
 #pragma once
@@ -20,11 +20,19 @@ void ApplyAspectForBoot();
 void SetWidescreen(bool wide);
 void ToggleWidescreen();
 
+// Life bars / HUD fit to the screen's shape (VideoCommon/SparkingHudFix.h). Any thread; the
+// setters emit a "hud_fix" event.
+void SetHudFix(bool on);
+void ToggleHudFix();
+// HUD strips (fractions of the screen height) from the game ini's [Sparking.HudFix].
+void SetHudFixBands(float top, float bottom);
+
 enum class HotkeyKey
 {
+  F1,
+  F2,
   F3,
   F4,
-  F5,
 };
 struct Hotkey
 {

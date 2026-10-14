@@ -3,9 +3,12 @@
 
 #include "VideoCommon/VertexManagerBase.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <memory>
+#include <vector>
 
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
@@ -17,6 +20,7 @@
 
 #include "Core/DolphinAnalytics.h"
 #include "Core/HW/SystemTimers.h"
+#include "Core/HW/VideoInterface.h"
 #include "Core/System.h"
 
 #include "VideoCommon/AbstractGfx.h"
@@ -34,6 +38,8 @@
 #include "VideoCommon/PerfQueryBase.h"
 #include "VideoCommon/PixelShaderGen.h"
 #include "VideoCommon/PixelShaderManager.h"
+#include "VideoCommon/Present.h"
+#include "VideoCommon/SparkingHudFix.h"
 #include "VideoCommon/Statistics.h"
 #include "VideoCommon/TextureCacheBase.h"
 #include "VideoCommon/VertexLoaderManager.h"
@@ -597,6 +603,8 @@ void VertexManagerBase::Flush()
     }
   }
   vertex_shader_manager.SetConstants(texture_names, xf_state_manager);
+  if (!m_cull_all)
+    ApplySparkingHudFix(VertexLoaderManager::GetCurrentVertexFormat());  // after SetConstants
   if (!bpmem.genMode.zfreeze)
   {
     // Must be done after VertexShaderManager::SetConstants()
@@ -756,6 +764,164 @@ void VertexManagerBase::CalculateZSlope(NativeVertexFormat* format)
   m_zslope.dfdy = -b / c;
   m_zslope.f0 = out[2] - (out[0] * m_zslope.dfdx + out[1] * m_zslope.dfdy);
   m_zslope.dirty = true;
+}
+
+void VertexManagerBase::ApplySparkingHudFix(NativeVertexFormat* format)
+{
+  if (!SparkingHudFix::enabled.load(std::memory_order_relaxed) ||
+      !SparkingHudFix::in_battle.load(std::memory_order_relaxed))
+  {
+    return;
+  }
+  if (xfmem.projection.type != ProjectionType::Orthographic ||
+      (m_current_primitive_type != PrimitiveType::Triangles &&
+       m_current_primitive_type != PrimitiveType::TriangleStrip))
+  {
+    return;
+  }
+
+  // How much narrower the HUD must be drawn so it isn't stretched: game aspect / shown aspect.
+  auto& system = Core::System::GetInstance();
+  const float source_ar = system.GetVideoInterface().GetAspectRatio();
+  const float shown_ar = g_presenter ? g_presenter->CalculateDrawAspectRatio() : 0.0f;
+  if (source_ar <= 0.0f || shown_ar <= 0.0f)
+    return;
+  const float squeeze = source_ar / shown_ar;
+  if (squeeze > 0.99f || squeeze < 0.3f)
+    return;  // shown at the game's own shape (4:3): nothing to fix
+
+  const PortableVertexDeclaration decl = format->GetVertexDeclaration();
+  if (!decl.position.enable || decl.position.type != ComponentFormat::Float)
+    return;
+  const u32 stride = decl.stride;
+  const u32 num_verts = m_index_generator.GetNumVerts();
+  if (num_verts < 3 || num_verts > 4096 ||
+      static_cast<u32>(m_cur_buffer_pointer - m_base_buffer_pointer) < num_verts * stride)
+  {
+    return;
+  }
+  // Full-width 2D only (the whole screen's HUD; not a split view or a small sub-picture).
+  const float half_w = std::abs(xfmem.viewport.wd);
+  const float half_h = std::abs(xfmem.viewport.ht);
+  if (half_w * 2.0f < 560.0f || half_h < 1.0f)
+    return;
+
+  auto& vertex_shader_manager = system.GetVertexShaderManager();
+  const u32 default_mtx = g_main_cp_state.matrix_index_a.PosNormalMtxIdx;
+  struct Vert
+  {
+    float fx, fy;      // 0..1 across the viewport, from the left / top
+    float dfx_dx;      // change of fx per unit of model-space x (0 = can't move this one)
+  };
+  std::vector<Vert> verts(num_verts);
+  const auto clip = [&](const float* pos, u32 mtx, float* fx, float* fy) {
+    float out[4];
+    vertex_shader_manager.TransformToClipSpace(pos, out, mtx);
+    if (out[3] == 0.0f)
+      return false;
+    const float sx = out[0] / out[3] * xfmem.viewport.wd + xfmem.viewport.xOrig;
+    const float sy = out[1] / out[3] * xfmem.viewport.ht + xfmem.viewport.yOrig;
+    *fx = (sx - (xfmem.viewport.xOrig - half_w)) / (2.0f * half_w);
+    *fy = (sy - (xfmem.viewport.yOrig - half_h)) / (2.0f * half_h);
+    return true;
+  };
+  for (u32 i = 0; i < num_verts; ++i)
+  {
+    u8* v = m_base_buffer_pointer + static_cast<size_t>(i) * stride;
+    float pos[3] = {0.0f, 0.0f, 0.0f};
+    std::memcpy(pos, v + decl.position.offset, sizeof(float) * std::min(decl.position.components, 3));
+    const u32 mtx = decl.posmtx.enable ? (v[decl.posmtx.offset] & 0x3f) : default_mtx;
+    Vert& out = verts[i];
+    out.dfx_dx = 0.0f;
+    if (!clip(pos, mtx, &out.fx, &out.fy))
+      return;
+    // One unit to the right in model space: how far does it move on screen (and only sideways)?
+    float moved[3] = {pos[0] + 1.0f, pos[1], pos[2]};
+    float fx1, fy1;
+    if (clip(moved, mtx, &fx1, &fy1) && std::abs(fy1 - out.fy) < 1e-4f * std::abs(fx1 - out.fx))
+      out.dfx_dx = fx1 - out.fx;
+  }
+
+  // Pieces: vertices connected by the batch's primitives (one quad = one piece).
+  std::vector<u32> parent(num_verts);
+  for (u32 i = 0; i < num_verts; ++i)
+    parent[i] = i;
+  const auto find = [&](u32 a) {
+    while (parent[a] != a)
+      a = parent[a] = parent[parent[a]];
+    return a;
+  };
+  const auto unite = [&](u32 a, u32 b) { parent[find(a)] = find(b); };
+  const u16* idx = m_index_generator.GetIndexStart();
+  const u32 idx_len = m_index_generator.GetIndexLen();
+  if (g_backend_info.bSupportsPrimitiveRestart)
+  {
+    // Runs separated by the restart index: each run is one primitive.
+    u32 first = UINT32_MAX;
+    for (u32 k = 0; k < idx_len; ++k)
+    {
+      if (idx[k] == UINT16_MAX || idx[k] >= num_verts)
+      {
+        first = UINT32_MAX;
+        continue;
+      }
+      if (first == UINT32_MAX)
+        first = idx[k];
+      else
+        unite(idx[k], first);
+    }
+  }
+  else
+  {
+    for (u32 k = 0; k + 2 < idx_len; k += 3)
+    {
+      if (idx[k] < num_verts && idx[k + 1] < num_verts && idx[k + 2] < num_verts)
+      {
+        unite(idx[k], idx[k + 1]);
+        unite(idx[k], idx[k + 2]);
+      }
+    }
+  }
+
+  struct Piece
+  {
+    float min_x = 2.0f, max_x = -2.0f, min_y = 2.0f, max_y = -2.0f;
+    bool movable = true;
+  };
+  std::vector<Piece> pieces(num_verts);
+  for (u32 i = 0; i < num_verts; ++i)
+  {
+    Piece& p = pieces[find(i)];
+    p.min_x = std::min(p.min_x, verts[i].fx);
+    p.max_x = std::max(p.max_x, verts[i].fx);
+    p.min_y = std::min(p.min_y, verts[i].fy);
+    p.max_y = std::max(p.max_y, verts[i].fy);
+    p.movable = p.movable && verts[i].dfx_dx != 0.0f;
+  }
+
+  const float top = SparkingHudFix::band_top.load(std::memory_order_relaxed);
+  const float bottom = SparkingHudFix::band_bottom.load(std::memory_order_relaxed);
+  constexpr float EDGE = 0.002f;
+  for (u32 i = 0; i < num_verts; ++i)
+  {
+    const Piece& p = pieces[find(i)];
+    const bool in_band = (top > 0.0f && p.max_y <= top + EDGE) ||
+                         (bottom > 0.0f && p.min_y >= 1.0f - bottom - EDGE);
+    if (!p.movable || !in_band)
+      continue;
+    float target;
+    if (p.max_x <= 0.5f + EDGE)
+      target = verts[i].fx * squeeze;  // left half: true width, pinned to the left edge
+    else if (p.min_x >= 0.5f - EDGE)
+      target = 1.0f - (1.0f - verts[i].fx) * squeeze;  // right half: pinned to the right edge
+    else
+      continue;  // crosses the middle (the timer): as the game drew it
+    u8* v = m_base_buffer_pointer + static_cast<size_t>(i) * stride;
+    float x;
+    std::memcpy(&x, v + decl.position.offset, sizeof(float));
+    x += (target - verts[i].fx) / verts[i].dfx_dx;
+    std::memcpy(v + decl.position.offset, &x, sizeof(float));
+  }
 }
 
 void VertexManagerBase::CalculateNormals(NativeVertexFormat* format)

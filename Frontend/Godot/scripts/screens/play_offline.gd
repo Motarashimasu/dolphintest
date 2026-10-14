@@ -6,6 +6,7 @@ const InGamePanel := preload("res://scripts/ui/ingame_panel.gd")
 
 var _state := "starting"   # starting, running, stopping
 var _aspect := ""
+var _hud_fix := true
 var _panel: Control
 
 
@@ -18,11 +19,12 @@ func screen_title() -> String:
 
 
 func screen_desc() -> String:
-	return "Hold Select (Back / Share) in game for the in-game menu.\nF3 graphics, F4 buttons, F5 aspect ratio."
+	return "Hold Select (Back / Share) in game for the in-game menu.\nF1 graphics, F2 buttons, F3 aspect ratio, F4 life bars fit."
 
 
 func on_enter() -> void:
 	_aspect = Settings.get_value("options", "aspect")
+	_hud_fix = Settings.get_value("options", "hud_fix")
 	super()
 	Dolphin.event.connect(_on_event)
 	if not Dolphin.launch(Settings.solo_args()):
@@ -53,11 +55,13 @@ func _rows(in_game_menu: bool) -> Array:
 		rows.append({"type": "info", "key": "status", "label": Settings.GAME["title"], "value": _status()})
 	rows.append_array([
 		{"type": "action", "key": "graphics", "label": "Graphics", "value": Settings.get_value("options", "graphics"),
-			"disabled": not running, "desc": "Switch between Enhanced (HD) and Legacy textures (F3)."},
+			"disabled": not running, "desc": "Switch between Enhanced (HD) and Legacy textures (F1)."},
 		{"type": "action", "key": "buttons", "label": "Button prompts", "value": Settings.option_name("buttons", Settings.get_value("options", "buttons")),
-			"disabled": not running, "desc": "Switch the button prompts: GameCube, PlayStation, Xbox (F4)."},
+			"disabled": not running, "desc": "Switch the button prompts: GameCube, PlayStation, Xbox (F2)."},
 		{"type": "action", "key": "aspect", "label": "Aspect ratio", "value": _aspect,
-			"disabled": not running, "desc": "Switch between 16:9 and 4:3 (F5)."},
+			"disabled": not running, "desc": "Switch between 16:9 and 4:3 (F3)."},
+		{"type": "action", "key": "hud_fix", "label": "Life bars fit the screen", "value": tr("On") if _hud_fix else tr("Off"),
+			"disabled": not running, "desc": "Life bars and portraits at their true shape in the corners,\nor stretched with the picture (F4)."},
 		{"type": "action", "key": "stop", "label": "Stop Game", "color": "#e8663d",
 			"desc": "Close the game and go back to the menu."},
 	])
@@ -82,6 +86,8 @@ func on_press(key: String) -> void:
 			Dolphin.send("textures_cycle Buttons")
 		"aspect":
 			Dolphin.send("aspect toggle")
+		"hud_fix":
+			Dolphin.send("hud_fix toggle")
 		"stop":
 			_state = "stopping"
 			_refresh()
@@ -115,6 +121,9 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_refresh()
 		"aspect":
 			_aspect = String(data.get("mode", _aspect))
+			_refresh()
+		"hud_fix":
+			_hud_fix = bool(data.get("enabled", _hud_fix))
 			_refresh()
 		"error":
 			app.toast(tr("Dolphin: %s") % String(data.get("code", "error")).replace("_", " "))

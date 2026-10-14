@@ -55,7 +55,8 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
-| `--aspect 16:9\|4:3` | `16:9` | Starting aspect ratio. **F5** in the game window (or the `aspect` command) flips it. See *Display*. |
+| `--aspect 16:9\|4:3` | `16:9` | Starting aspect ratio. **F3** in the game window (or the `aspect` command) flips it. See *Display*. |
+| `--hud-fix on\|off` | `on` | Life bars fit the screen: on a wide screen each HUD piece keeps its true width and sits at its edge (see *Display*). **F4** in the game window (or `hud_fix`) flips it. |
 | `--resolution <n>` | `3` | Internal resolution as a multiple of native: `3` = 1080p, `2` = 720p, `4` = 1440p, `6` = 4K. |
 | `--window <W>x<H>\|borderless` | `1280x720` | Size of the game window, or `borderless`: a frameless window covering the whole monitor (Windows; X11 uses its fullscreen). Rendering stays at `--resolution` regardless. |
 | `--netplay-saves host-readonly\|keep` | `host-readonly` | Netplay: every player plays on the **host's** save, which is never written back. |
@@ -188,11 +189,12 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `pause` / `resume` | solo | |
 | `save_state <1-10>` / `load_state <1-10>` | solo | Slot save states |
 | `save_state_file <file.sst>` / `load_state_file <file.sst>` | solo | Capture / test a battle state in `--state-dir` |
-| `aspect 16:9\|4:3\|toggle` | any, in game (netplay too) | Same as F5. Each player chooses their own. |
+| `aspect 16:9\|4:3\|toggle` | any, in game (netplay too) | Same as F3. Each player chooses their own. |
+| `hud_fix on\|off\|toggle` | any (netplay too) | Life bars fit the screen; same as F4 → `hud_fix` event `{enabled}`. Visual only, per player. |
 | `watch_values` | any | Send every memory-watch value now |
 | `stats <ms>` | any | Start (`stats 500`) or stop (`stats 0`) the periodic `stats` event |
 | `textures <Group>=<Option>` | any, in game (netplay too) | Switch a texture variant live; `<Group>=` clears it (no option loaded) |
-| `textures_cycle <Group>` | any, in game | Next option of a group (alphabetical, wraps) — what F3/F4 do |
+| `textures_cycle <Group>` | any, in game | Next option of a group (alphabetical, wraps) — what F1/F2 do |
 | `texture_path <tex1_name>` | any | Debug: which file a texture name is loaded from right now (`texture_path` event) |
 | `hud on\|off` | any | Show/hide the score bar (+ netplay ping/buffer) |
 | `hud_health on\|off` | any | Show/hide the health % in the corners |
@@ -297,10 +299,26 @@ come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
 ## Display
 
 Sparking mode renders at 1080p (`--resolution 3`) with Dolphin's output forced to 16:9.
-**F5** in the game window (Windows), or the `aspect` command, switches the output between
+**F3** in the game window (Windows), or the `aspect` command, switches the output between
 16:9 and 4:3. Only Dolphin's output stretch changes: the game's own widescreen Gecko code (e.g.
 BT3's "16:9 aspect ratio") stays on whichever is chosen. The choice carries over to the next
 match in the same netplay session, and each netplay player has their own.
+
+**Life bars fit the screen** (`--hud-fix`, on by default; **F4** / `hud_fix`). The game draws
+its 2D HUD for 4:3, so on a 16:9 screen the life bars and portraits get stretched with the
+picture. With the fix on, Dolphin narrows each HUD piece back to its true width and pins it to its
+side of the screen (`VideoCommon/SparkingHudFix.h`, applied in `VertexManagerBase::Flush` to the
+vertex positions on their way to the GPU):
+- only flat 2D drawing (orthographic), full-width, and only while a battle is on screen (both
+  health watches read and someone is standing), so menus are never touched;
+- only pieces inside the HUD strips: `[Sparking.HudFix] Top` / `Bottom` in the game ini, as a
+  fraction of the screen height (BT3: the top 30%);
+- a piece is one connected primitive (a quad). Entirely on the left half: narrowed towards the
+  left edge; right half: towards the right edge; crossing the middle (the timer): untouched. So
+  mirrored or shared textures and every character's portrait work, with no texture list;
+- the amount is the game's aspect / the shown aspect (16:9 output of a 4:3 HUD: 0.75), so 4:3
+  output (F3) changes nothing.
+It changes only what each player sees: never emulation, so it can't desync netplay.
 
 ## Texture variants (graphics pack, button layouts, ...)
 
@@ -334,8 +352,9 @@ Rules:
   an `@Group/` folder are never loaded. Group and option names are case-insensitive.
 - In game, `textures Graphics=Legacy` / `textures Buttons=Xbox` switch live; the new textures
   appear within a frame or two.
-- Hotkeys in the game window (Windows): **F3** cycles `@Graphics`, **F4** cycles `@Buttons`
-  (options in alphabetical order, wrapping), **F5** toggles 16:9 / 4:3. Every switch emits a
+- Hotkeys in the game window (Windows): **F1** cycles `@Graphics`, **F2** cycles `@Buttons`
+  (options in alphabetical order, wrapping), **F3** toggles 16:9 / 4:3, **F4** toggles the life
+  bars fitting the screen. Every switch emits a
   `textures` event with the new selection so the frontend can remember it.
 - Purely visual, so each netplay player can use their own.
 - Godot settings: `--list-textures RDSPAF` gives the groups and choices; launch with one
@@ -426,7 +445,7 @@ Dolphin draws no UI of its own and feeds the overlay:
 
 Notes for the Godot side:
 - Make the overlay window non-activating/click-through except when it shows something
-  interactive (pause menu). While the overlay has focus, the F3/F4/F5 hotkeys (which only fire
+  interactive (pause menu). While the overlay has focus, the F1-F4 hotkeys (which only fire
   when the game window is focused) don't trigger, so the overlay should offer the same actions
   via the `textures_cycle`, `textures` and `aspect` commands.
 - Use the game in a borderless/maximized window, not exclusive fullscreen (nothing can be drawn

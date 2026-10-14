@@ -23,6 +23,7 @@
 #include "Core/HW/Memmap.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/SparkingHud.h"
+#include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "VideoCommon/VideoEvents.h"
 
@@ -400,6 +401,20 @@ void LoadWatches(const std::string& game_id, u16 revision)
   {
     collect(ini, "Sparking.Watch", &watch_specs);
     collect(ini, "Sparking.Trigger", &trigger_specs);
+  }
+  // HUD fix strips: [Sparking.HudFix] Top / Bottom = fraction of the screen height.
+  {
+    std::string top = "0.30", bottom = "0";
+    for (const Common::IniFile& ini : {SConfig::LoadDefaultGameIni(game_id, revision),
+                                       SConfig::LoadLocalGameIni(game_id, revision)})
+    {
+      if (const auto* section = ini.GetSection("Sparking.HudFix"))
+      {
+        section->Get("Top", &top, top);
+        section->Get("Bottom", &bottom, bottom);
+      }
+    }
+    SetHudFixBands(static_cast<float>(std::atof(top.c_str())), static_cast<float>(std::atof(bottom.c_str())));
   }
 
   for (const auto& [name, spec] : watch_specs)

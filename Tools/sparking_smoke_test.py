@@ -168,6 +168,10 @@ def main():
         check(f"stats event for the overlay HUD {st}",
               all(isinstance(st[k], (int, float)) for k in ("fps", "vps", "speed")))
         solo.send("stats 0")
+        solo.send("hud_fix off")
+        check("hud_fix off", solo.wait_for("hud_fix")["enabled"] is False)
+        solo.send("hud_fix toggle")
+        check("hud_fix toggle (F4) back on", solo.wait_for("hud_fix")["enabled"] is True)
         solo.send("save_state 1")
         check("save_state acknowledged", solo.wait_for("state_saved")["slot"] == 1)
         time.sleep(1)

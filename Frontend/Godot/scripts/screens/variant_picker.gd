@@ -20,8 +20,8 @@ func screen_title() -> String:
 
 func screen_desc() -> String:
 	if group == "graphics":
-		return "HD or original textures. Your button prompts aren't affected.\nF3 switches it during a game."
-	return "Which buttons the game shows. Graphics aren't affected.\nF4 switches it during a game."
+		return "HD or original textures. Your button prompts aren't affected.\nF1 switches it during a game."
+	return "Which buttons the game shows. Graphics aren't affected.\nF2 switches it during a game."
 
 
 func _options() -> Array:

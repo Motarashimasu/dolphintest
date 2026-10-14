@@ -17,6 +17,7 @@
 #include "Core/Core.h"
 #include "Core/System.h"
 #include "VideoCommon/PerformanceMetrics.h"
+#include "VideoCommon/SparkingHudFix.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "VideoCommon/VideoConfig.h"
 
@@ -59,6 +60,23 @@ void ToggleWidescreen()
   SetWidescreen(!s_wide);
 }
 
+void SetHudFix(bool on)
+{
+  SparkingHudFix::enabled = on;
+  Emit("hud_fix", Json().Add("enabled", on));
+}
+
+void ToggleHudFix()
+{
+  SetHudFix(!SparkingHudFix::enabled.load());
+}
+
+void SetHudFixBands(float top, float bottom)
+{
+  SparkingHudFix::band_top = std::clamp(top, 0.0f, 0.5f);
+  SparkingHudFix::band_bottom = std::clamp(bottom, 0.0f, 0.5f);
+}
+
 void StartHotkeys(std::vector<Hotkey> hotkeys)
 {
 #ifdef _WIN32
@@ -72,9 +90,10 @@ void StartHotkeys(std::vector<Hotkey> hotkeys)
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
       for (size_t i = 0; i < hotkeys.size(); ++i)
       {
-        const int vk = hotkeys[i].key == HotkeyKey::F3 ? VK_F3 :
-                       hotkeys[i].key == HotkeyKey::F4 ? VK_F4 :
-                                                         VK_F5;
+        const int vk = hotkeys[i].key == HotkeyKey::F1 ? VK_F1 :
+                       hotkeys[i].key == HotkeyKey::F2 ? VK_F2 :
+                       hotkeys[i].key == HotkeyKey::F3 ? VK_F3 :
+                                                         VK_F4;
         const bool down = (GetAsyncKeyState(vk) & 0x8000) != 0;
         if (down && !was_down[i])
         {

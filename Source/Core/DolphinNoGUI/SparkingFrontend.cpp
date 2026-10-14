@@ -47,6 +47,7 @@
 #include "DolphinNoGUI/SparkingGecko.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "UICommon/GameFile.h"
+#include "VideoCommon/SparkingHudFix.h"
 #include "VideoCommon/AsyncRequests.h"
 #include "VideoCommon/HiresTextures.h"
 #include "VideoCommon/OnScreenDisplay.h"
@@ -297,13 +298,15 @@ bool CycleTextureVariant(const std::string& group)
   return true;
 }
 
-// F3 = next @Graphics option, F4 = next @Buttons option, F5 = 16:9 / 4:3 (game window only).
+// Game window only: F1 = next @Graphics option, F2 = next @Buttons option, F3 = 16:9 / 4:3,
+// F4 = life bars fit to the screen on / off.
 void StartSparkingHotkeys()
 {
   StartHotkeys({
-      {HotkeyKey::F3, [] { CycleTextureVariant("Graphics"); }},
-      {HotkeyKey::F4, [] { CycleTextureVariant("Buttons"); }},
-      {HotkeyKey::F5, [] { ToggleWidescreen(); }},
+      {HotkeyKey::F1, [] { CycleTextureVariant("Graphics"); }},
+      {HotkeyKey::F2, [] { CycleTextureVariant("Buttons"); }},
+      {HotkeyKey::F3, [] { ToggleWidescreen(); }},
+      {HotkeyKey::F4, [] { ToggleHudFix(); }},
   });
 }
 
@@ -333,6 +336,19 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
       SetWidescreen(false);
     else if (cmd.arg.empty() || cmd.arg == "toggle")
       ToggleWidescreen();
+    else
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+    return;
+  }
+
+  if (cmd.name == "hud_fix")  // "hud_fix on|off|toggle": life bars fit to the screen (F4)
+  {
+    if (cmd.arg == "on")
+      SetHudFix(true);
+    else if (cmd.arg == "off")
+      SetHudFix(false);
+    else if (cmd.arg.empty() || cmd.arg == "toggle")
+      ToggleHudFix();
     else
       Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
     return;
@@ -415,7 +431,7 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     SetTextureSelection(std::move(selection));
     return;
   }
-  if (cmd.name == "textures_cycle")  // same as the F3 / F4 hotkeys: next option of a group
+  if (cmd.name == "textures_cycle")  // same as the F1 / F2 hotkeys: next option of a group
   {
     if (!CycleTextureVariant(cmd.arg))
       Emit("error", Json().Add("code", "no_such_group").Add("command", cmd.name).Add("group", cmd.arg));
@@ -622,13 +638,15 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
                std::string(options.is_set_by_user("netplay_direct") ? "direct" : "traversal"));
   }
 
-  // Display: 1080p internal resolution (3x native) and 16:9 output; F5 / "aspect" flip to 4:3.
+  // Display: 1080p internal resolution (3x native) and 16:9 output; F3 / "aspect" flip to 4:3.
   {
     const int scale = std::clamp(std::atoi(static_cast<const char*>(options.get("resolution"))), 1, 8);
     layer->Set(Config::GFX_EFB_SCALE, scale);
     const bool wide = std::string_view(static_cast<const char*>(options.get("aspect"))) != "4:3";
     layer->Set(Config::GFX_ASPECT_RATIO, wide ? AspectMode::ForceWide : AspectMode::ForceStandard);
     SetDefaultWidescreen(wide);
+    SparkingHudFix::enabled =
+        std::string_view(static_cast<const char*>(options.get("hud_fix"))) != "off";
     const std::string window = static_cast<const char*>(options.get("window"));
     int w = 0, h = 0;
     // "borderless" = a borderless window covering the whole monitor (Windows render window).
@@ -885,7 +903,14 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .choices({"16:9", "4:3"})
       .set_default("16:9")
-      .help("Sparking mode starting aspect ratio (F5 toggles in game): 16:9 (default) or 4:3");
+      .help("Sparking mode starting aspect ratio (F3 toggles in game): 16:9 (default) or 4:3");
+  parser.add_option("--hud-fix")
+      .dest("hud_fix")
+      .action("store")
+      .choices({"on", "off"})
+      .set_default("on")
+      .help("Life bars / HUD fit to the screen's shape (F4 toggles in game): each HUD piece keeps "
+            "its true width and sits at its edge of a wide screen instead of being stretched");
   parser.add_option("--resolution")
       .dest("resolution")
       .action("store")
