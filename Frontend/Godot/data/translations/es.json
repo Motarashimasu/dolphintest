@@ -530,5 +530,15 @@
  "wrong hash": "juego distinto",
  "wrong region": "región distinta",
  "wrong revision": "revisión distinta",
- "✓  Selected": "✓  Elegido"
+ "✓  Selected": "✓  Elegido",
+ "Change": "Cambiar",
+ "Website": "Web",
+ "Receiving Ranking Data...": "Recibiendo la clasificación...",
+ "Rating": "Puntuación",
+ "Wins": "Victorias",
+ "Your rank": "Tu puesto",
+ "Log in with Discord to get ranked": "Inicia sesión con Discord para entrar en la clasificación",
+ "You're not on this board yet": "Aún no estás en esta clasificación",
+ "Widescreen HUD (life bars at the screen edges)": "HUD panorámico (barras de vida en los bordes)",
+ "Widescreen Character Select (true shape, 1P left / COM right)": "Selección de personaje panorámica (forma real, 1P a la izquierda / COM a la derecha)"
 }

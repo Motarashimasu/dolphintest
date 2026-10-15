@@ -500,6 +500,16 @@ function get_match(?int $id): ?array
  * $mode: single | team | all (all = lifetime record across modes). $region: global or a region.
  * Mode boards rank by rating; the lifetime board by wins.
  */
+// A Discord avatar picture (64 px) for the launcher's leaderboard cards; null = none set.
+function avatar_url($discord_id, $avatar): ?string
+{
+    if (!$discord_id || !$avatar || !preg_match('/^[a-z0-9_]+$/i', (string)$avatar)
+            || !preg_match('/^[0-9]+$/', (string)$discord_id)) {
+        return null;
+    }
+    return "https://cdn.discordapp.com/avatars/$discord_id/$avatar.png?size=64";
+}
+
 function leaderboard(string $mode, string $region, int $limit = 100): array
 {
     $db = db();
@@ -508,20 +518,20 @@ function leaderboard(string $mode, string $region, int $limit = 100): array
     if ($mode === 'all') {
         // The all-time record: every season, every mode (career never resets).
         $where = $global ? '' : 'AND r.region = ?';
-        $st = $db->prepare("SELECT p.id, p.name, SUM(r.wins) AS wins, SUM(r.losses) AS losses
+        $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, SUM(r.wins) AS wins, SUM(r.losses) AS losses
             FROM career r JOIN players p ON p.id = r.player_id WHERE p.banned = 0 $where
-            GROUP BY p.id, p.name HAVING SUM(r.wins) + SUM(r.losses) > 0
+            GROUP BY p.id, p.name, p.discord_id, p.avatar HAVING SUM(r.wins) + SUM(r.losses) > 0
             ORDER BY wins DESC, losses ASC, p.name ASC LIMIT $limit");
         $st->execute($global ? [] : [$region]);
     } elseif ($global) {
-        $st = $db->prepare("SELECT p.id, p.name, r.rating, r.wins, r.losses
+        $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, r.rating, r.wins, r.losses
             FROM ratings r JOIN players p ON p.id = r.player_id
             WHERE r.mode = ? AND r.wins + r.losses > 0 AND p.banned = 0
             ORDER BY r.rating DESC, r.wins DESC, p.name ASC LIMIT $limit");
         $st->execute([$mode]);
     } else {
         // Players who played ranked lobbies in that region: their rating, their record there.
-        $st = $db->prepare("SELECT p.id, p.name, r.rating, g.wins, g.losses
+        $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, r.rating, g.wins, g.losses
             FROM region_records g JOIN players p ON p.id = g.player_id
             JOIN ratings r ON r.player_id = g.player_id AND r.mode = g.mode
             WHERE g.mode = ? AND g.region = ? AND g.wins + g.losses > 0 AND p.banned = 0
@@ -535,6 +545,7 @@ function leaderboard(string $mode, string $region, int $limit = 100): array
         if (isset($r['rating'])) {
             $row['rating'] = (int)$r['rating'];
         }
+        $row['avatar'] = avatar_url($r['discord_id'] ?? null, $r['avatar'] ?? null);
         $rows[] = $row;
     }
     return $rows;

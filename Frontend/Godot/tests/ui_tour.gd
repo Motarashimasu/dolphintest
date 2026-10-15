@@ -521,7 +521,7 @@ func _tour() -> void:
 			and lb._rows[0].get("name") == "Goku" and int(lb._rows[0].get("rating", 0)) == 1016
 			and int(lb._rows[0].get("wins", 0)) == 1)
 	await shot("ranked_leaderboard")
-	await pick("board_region", lb.list)   # Global -> the first region (EA): nothing played there
+	lb.on_value("board_region", Settings.REGIONS[0])   # a region where nothing was played
 	await wait_for("region board loaded", func(): return not lb._loading, 15)
 	check("a region where nobody played is empty", lb._rows.is_empty())
 	lb.on_value("board_region", "EU")
