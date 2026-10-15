@@ -41,8 +41,20 @@ What's in here
   me.php           your profile: ratings and records
   lobby.php        ranked lobbies: open / heartbeat / close / list / join / status / leave
   match.php        ranked matches: start / report / forfeit
+  notices.php      the launcher's notification bars, in the player's language
+  notices_text.example.php   the bars' text: copy to notices_text.php and edit that (below)
   lib.php          shared code (database, ratings)
   config.example.php, .htaccess
+
+Notification bars
+-----------------
+The launcher shows three bars above its description box: red (emergencies, updates; always
+first), blue (general announcements) and yellow (player news). Their text comes from
+notices_text.php: copy notices_text.example.php to notices_text.php once, then edit that one in
+File Manager (updates never overwrite it). Each bar has a line per language (en, es, it); an empty
+language uses the English line, an empty bar isn't shown. Players newly reaching the global
+Top 5 of a mode are added to the yellow bar automatically for 24 hours. Launchers pick up
+changes within 2 minutes.
 
 Rules
 -----

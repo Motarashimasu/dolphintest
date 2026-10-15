@@ -2,6 +2,12 @@ extends "res://scripts/screens/form_screen.gd"
 ## Aspect ratio, music, in-game HUD and other preferences.
 
 
+
+func _init() -> void:
+	super()
+	notices = false   # no notification bars here
+
+
 func screen_title() -> String:
 	return "Options"
 

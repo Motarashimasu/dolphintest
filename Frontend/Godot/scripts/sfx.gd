@@ -4,10 +4,12 @@ extends Node
 ## silent. Volume: Options > Sound effects.
 ##
 ## Played by: the menu wheel and settings lists (move, select), Main (back), the lobby
-## (player_join, player_leave, message) and Dolphin's game_starting / game_booting (game_start).
+## (player_join, player_leave, message), Dolphin's game_starting / game_booting (game_start) and
+## the notification bars (notice_red, notice_blue, notice_yellow).
 
 const SOUNDS_PATH := "res://look/menu_sounds.tres"
-const NAMES := ["move", "select", "back", "player_join", "player_leave", "message", "game_start"]
+const NAMES := ["move", "select", "back", "player_join", "player_leave", "message", "game_start",
+		"notice_red", "notice_blue", "notice_yellow"]
 const SILENT_DB := -60.0
 
 var _sounds: Resource

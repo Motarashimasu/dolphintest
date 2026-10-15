@@ -261,6 +261,14 @@ def main():
         _, me = call(server, "me.php", G)
         check(f"profile: 1000 in both modes {me.get('ratings')}",
               me["ratings"]["single"]["rating"] == 1000 and me["ratings"]["team"]["rating"] == 1000)
+        # Notification bars: the example text, in each language; nobody ranked yet = no news.
+        _, nt = call(server, "notices.php", lang="en")
+        check(f"notices: blue in English, red empty {nt}", nt["ok"] and nt["notices"]["blue"].startswith("Welcome")
+              and nt["notices"]["red"] == "" and nt["notices"]["yellow"] == "")
+        _, nt = call(server, "notices.php", lang="es")
+        check("notices: Spanish line", nt["notices"]["blue"].startswith("¡Bienvenido"))
+        _, nt = call(server, "notices.php", lang="xx")
+        check("notices: unknown language = English", nt["lang"] == "en")
         g2, _ = login(server, "goku")
         _, me2 = call(server, "me.php", g2["token"])
         check("logging in again is the same profile", me2["player"]["id"] == me["player"]["id"])
@@ -330,6 +338,14 @@ def main():
         call(server, "match.php", K, action="start", lobby=tl)
         call(server, "match.php", K, action="report", lobby=tl, result="loss")
         call(server, "match.php", G, action="report", lobby=tl, result="win")
+
+        _, nt = call(server, "notices.php", lang="en")
+        check(f"yellow news: new global Top 5 players {nt['notices']['yellow']}",
+              "Goku reached the global Top 5 in Single Battle FT2!" in nt["notices"]["yellow"])
+        _, nt = call(server, "notices.php", lang="it")
+        check("yellow news in Italian", "Top 5 mondiale" in nt["notices"]["yellow"])
+        _, nt2 = call(server, "notices.php", lang="en")
+        check("news isn't repeated", nt2["notices"]["yellow"].count("Goku reached the global Top 5 in Single") == 1)
 
         def board(mode, region):
             _, b = call(server, f"leaderboard.php?mode={mode}&region={region}")

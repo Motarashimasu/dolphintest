@@ -220,6 +220,32 @@ func _tour() -> void:
 	check("menu look loaded from look/menu_look.tres", Style.look != null and Style.look.resource_path == Style.LOOK_PATH
 			and (app._title.material as ShaderMaterial).get_shader_parameter("top_color") == Style.look.title_color
 			and app._title.label_settings.outline_color == Style.look.title_outline_color)
+	# Notification bars: the ranked server's example text has a blue line (nothing red / yellow).
+	var nt: Control = app.notifier
+	nt.refresh()
+	await wait_for("notification bar: blue slides in after the first 5 s", func(): return nt.current == "blue", 25.0)
+	check("notification bar: never before 5 s", nt.shown == ["blue"] and Time.get_ticks_msec() >= 5000)
+	check("notification bar: server text (Welcome to DRAGON NET...)", nt._text.text.begins_with("Welcome to DRAGON NET"))
+	await get_tree().create_timer(1.5).timeout
+	check("notification bar: in place, picture at the right edge", is_equal_approx(nt._bar.position.x, 0.0)
+			and nt._sprite.visible and is_equal_approx(nt._sprite.position.x + nt._sprite.size.x, 1280.0))
+	await shot("notification_blue")
+	app.open("options")
+	await wait_for("notification bar: leaves on Options", func(): return nt.current == "", 3.0)
+	back()
+	await frames(10)
+	nt.texts = {"red": "Update 1.2 is out!", "blue": "Blue news", "yellow": ""}
+	nt._next = 1   # mid-rotation: red is still next whenever there's red text... once per turn
+	nt._due_ms = 0
+	await wait_for("notification bar: takes turns (blue next, then red)", func(): return nt.current != "" and nt.current != "leaving", 3.0)
+	check("notification bar: rotation goes on from where it was", nt.shown.back() == "blue")
+	nt._leave(true)
+	nt._due_ms = 0
+	await wait_for("notification bar: red's turn", func(): return nt.shown.back() == "red", 3.0)
+	await frames(30)
+	await shot("notification_red")
+	nt.paused = true   # the rest of the tour without bars
+	await wait_for("notification bar: gone", func(): return nt.current == "", 3.0)
 	var before_mouse: int = top().carousel.index
 	for b in [MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_LEFT]:
 		var m := InputEventMouseButton.new()

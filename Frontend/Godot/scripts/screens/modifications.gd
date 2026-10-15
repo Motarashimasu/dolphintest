@@ -6,6 +6,12 @@ var _codes: Array = []   # from the gecko_codes event
 var _loading := true
 
 
+
+func _init() -> void:
+	super()
+	notices = false   # no notification bars here
+
+
 func screen_music() -> String:
 	return "game_menu"
 

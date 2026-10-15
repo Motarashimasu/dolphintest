@@ -14,6 +14,8 @@ const Style := preload("res://scripts/ui/style.gd")
 var app: Node   # main.gd
 var show_desc_bar := true
 var show_header := true
+## The notification bars (scripts/ui/notifier.gd) may show over this screen.
+var notices := true
 
 
 func _init() -> void:

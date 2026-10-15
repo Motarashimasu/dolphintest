@@ -5,6 +5,12 @@ extends "res://scripts/screens/form_screen.gd"
 var group := "graphics"   # graphics | buttons
 
 
+
+func _init() -> void:
+	super()
+	notices = false   # no notification bars here
+
+
 func setup(p_group: String) -> Node:
 	group = p_group
 	return self

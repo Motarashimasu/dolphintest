@@ -1,5 +1,5 @@
 # The settings, shared code and any local database file are never served directly.
-<FilesMatch "^(config\.php|config\.example\.php|lib\.php|.*\.sqlite|README\.txt)$">
+<FilesMatch "^(config\.php|config\.example\.php|lib\.php|notices_text(\.example)?\.php|.*\.sqlite|README\.txt)$">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>

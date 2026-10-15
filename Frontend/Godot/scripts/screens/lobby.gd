@@ -73,6 +73,12 @@ var _chat_log: RichTextLabel
 var _panel: Control           # in-game menu, while open
 
 
+
+func _init() -> void:
+	super()
+	notices = false   # no notification bars here
+
+
 func setup(p_kind: String, args: PackedStringArray, p_mode: String) -> Node:
 	kind = p_kind
 	_args = args

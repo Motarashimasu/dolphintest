@@ -48,6 +48,12 @@ var _overlay: Control
 var _overlay_text: Label
 
 
+
+func _init() -> void:
+	super()
+	notices = false   # no notification bars here
+
+
 func screen_music() -> String:
 	return "netplay"
 

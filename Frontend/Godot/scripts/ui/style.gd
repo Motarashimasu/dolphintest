@@ -284,6 +284,15 @@ static func look_texture(prop: String, file: String) -> Texture2D:
 	return tex
 
 
+## A value from the look (menu_look.tres), or `fallback` when the look has no such slot.
+static func look_value(prop: String, fallback: Variant) -> Variant:
+	_ensure()
+	if look and prop in look:
+		var v = look.get(prop)
+		return fallback if v == null else v
+	return fallback
+
+
 ## The menu arrows (look: arrow_left / right / up / down) as a picture, sized by its rect.
 static func arrow(dir: String) -> TextureRect:
 	var t := TextureRect.new()

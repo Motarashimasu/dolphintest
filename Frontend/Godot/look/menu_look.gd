@@ -85,6 +85,26 @@ extends Resource
 @export var lobby_fade_color := Color.WHITE
 @export_range(0.0, 2.0, 0.05) var lobby_fade_time := 0.6
 
+@export_group("Notification bars")
+## The thin bars above the description bar. Their text comes from the ranked server
+## (Server/ranked/notices_text.php): red = emergencies and updates (always first), blue = general
+## announcements, yellow = player news. Each bar has its own picture, which slides in with the
+## bar and stops at the right edge of the screen, in front of it. Empty = look/notice_red.png,
+## notice_blue.png, notice_yellow.png (a missing file = no picture).
+## Sounds: the notice_red / notice_blue / notice_yellow slots in menu_sounds.tres.
+@export var notice_red_color := Color("#c3242b")
+@export var notice_blue_color := Color("#1f78d1")
+@export var notice_yellow_color := Color("#e9a915")
+@export var notice_text := Color.WHITE
+@export var notice_text_outline := Color("#1a1030")
+@export var notice_sprite_red: Texture2D
+@export var notice_sprite_blue: Texture2D
+@export var notice_sprite_yellow: Texture2D
+## How tall the pictures are drawn (their bottom sits on the description bar).
+@export_range(40, 300) var notice_sprite_height := 150
+## How fast the text runs through the bar, in pixels per second.
+@export_range(40.0, 600.0, 10.0) var notice_text_speed := 170.0
+
 @export_group("Item colors")
 ## Color of a menu item by its label, e.g. "DRAGON NET" -> blue. Items not listed keep their own.
 @export var item_colors: Dictionary = {}

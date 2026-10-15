@@ -28,6 +28,14 @@ extends Resource
 ## A game is starting (offline, or the host started the netplay match).
 @export var game_start: AudioStream
 
+@export_group("Notification bars")
+## The red bar (emergencies, updates) sliding in.
+@export var notice_red: AudioStream
+## The blue bar (general announcements) sliding in.
+@export var notice_blue: AudioStream
+## The yellow bar (player news) sliding in.
+@export var notice_yellow: AudioStream
+
 @export_group("Volume")
 ## Extra volume for all of them, in dB (0 = as recorded; -6 = half as loud).
 @export_range(-30.0, 12.0, 0.5) var volume_db := 0.0

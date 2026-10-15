@@ -27,6 +27,7 @@ var _toast: Label
 var _toast_timer: SceneTreeTimer
 var _log_panel: Panel
 var _log_text: RichTextLabel
+var notifier: Control        # the red / blue / yellow notification bars (scripts/ui/notifier.gd)
 
 # In-game menu (compact window) state.
 var _compact: Control = null
@@ -350,7 +351,7 @@ func _terminology_menu() -> Control:
 
 
 func _modifications_menu() -> Control:
-	return _menu("Modifications", [
+	var menu := _menu("Modifications", [
 		{"label": "Graphics", "glyph": "G", "color": "#9b6be6",
 			"desc": func(): return tr("Enhanced (HD textures) or Legacy (original textures).\nNow: %s") % Settings.get_value("options", "graphics"),
 			"action": func(): push(load(SCREENS % "variant_picker").new().setup("graphics"))},
@@ -363,6 +364,8 @@ func _modifications_menu() -> Control:
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the game menu."},
 	], "game_menu")
+	menu.notices = false   # no notification bars in Modifications
+	return menu
 
 
 func _netplay_menu() -> Control:
@@ -605,6 +608,15 @@ func apply_menu_display() -> void:
 		w.move_to_center()
 
 
+## Whether the notification bars may show now: not on screens that turn them off (options,
+## modifications, lobbies, leaderboards), not while a game runs, not over the splash.
+func notices_allowed() -> bool:
+	var t := top()
+	if t == null or not t.get("notices") or _splash or _compact or not _screens.visible:
+		return false
+	return not Dolphin.is_running()
+
+
 ## Held Select in game: shrink this window to a small always-on-top panel over the game.
 func open_ingame_menu() -> void:
 	if _compact:
@@ -797,6 +809,10 @@ func _build_backdrop() -> void:
 	_overlay = Control.new()
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_overlay)
+	notifier = load("res://scripts/ui/notifier.gd").new()
+	notifier.app = self
+	notifier.z_index = 20   # in front of the menu wheel's raised rows
+	_overlay.add_child(notifier)
 	_fade = ColorRect.new()
 	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
