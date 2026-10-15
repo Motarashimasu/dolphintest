@@ -540,5 +540,7 @@
  "Log in with Discord to get ranked": "Accedi con Discord per entrare in classifica",
  "You're not on this board yet": "Non sei ancora in questa classifica",
  "Widescreen HUD (life bars at the screen edges)": "HUD panoramico (barre della vita ai bordi)",
- "Widescreen Character Select (true shape, 1P left / COM right)": "Selezione personaggio panoramica (forma reale, 1P a sinistra / COM a destra)"
+ "Widescreen Character Select (true shape, 1P left / COM right)": "Selezione personaggio panoramica (forma reale, 1P a sinistra / COM a destra)",
+ "Smooth Motion": "Movimento fluido",
+ "Frame interpolation: in-between frames make 30 fps fights look like 60 fps.\nAdds about one frame of input delay; very fast effects can smear.": "Interpolazione dei fotogrammi: fotogrammi intermedi fanno sembrare i combattimenti a 30 fps come a 60 fps.\nAggiunge circa un fotogramma di ritardo; gli effetti molto veloci possono sbavare."
 }

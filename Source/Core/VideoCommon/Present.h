@@ -23,6 +23,7 @@ enum class DolphinKey;
 namespace VideoCommon
 {
 class OnScreenUI;
+class SmoothMotion;
 class PostProcessing;
 
 // Presenter is a class that deals with putting the final XFB on the screen.
@@ -164,6 +165,14 @@ private:
 
   std::unique_ptr<VideoCommon::PostProcessing> m_post_processor;
   std::unique_ptr<VideoCommon::OnScreenUI> m_onscreen_ui;
+
+  // Sparking: Smooth Motion (frame interpolation, see SparkingSmoothMotion.h). Run on every
+  // video field; Present() shows its picture instead of the XFB while it's set.
+  bool SmoothMotionActive() const;
+  void RunSmoothMotion(bool fresh);
+  std::unique_ptr<VideoCommon::SmoothMotion> m_smooth_motion;
+  const AbstractTexture* m_smooth_texture = nullptr;
+  MathUtil::Rectangle<int> m_smooth_rect;
 
   u64 m_frame_count = 0;
   u64 m_present_count = 0;

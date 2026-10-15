@@ -788,6 +788,17 @@ func _tour() -> void:
 	await back()   # categories -> game menu
 	await back()   # game menu -> main menu
 	await choose("Video Settings")
+	var sm_args := func():
+		var a: PackedStringArray = Settings.common_args()
+		return a[a.find("--smooth-motion") + 1] if a.has("--smooth-motion") else ""
+	check("Smooth Motion: off by default", not Settings.get_value("video", "smooth_motion")
+			and sm_args.call() == "off")
+	await pick("smooth_motion", top().list)
+	check("Smooth Motion: turned on (--smooth-motion on), says it's frame interpolation",
+			Settings.get_value("video", "smooth_motion") and sm_args.call() == "on"
+			and app._desc.text.begins_with("Frame interpolation"))
+	await shot("video_settings_smooth_motion")
+	top().on_value("smooth_motion", false)
 	await pick("window", top().list)
 	await shot("video_settings")
 	await back()

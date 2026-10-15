@@ -1,5 +1,6 @@
 extends "res://scripts/screens/form_screen.gd"
-## Renderer, internal resolution, game window. Applied at the next game launch.
+## Renderer, internal resolution, Smooth Motion (frame interpolation), game window. Applied at
+## the next game launch.
 
 
 func screen_title() -> String:
@@ -26,6 +27,9 @@ func build_rows() -> Array:
 			"values": Settings.RESOLUTIONS, "names": Settings.RESOLUTION_NAMES,
 			"value": Settings.get_value("video", "resolution"),
 			"desc": "Internal rendering resolution. 1080p is the default;\nhigher needs a stronger graphics card."},
+		{"type": "toggle", "key": "smooth_motion", "label": "Smooth Motion",
+			"value": Settings.get_value("video", "smooth_motion"), "on_text": "On", "off_text": "Off",
+			"desc": "Frame interpolation: in-between frames make 30 fps fights look like 60 fps.\nAdds about one frame of input delay; very fast effects can smear."},
 		{"type": "choice", "key": "window", "label": "Game display",
 			"values": windows, "names": window_names, "value": Settings.get_value("video", "window"),
 			"desc": "Game window size, or borderless fullscreen\n(covers the whole monitor, no frame)."},

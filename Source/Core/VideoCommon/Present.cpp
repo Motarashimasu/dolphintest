@@ -19,6 +19,7 @@
 #include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/OnScreenUI.h"
 #include "VideoCommon/PostProcessing.h"
+#include "VideoCommon/SparkingSmoothMotion.h"
 #include "VideoCommon/VertexManagerBase.h"
 #include "VideoCommon/VideoConfig.h"
 #include "VideoCommon/VideoEvents.h"
@@ -212,9 +213,18 @@ void Presenter::ViSwap(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height,
 
   video_events.before_present_event.Trigger(present_info);
 
-  if (!is_duplicate || !g_ActiveConfig.bSkipPresentingDuplicateXFBs)
+  // Smooth Motion shows something new on every field (in-between frames), so repeats are
+  // presented too while it's on.
+  const bool smooth_motion = SmoothMotionActive();
+  if (smooth_motion)
+    RunSmoothMotion(!is_duplicate);
+  else if (m_smooth_motion)
+    m_smooth_motion.reset();
+
+  if (!is_duplicate || !g_ActiveConfig.bSkipPresentingDuplicateXFBs || smooth_motion)
   {
     Present(&present_info);
+    m_smooth_texture = nullptr;
     ProcessFrameDumping(ticks);
 
     video_events.after_present_event.Trigger(present_info);
@@ -232,6 +242,7 @@ void Presenter::ImmediateSwap(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_
   const u64 ticks = m_next_swap_estimated_ticks;
 
   FetchXFB(xfb_addr, fb_width, fb_stride, fb_height, ticks);
+  m_smooth_motion.reset();  // Smooth Motion works on video fields, not immediate XFB swaps
 
   PresentInfo present_info{
       .frame_count = m_frame_count++,
@@ -941,10 +952,13 @@ void Presenter::Present(PresentInfo* present_info)
   {
     // Adjust the source rectangle instead of using an oversized viewport to render the XFB.
     MathUtil::Rectangle<int> render_target_rc = GetTargetRectangle();
-    MathUtil::Rectangle<int> render_source_rc = AdjustForCustomCrop(m_xfb_rect);
+    MathUtil::Rectangle<int> render_source_rc =
+        m_smooth_texture ? m_smooth_rect : AdjustForCustomCrop(m_xfb_rect);
     AdjustRectanglesToFitBounds(&render_target_rc, &render_source_rc, m_backbuffer_width,
                                 m_backbuffer_height);
-    RenderXFBToScreen(render_target_rc, m_xfb_entry->texture.get(), render_source_rc);
+    RenderXFBToScreen(render_target_rc,
+                      m_smooth_texture ? m_smooth_texture : m_xfb_entry->texture.get(),
+                      render_source_rc);
   }
 
   if (m_onscreen_ui)
@@ -984,6 +998,39 @@ void Presenter::Present(PresentInfo* present_info)
     m_onscreen_ui->BeginImGuiFrame(m_backbuffer_width, m_backbuffer_height);
 
   g_gfx->EndUtilityDrawing();
+}
+
+bool Presenter::SmoothMotionActive() const
+{
+  return Config::Get(Config::GFX_SPARKING_SMOOTH_MOTION) && g_gfx->SupportsUtilityDrawing() &&
+         !g_ActiveConfig.bImmediateXFB && g_ActiveConfig.stereo_mode == StereoMode::Off;
+}
+
+void Presenter::RunSmoothMotion(bool fresh)
+{
+  m_smooth_texture = nullptr;
+  if (!m_xfb_entry || m_last_xfb_width == 0 || m_last_xfb_height == 0)
+  {
+    if (m_smooth_motion)
+      m_smooth_motion->Reset();
+    return;
+  }
+  if (!m_smooth_motion)
+    m_smooth_motion = std::make_unique<SmoothMotion>();
+
+  // Same as Present(): don't trample a vertex batch that's being built.
+  g_vertex_manager->Flush();
+  g_gfx->BeginUtilityDrawing();
+  const MathUtil::Rectangle<int> rect = AdjustForCustomCrop(m_xfb_rect);
+  // The XFB's size in the game's own pixels (the crop shrinks both alike).
+  const float scale = static_cast<float>(m_xfb_rect.GetWidth()) / m_last_xfb_width;
+  const u32 native_w = static_cast<u32>(rect.GetWidth() / std::max(scale, 1.0f) + 0.5f);
+  const u32 native_h = static_cast<u32>(rect.GetHeight() / std::max(scale, 1.0f) + 0.5f);
+  const SmoothMotion::Output out =
+      m_smooth_motion->Process(m_xfb_entry->texture.get(), rect, native_w, native_h, fresh);
+  g_gfx->EndUtilityDrawing();
+  m_smooth_texture = out.texture;
+  m_smooth_rect = out.rect;
 }
 
 TimePoint Presenter::GetUpdatedPresentationTime(TimePoint intended_presentation_time)

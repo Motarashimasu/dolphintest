@@ -47,6 +47,7 @@ var defaults := {
 	},
 	"player": {"nickname": "Player", "region": "NA"},
 	"video": {"renderer": "Vulkan", "resolution": 3, "window": "1280x720", "borderless": false,
+		"smooth_motion": false,   # frame interpolation (Dolphin's --smooth-motion)
 		"menu_display": "fullscreen"},   # these menus: fullscreen (borderless) or window
 	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9",
 		"hud": false,             # score bar offline (netplay always shows it)
@@ -199,6 +200,7 @@ func common_args() -> PackedStringArray:
 	a.append_array(["-u", data_path(get_value("paths", "profile"))])
 	a.append_array(["-v", get_value("video", "renderer")])
 	a.append_array(["--resolution", str(get_value("video", "resolution"))])
+	a.append_array(["--smooth-motion", "on" if get_value("video", "smooth_motion") else "off"])
 	a.append_array(["--window", get_value("video", "window")])
 	a.append_array(["--aspect", get_value("options", "aspect")])
 	a.append_array(["--hud-health", "on" if get_value("options", "hud_health") else "off"])

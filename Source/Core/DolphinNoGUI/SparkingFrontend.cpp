@@ -626,6 +626,9 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
   {
     const int scale = std::clamp(std::atoi(static_cast<const char*>(options.get("resolution"))), 1, 8);
     layer->Set(Config::GFX_EFB_SCALE, scale);
+    // Smooth Motion: in-between frames for the game's 30 fps scenes (frame interpolation).
+    layer->Set(Config::GFX_SPARKING_SMOOTH_MOTION,
+               std::string_view(static_cast<const char*>(options.get("smooth_motion"))) == "on");
     const bool wide = std::string_view(static_cast<const char*>(options.get("aspect"))) != "4:3";
     layer->Set(Config::GFX_ASPECT_RATIO, wide ? AspectMode::ForceWide : AspectMode::ForceStandard);
     SetDefaultWidescreen(wide);
@@ -891,6 +894,13 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .set_default("3")
       .help("Sparking mode internal resolution as a multiple of native (3 = 1080p, default)");
+  parser.add_option("--smooth-motion")
+      .dest("smooth_motion")
+      .action("store")
+      .choices({"on", "off"})
+      .set_default("off")
+      .help("Sparking mode: Smooth Motion, in-between frames for 30 fps scenes (frame "
+            "interpolation; adds about one frame of delay)");
   parser.add_option("--window")
       .dest("window")
       .action("store")
