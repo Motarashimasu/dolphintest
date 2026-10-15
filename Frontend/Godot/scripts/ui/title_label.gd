@@ -2,7 +2,7 @@ extends Label
 ## A screen title (Style.title_label): keeps the letters' gradient (look/title_gradient.gdshader)
 ## running from the top of the capitals to the baseline wherever the text sits in the label.
 
-## Capital-letter height as a share of the font size (Nunito: 0.705).
+## Capital-letter height as a share of the font size (most fonts: about 0.7).
 const CAP_HEIGHT := 0.72
 
 

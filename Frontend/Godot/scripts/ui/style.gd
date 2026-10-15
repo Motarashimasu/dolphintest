@@ -163,21 +163,11 @@ static func background(track: String) -> Texture2D:
 
 ## Fonts: the look's fonts, else res://fonts/menu.* / button.* / body.*, else the system font
 ## (Impact for buttons, Tahoma for the rest; both come with Windows), else Godot's own.
-## Screen titles: the look's title font, else res://fonts/title.ttf at its heaviest weight.
+## Screen titles: the look's title font, else the menu font (as before).
 static func title_font() -> Font:
 	_ensure()
 	if _title_font == null:
-		if look.title_font:
-			_title_font = look.title_font
-		elif ResourceLoader.exists("res://fonts/title.ttf"):
-			var v := FontVariation.new()
-			v.base_font = load("res://fonts/title.ttf")
-			var ts := TextServerManager.get_primary_interface()
-			v.variation_opentype = {ts.name_to_tag("wght"): 900}
-			v.spacing_glyph = -2
-			_title_font = v
-		else:
-			_title_font = menu_font()
+		_title_font = look.title_font if look.title_font else menu_font()
 	return _title_font
 
 

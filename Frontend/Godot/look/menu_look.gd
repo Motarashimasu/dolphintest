@@ -8,8 +8,7 @@ extends Resource
 ## 2D editor to move, replace or delete the sky, clouds and ground, or to add your own art.
 
 @export_group("Fonts")
-## Screen titles (the big one at the top, and in-game menus). Empty = res://fonts/title.ttf
-## (Nunito Black, SIL OFL).
+## Screen titles (the big one at the top, and in-game menus). Empty = menu_font.
 @export var title_font: Font
 ## The lobby's headings and names. Empty = Godot's built-in font (bold).
 @export var menu_font: Font
