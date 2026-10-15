@@ -752,15 +752,19 @@ func _build_backdrop() -> void:
 	_scenery = backdrop.get_node_or_null("Scenery")
 
 	_desc_bar = Style.panel(Style.INK)
-	var sb: StyleBoxFlat = _desc_bar.get_theme_stylebox("panel")
+	var desc_tex := Style.DESC_IMAGE
+	if desc_tex:
+		# The picture is the whole bar (its own shape, border and transparency).
+		_desc_bar.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	var sb: StyleBoxFlat = Style.box(Style.INK) if desc_tex else _desc_bar.get_theme_stylebox("panel")
 	sb.border_width_top = 4
 	sb.border_color = Style.INK_LINE
 	Style.place(_desc_bar, 0, 530, 1280, 190)
 	add_child(_desc_bar)
-	var desc_tex := Style.DESC_IMAGE
 	if desc_tex:
 		var pic := TextureRect.new()
 		pic.texture = desc_tex
+		pic.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		pic.stretch_mode = TextureRect.STRETCH_SCALE
 		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -769,7 +773,8 @@ func _build_backdrop() -> void:
 	_desc = Style.label("", 28, Style.DESC_TEXT)
 	_desc.label_settings.line_spacing = 8
 	_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	Style.place(_desc, 56, 30, 1000, 120)
+	# With the picture, the text starts right of its raised left corner.
+	Style.place(_desc, 170 if desc_tex else 56, 30, 1060 if desc_tex else 1000, 120)
 	_desc_bar.add_child(_desc)
 	_hints = HBoxContainer.new()
 	_hints.add_theme_constant_override("separation", 22)

@@ -83,8 +83,9 @@ extends Resource
 @export var description_color := Color("#0f3a48")
 @export var description_border := Color("#cfe9ee")
 @export var description_text := Color.WHITE
-## A picture for the whole bar (stretched to 1280 x 190), drawn over the color.
-@export var description_image: Texture2D
+## A picture for the whole bar (stretched to 1280 x 190); it replaces the color and border.
+## Empty = the flat description_color bar.
+@export var description_image: Texture2D = preload("res://look/description_bar.png")
 
 @export_group("Panels")
 ## Settings screens and the lobby.
