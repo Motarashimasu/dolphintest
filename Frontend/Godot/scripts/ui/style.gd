@@ -21,10 +21,6 @@ static var SEL_EDGE := Color("#4a1a08")
 static var IDLE_TEXT := Color("#5b3a8c")
 static var IDLE_EDGE := Color.WHITE
 static var ITEM_SIZE := 46
-static var BAND := "item"
-static var BAND_ALPHA := 0.82
-static var BAND_BORDER := Color(1, 1, 1, 0.8)
-static var BAND_BORDER_WIDTH := 3
 static var BADGES := true
 static var ARROW := Color("#f7a531")
 static var ARROW_HOVER := Color("#ffd27a")
@@ -46,15 +42,14 @@ static var TOAST_BG := Color("#1b1b24")
 static var TOAST_TEXT := Color.WHITE
 static var ITEM_COLORS := {}
 
-static var BAND_IMAGE: Texture2D            # band_image
-static var BAND_IMAGE_TINT := true
-static var BAND_FADE := true
 static var FADE_COLOR := Color.BLACK
 static var FADE_TIME := 0.35
 static var LOBBY_FADE_COLOR := Color.WHITE
 static var LOBBY_FADE_TIME := 0.6
-static var BAND_FADE_START := 0.45
-static var BAND_WIDTH := 860
+static var SEL_BAR: Texture2D             # selected_bar
+static var SEL_BAR_SIZE := Vector2(860, 72)
+static var ROW_BAR: Texture2D              # row_bar
+static var ROW_BAR_SIZE := Vector2(500, 44)
 static var DESC_IMAGE: Texture2D
 static var PANEL_IMAGE: Texture2D
 static var PANEL_IMAGE_MARGIN := 24
@@ -89,19 +84,14 @@ static func load_skin() -> void:
 	TITLE_SIZE = L.title_size
 	TITLE_OUTLINE = L.title_outline
 	TITLE_SHADOW = L.title_shadow
-	BAND = "item" if L.band_uses_item_color else "#" + L.band_color.to_html(false)
-	BAND_ALPHA = L.band_opacity
-	BAND_BORDER = L.band_border_color
-	BAND_BORDER_WIDTH = L.band_border
-	BAND_IMAGE = L.band_image
-	BAND_IMAGE_TINT = L.band_image_tint
-	BAND_FADE = L.band_fade
 	FADE_COLOR = L.fade_color
 	FADE_TIME = L.fade_time
 	LOBBY_FADE_COLOR = L.lobby_fade_color
 	LOBBY_FADE_TIME = L.lobby_fade_time
-	BAND_FADE_START = L.band_fade_start
-	BAND_WIDTH = L.band_width
+	SEL_BAR = L.selected_bar
+	SEL_BAR_SIZE = Vector2(L.selected_bar_size)
+	ROW_BAR = L.row_bar
+	ROW_BAR_SIZE = Vector2(L.row_bar_size)
 	SEL_TEXT = L.selected_text
 	SEL_EDGE = L.selected_outline
 	IDLE_TEXT = L.text

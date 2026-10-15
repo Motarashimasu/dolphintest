@@ -167,12 +167,12 @@ tutorial open it on A.
 
 **Changing the look (in the Godot editor).**
 - **Colors, fonts, pictures:** open `look/menu_look.tres` and change it in the Inspector. That
-  covers the title, the menu wheel (highlight band color or picture, text colors and size,
+  covers the title, the menu wheel (the selected bar and row bar pictures and sizes, text colors and size,
   letter icons, arrows), per-item colors, the description bar, panels and rows, toasts,
   fonts, and a background picture per menu (main_menu, game_menu, netplay, lobby,
   battle_lounge and ranked (both fall back to lobby's), terminology, or one default).
-  The highlight band fades out to the right; Band Fade / Band Fade Start / Band Width in the
-  Menu wheel group set it (Band Fade off = the old hard edge).
+  The selected item sits on `look/bar_selected.png` (yellow), the others on `look/bar_row.png`
+  (blue); swap them in the Menu wheel group (selected_bar / row_bar, with their sizes).
   Menu changes fade in from black, and entering a DRAGON NET lobby fades in from white: colors
   and times in the Transitions group (a time of 0 turns that fade off).
 - **Background:** `scenes/Backdrop.tscn` is the scene behind every menu: the sky, the clouds

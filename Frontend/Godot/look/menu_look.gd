@@ -50,22 +50,12 @@ extends Resource
 @export_range(0, 24) var title_shadow := 6
 
 @export_group("Menu wheel")
-## On: the highlight band takes each item's own color (see Item colors). Off: band_color.
-@export var band_uses_item_color := true
-@export var band_color := Color("#f2b531")
-@export_range(0.0, 1.0) var band_opacity := 0.82
-@export var band_border_color := Color(1, 1, 1, 0.8)
-@export_range(0, 16) var band_border := 3
-## A picture for the highlight band (stretched to 860 x 72) instead of the flat color.
-@export var band_image: Texture2D
-## On: the picture is tinted with the band color. Off: shown as drawn.
-@export var band_image_tint := true
-## On: the band fades out to transparent towards its right end instead of stopping with an edge.
-@export var band_fade := true
-## Where the fade begins, as a fraction of the band's width (0 = from the left edge).
-@export_range(0.0, 1.0, 0.01) var band_fade_start := 0.45
-## How far the band reaches, in pixels (the fade ends there).
-@export_range(200, 1280, 10) var band_width := 860
+## The bar behind the selected item (drawn as-is, stretched to the size below).
+@export var selected_bar: Texture2D = preload("res://look/bar_selected.png")
+@export var selected_bar_size := Vector2i(860, 72)
+## The bar behind every other item.
+@export var row_bar: Texture2D = preload("res://look/bar_row.png")
+@export var row_bar_size := Vector2i(500, 44)
 @export var selected_text := Color("#fff4d6")
 @export var selected_outline := Color("#4a1a08")
 @export var text := Color("#5b3a8c")

@@ -1,6 +1,6 @@
 extends Control
-## BT3-style menu wheel: the selected row sits on a colored band; neighbours shrink, slide left
-## and fade; rows past `visible_range` are hidden. Wraps around. Up/Down move, Accept picks.
+## BT3-style menu wheel: the selected row sits on the selected bar (look: selected_bar), the
+## others on their own row bars (row_bar); neighbours shrink, slide left and fade; rows past `visible_range` are hidden. Wraps around. Up/Down move, Accept picks.
 ## Items: [{label, glyph, color (Color or "#hex"), desc, disabled?}]
 
 signal changed(index: int)
@@ -18,12 +18,9 @@ var row_gap := 64.0
 var items: Array = []
 var index := 0
 
-var _band: Panel
-var _band_box: StyleBox   # StyleBoxFlat, or StyleBoxTexture with the skin's band_image
-var _band_prop := "bg_color" # what the color animates: bg_color, or modulate_color (image)
+var _band: TextureRect
 var _rows: Array[Control] = []
 var _wheel_lock := 0
-var _band_tween: Tween
 
 
 func _init() -> void:
@@ -33,24 +30,9 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	var band_tex := Style.BAND_IMAGE
-	if band_tex:
-		var sbt := StyleBoxTexture.new()
-		sbt.texture = band_tex
-		_band_box = sbt
-		_band_prop = "modulate_color"
-	else:
-		var flat := Style.box(Color.WHITE)
-		flat.border_width_top = Style.BAND_BORDER_WIDTH
-		flat.border_width_bottom = Style.BAND_BORDER_WIDTH
-		flat.border_color = Style.BAND_BORDER
-		_band_box = flat
-	_band = Panel.new()
-	_band.add_theme_stylebox_override("panel", _band_box)
-	_band.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	Style.place(_band, 0, CENTER_Y - 6, Style.BAND_WIDTH, 72)
-	if Style.BAND_FADE:
-		_band.material = _fade_material(Style.BAND_WIDTH, Style.BAND_FADE_START)
+	# The selected bar stays put; the rows slide over it.
+	_band = _bar(Style.SEL_BAR)
+	Style.place(_band, 0, CENTER_Y + ROW_H / 2 - Style.SEL_BAR_SIZE.y / 2, Style.SEL_BAR_SIZE.x, Style.SEL_BAR_SIZE.y)
 	add_child(_band)
 	_add_arrow(true)
 	_add_arrow(false)
@@ -122,35 +104,13 @@ func _color(item: Dictionary) -> Color:
 	return Style.item_color(String(item.get("label", "")), c if c is Color else Color(String(c)))
 
 
-## Fades whatever the band draws (color, borders or picture) to transparent towards the right.
-static func _fade_material(width: float, start: float) -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = """
-shader_type canvas_item;
-uniform float width = 860.0;
-uniform float fade_start = 0.45;
-varying float x;
-void vertex() {
-	x = VERTEX.x;
-}
-void fragment() {
-	float t = clamp((x / width - fade_start) / max(1.0 - fade_start, 0.001), 0.0, 1.0);
-	COLOR.a *= 1.0 - smoothstep(0.0, 1.0, t);
-}
-"""
-	var m := ShaderMaterial.new()
-	m.shader = sh
-	m.set_shader_parameter("width", width)
-	m.set_shader_parameter("fade_start", start)
-	return m
-
-
-## The highlight band's color for the selected item (skin: band_color "item" or a color).
-func _band_color(item: Dictionary) -> Color:
-	var base := _color(item) if Style.BAND == "item" else Color(Style.BAND)
-	if _band_prop == "modulate_color" and not Style.BAND_IMAGE_TINT:
-		base = Color.WHITE
-	return Color(base, Style.BAND_ALPHA)
+static func _bar(tex: Texture2D) -> TextureRect:
+	var r := TextureRect.new()
+	r.texture = tex
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_SCALE
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return r
 
 
 func _build() -> void:
@@ -172,6 +132,11 @@ func _make_row(item: Dictionary, i: int) -> Control:
 	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	row.gui_input.connect(_on_row_input.bind(i))
 
+	# The row's own bar (hidden while it's the selected one: it sits on the selected bar then).
+	var bar := _bar(Style.ROW_BAR)
+	bar.name = "Bar"
+	Style.place(bar, 0, (ROW_H - Style.ROW_BAR_SIZE.y) / 2, Style.ROW_BAR_SIZE.x, Style.ROW_BAR_SIZE.y)
+	row.add_child(bar)
 	var badge := Panel.new()
 	badge.name = "Badge"
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -211,15 +176,6 @@ func _layout(animate: bool) -> void:
 	var n := items.size()
 	if n == 0:
 		return
-	var band_color := _band_color(items[index])
-	if _band_tween and _band_tween.is_valid():
-		_band_tween.kill()
-	if animate:
-		_band_tween = create_tween()
-		_band_tween.tween_property(_band_box, _band_prop, band_color, TWEEN_S)
-	else:
-		_band_box.set(_band_prop, band_color)
-
 	for i in n:
 		var row := _rows[i]
 		var item: Dictionary = items[i]
@@ -250,10 +206,12 @@ func _layout(animate: bool) -> void:
 			t.tween_property(row, "position", Vector2(x, y), TWEEN_S)
 			t.tween_property(row, "scale", Vector2(s, s), TWEEN_S)
 			t.tween_property(row, "modulate", target_mod, TWEEN_S)
+			t.tween_property(row.get_node("Bar"), "modulate:a", 0.0 if is_sel else 1.0, TWEEN_S)
 		else:
 			row.position = Vector2(x, y)
 			row.scale = Vector2(s, s)
 			row.modulate = target_mod
+			row.get_node("Bar").modulate.a = 0.0 if is_sel else 1.0
 
 		var color := _color(item)
 		var disabled: bool = item.get("disabled", false)
