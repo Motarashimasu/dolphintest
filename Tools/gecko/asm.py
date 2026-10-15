@@ -18,6 +18,15 @@ def fsubs(d,a,b): return (59<<26)|(d<<21)|(a<<16)|(b<<11)|(20<<1)
 def fmadds(d,a,c,b): return (59<<26)|(d<<21)|(a<<16)|(b<<11)|(c<<6)|(29<<1)
 def fcmpu(a,b): return (63<<26)|(a<<16)|(b<<11)
 def fmr(d,b): return (63<<26)|(d<<21)|(b<<11)|(72<<1)
+def stfs(f,d,ra): return D(52,f,ra,d)
+def lwzu(r,d,ra): return D(33,r,ra,d)
+def stwu(r,d,ra): return D(37,r,ra,d)
+def addi(rd,ra,i): return D(14,rd,ra,i)
+def li(rd,i): return D(14,rd,0,i)
+def fmuls(d,a,c): return (59<<26)|(d<<21)|(a<<16)|(c<<6)|(25<<1)
+def fadds(d,a,b): return (59<<26)|(d<<21)|(a<<16)|(b<<11)|(21<<1)
+def fabs_(d,b): return (63<<26)|(d<<21)|(b<<11)|(264<<1)
+def mtctr(r): return 0x7C0903A6|(r<<21)
 def mflr(r): return 0x7C0802A6|(r<<21)
 def flt(v): return struct.unpack('>I',struct.pack('>f',v))[0]
 class Prog:
@@ -33,7 +42,7 @@ class Prog:
             off=(s.labels[it[-2] if it[0]=='b' else it[2]]-i)*4
             if it[0]=='b': out.append((18<<26)|(off&0x03fffffc)|(1 if it[2] else 0))
             else:
-                bo,bi={'lt':(12,0),'ge':(4,0),'gt':(12,1),'le':(4,1)}[it[1]]
+                bo,bi={'lt':(12,0),'ge':(4,0),'gt':(12,1),'le':(4,1),'eq':(12,2),'ne':(4,2),'dnz':(16,0)}[it[1]]
                 out.append((16<<26)|(bo<<21)|(bi<<16)|(off&0xfffc))
         return out
 def c2(addr, words):
