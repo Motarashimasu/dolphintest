@@ -51,10 +51,11 @@ extends Resource
 
 @export_group("Menu wheel")
 ## The bar behind the selected item (drawn as-is, stretched to the size below).
-@export var selected_bar: Texture2D = preload("res://look/bar_selected.png")
+## Empty = look/bar_selected.png.
+@export var selected_bar: Texture2D
 @export var selected_bar_size := Vector2i(860, 72)
-## The bar behind every other item.
-@export var row_bar: Texture2D = preload("res://look/bar_row.png")
+## The bar behind every other item. Empty = look/bar_row.png.
+@export var row_bar: Texture2D
 @export var row_bar_size := Vector2i(500, 44)
 ## The menu arrows: the wheel's up/down buttons, both ends of changeable values, selectors.
 ## Empty = look/arrow_left.png, arrow_right.png, arrow_up.png, arrow_down.png.
@@ -114,8 +115,9 @@ extends Resource
 @export var description_border := Color("#cfe9ee")
 @export var description_text := Color.WHITE
 ## A picture for the whole bar (stretched to 1280 x 190); it replaces the color and border.
-## Empty = the flat description_color bar.
-@export var description_image: Texture2D = preload("res://look/description_bar.png")
+## Empty = look/description_bar.png. Tick "Flat" for the plain description_color bar instead.
+@export var description_image: Texture2D
+@export var description_flat := false
 
 @export_group("Panels")
 ## Settings screens and the lobby.

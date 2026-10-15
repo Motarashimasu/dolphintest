@@ -76,6 +76,7 @@ static func load_skin() -> void:
 	if look == null:
 		push_warning("Menu look not found: " + LOOK_PATH)
 		look = load("res://look/menu_look.gd").new()
+	_look_files.clear()   # F9: pictures may have changed too
 	var L := look
 	TITLE = L.title_color
 	TITLE_BOTTOM = L.title_color_bottom
@@ -89,9 +90,12 @@ static func load_skin() -> void:
 	FADE_TIME = L.fade_time
 	LOBBY_FADE_COLOR = L.lobby_fade_color
 	LOBBY_FADE_TIME = L.lobby_fade_time
-	SEL_BAR = L.selected_bar
+	# Pictures: the look's own, else the one in look/ (also before Godot has imported it).
+	# (Not preloaded in the look: a preload that fails once gets saved into menu_look.tres as
+	# "no picture", which then hides the default for good.)
+	SEL_BAR = look_texture("selected_bar", "bar_selected.png")
 	SEL_BAR_SIZE = Vector2(L.selected_bar_size)
-	ROW_BAR = L.row_bar
+	ROW_BAR = look_texture("row_bar", "bar_row.png")
 	ROW_BAR_SIZE = Vector2(L.row_bar_size)
 	SEL_TEXT = L.selected_text
 	SEL_EDGE = L.selected_outline
@@ -108,7 +112,7 @@ static func load_skin() -> void:
 	INK = L.description_color
 	INK_LINE = L.description_border
 	DESC_TEXT = L.description_text
-	DESC_IMAGE = L.description_image
+	DESC_IMAGE = null if L.get("description_flat") else look_texture("description_image", "description_bar.png")
 	PANEL = L.panel_color
 	PANEL_BORDER = L.panel_border
 	PANEL_RADIUS = L.panel_radius
