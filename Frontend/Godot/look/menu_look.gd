@@ -8,7 +8,10 @@ extends Resource
 ## 2D editor to move, replace or delete the sky, clouds and ground, or to add your own art.
 
 @export_group("Fonts")
-## Screen titles (and the lobby's headings). Empty = Godot's built-in font (bold).
+## Screen titles (the big one at the top, and in-game menus). Empty = res://fonts/title.ttf
+## (Nunito Black, SIL OFL).
+@export var title_font: Font
+## The lobby's headings and names. Empty = Godot's built-in font (bold).
 @export var menu_font: Font
 ## Button text: the menu wheel, the rows of the settings screens, the button hints at the bottom.
 ## Empty = Impact (installed with Windows).
@@ -32,10 +35,16 @@ extends Resource
 @export var background_terminology: Texture2D
 
 @export_group("Title")
-@export var title_color := Color("#ff8a1f")
-@export var title_outline_color := Color("#6b1d0b")
+## The letters: a gradient from title_color (top) to title_color_bottom (the baseline).
+@export var title_color := Color("#fcb630")
+@export var title_color_bottom := Color("#fd2a24")
+## The dark edge around the letters...
+@export var title_outline_color := Color("#631c12")
+## ... and the light rim around that (0 = none).
+@export var title_rim_color := Color("#fdecd6")
 @export_range(16, 128) var title_size := 64
-@export_range(0, 24) var title_outline := 8
+@export_range(0, 24) var title_outline := 12
+@export_range(0, 24) var title_rim := 10
 ## Drop shadow distance (0 = none).
 @export_range(0, 24) var title_shadow := 6
 

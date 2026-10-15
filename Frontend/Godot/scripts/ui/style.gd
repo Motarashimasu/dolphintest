@@ -8,10 +8,13 @@ static var INK := Color("#0f3a48")
 static var INK_LINE := Color("#cfe9ee")
 static var DESC_TEXT := Color.WHITE
 static var DARK := Color("#1b1b24")
-static var TITLE := Color("#ff8a1f")
-static var TITLE_EDGE := Color("#6b1d0b")
+static var TITLE := Color("#fcb630")
+static var TITLE_BOTTOM := Color("#fd2a24")
+static var TITLE_EDGE := Color("#631c12")
+static var TITLE_RIM := Color("#fdecd6")
+static var TITLE_RIM_SIZE := 10
 static var TITLE_SIZE := 64
-static var TITLE_OUTLINE := 8
+static var TITLE_OUTLINE := 12
 static var TITLE_SHADOW := 6
 static var SEL_TEXT := Color("#fff4d6")
 static var SEL_EDGE := Color("#4a1a08")
@@ -57,8 +60,10 @@ static var PANEL_IMAGE: Texture2D
 static var PANEL_IMAGE_MARGIN := 24
 
 const LOOK_PATH := "res://look/menu_look.tres"
+const TitleLabel := preload("res://scripts/ui/title_label.gd")
 
 static var look: Resource = null
+static var _title_font: Font
 static var _menu_font: Font
 static var _body_font: Font
 static var _button_font: Font
@@ -77,7 +82,10 @@ static func load_skin() -> void:
 		look = load("res://look/menu_look.gd").new()
 	var L := look
 	TITLE = L.title_color
+	TITLE_BOTTOM = L.title_color_bottom
 	TITLE_EDGE = L.title_outline_color
+	TITLE_RIM = L.title_rim_color
+	TITLE_RIM_SIZE = L.title_rim
 	TITLE_SIZE = L.title_size
 	TITLE_OUTLINE = L.title_outline
 	TITLE_SHADOW = L.title_shadow
@@ -128,6 +136,7 @@ static func load_skin() -> void:
 	MUTED = L.muted
 	TOAST_BG = L.toast_color
 	TOAST_TEXT = L.toast_text
+	_title_font = null
 	_menu_font = null
 	_body_font = null
 	_button_font = null
@@ -154,6 +163,24 @@ static func background(track: String) -> Texture2D:
 
 ## Fonts: the look's fonts, else res://fonts/menu.* / button.* / body.*, else the system font
 ## (Impact for buttons, Tahoma for the rest; both come with Windows), else Godot's own.
+## Screen titles: the look's title font, else res://fonts/title.ttf at its heaviest weight.
+static func title_font() -> Font:
+	_ensure()
+	if _title_font == null:
+		if look.title_font:
+			_title_font = look.title_font
+		elif ResourceLoader.exists("res://fonts/title.ttf"):
+			var v := FontVariation.new()
+			v.base_font = load("res://fonts/title.ttf")
+			var ts := TextServerManager.get_primary_interface()
+			v.variation_opentype = {ts.name_to_tag("wght"): 900}
+			v.spacing_glyph = -2
+			_title_font = v
+		else:
+			_title_font = menu_font()
+	return _title_font
+
+
 static func menu_font() -> Font:
 	_ensure()
 	if _menu_font == null:
@@ -217,6 +244,38 @@ static func label(text: String, size: int, color: Color, outline := 0, edge := C
 		s.shadow_offset = Vector2(0, shadow)
 	l.label_settings = s
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+
+## A screen title in the title style: rounded heavy letters with an orange-to-red gradient,
+## a dark edge and a light rim (res://look/title_gradient.gdshader colors the letters).
+## `scale` sizes the edges with the text (1 = the big title at the top).
+static func title_label(text: String, size: int, scale := 1.0) -> Label:
+	_ensure()
+	var l: Label = TitleLabel.new()
+	l.text = text
+	var s := LabelSettings.new()
+	s.font = title_font()
+	s.font_size = size
+	s.font_color = Color(1, 0, 1)   # the shader's marker for the letters
+	s.outline_size = maxi(1, roundi(TITLE_OUTLINE * scale))
+	s.outline_color = TITLE_EDGE
+	if TITLE_RIM_SIZE > 0:
+		s.stacked_outline_count = 1
+		s.set_stacked_outline_size(0, maxi(1, roundi(TITLE_RIM_SIZE * scale)))
+		s.set_stacked_outline_color(0, TITLE_RIM)
+	if TITLE_SHADOW > 0:
+		s.shadow_size = 0
+		s.shadow_color = Color(0, 0, 0, 0.35)
+		s.shadow_offset = Vector2(0, roundi(TITLE_SHADOW * scale * 0.6))
+	l.label_settings = s
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://look/title_gradient.gdshader")
+	m.set_shader_parameter("top_color", TITLE)
+	m.set_shader_parameter("bottom_color", TITLE_BOTTOM)
+	l.material = m
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.place_gradient()
 	return l
 
 

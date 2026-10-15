@@ -18,7 +18,7 @@ func setup(title: String, rows: Array, body_height := 0.0, panel_size := Vector2
 	var bg := Style.panel(Style.INK, 0, 4, Style.INK_LINE)
 	Style.place(bg, 0, 0, size.x, size.y)
 	add_child(bg)
-	var t := Style.label(title, 34, Style.TITLE, 6, Style.TITLE_EDGE, true, 4)
+	var t := Style.title_label(title, 34, 0.45)
 	Style.place(t, 22, 10, size.x - 44, 52)
 	t.clip_text = true
 	add_child(t)

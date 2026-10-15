@@ -218,7 +218,8 @@ func _tour() -> void:
 	await frames(10)
 	check("main menu title", app._title.text == "Main Menu")
 	check("menu look loaded from look/menu_look.tres", Style.look != null and Style.look.resource_path == Style.LOOK_PATH
-			and app._title.label_settings.font_color == Style.look.title_color)
+			and (app._title.material as ShaderMaterial).get_shader_parameter("top_color") == Style.look.title_color
+			and app._title.label_settings.outline_color == Style.look.title_outline_color)
 	var before_mouse: int = top().carousel.index
 	for b in [MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_LEFT]:
 		var m := InputEventMouseButton.new()

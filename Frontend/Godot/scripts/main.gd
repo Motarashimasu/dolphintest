@@ -780,8 +780,7 @@ func _build_backdrop() -> void:
 	_header = Control.new()
 	_header.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_header)
-	_title = Style.label("", Style.TITLE_SIZE, Style.TITLE, Style.TITLE_OUTLINE, Style.TITLE_EDGE, true,
-			Style.TITLE_SHADOW)
+	_title = Style.title_label("", Style.TITLE_SIZE)
 	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	Style.place(_title, 40, 14, 1200, 90)
 	_header.add_child(_title)
