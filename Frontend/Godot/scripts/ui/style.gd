@@ -59,6 +59,7 @@ const TitleLabel := preload("res://scripts/ui/title_label.gd")
 
 static var look: Resource = null
 static var _title_font: Font
+static var _look_files := {}   # res://look/*.png loaded by look_texture()
 static var _menu_font: Font
 static var _body_font: Font
 static var _button_font: Font
@@ -259,10 +260,34 @@ static func title_label(text: String, size: int, scale := 1.0) -> Label:
 	return l
 
 
-## The menu arrows (look/arrow_left/right/up/down.png) as a picture, sized by its rect.
+## A picture from the look (or, if Godot hasn't imported it yet, straight from the PNG file).
+static func look_texture(prop: String, file: String) -> Texture2D:
+	_ensure()
+	var t = look.get(prop)
+	if t is Texture2D:
+		return t
+	var path := "res://look/%s" % file
+	if _look_files.has(path):
+		return _look_files[path]
+	var tex: Texture2D = null
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	if tex == null:
+		# Not imported by Godot yet (e.g. just pulled, editor not opened): read the PNG itself.
+		var img := Image.load_from_file(ProjectSettings.globalize_path(path))
+		if img != null and not img.is_empty():
+			img.generate_mipmaps()
+			tex = ImageTexture.create_from_image(img)
+		else:
+			push_warning("Menu picture missing: " + path)
+	_look_files[path] = tex
+	return tex
+
+
+## The menu arrows (look: arrow_left / right / up / down) as a picture, sized by its rect.
 static func arrow(dir: String) -> TextureRect:
 	var t := TextureRect.new()
-	t.texture = load("res://look/arrow_%s.png" % dir)
+	t.texture = look_texture("arrow_" + dir, "arrow_%s.png" % dir)
 	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	t.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -273,12 +298,14 @@ static func arrow(dir: String) -> TextureRect:
 ## The striped teal popup box (look/popup_box.png): its notched corners keep their size, the
 ## middle stretches.
 static func popup_box() -> NinePatchRect:
+	_ensure()
 	var b := NinePatchRect.new()
-	b.texture = load("res://look/popup_box.png")
-	b.patch_margin_left = 100
-	b.patch_margin_right = 100
-	b.patch_margin_top = 64
-	b.patch_margin_bottom = 64
+	b.texture = look_texture("popup_box", "popup_box.png")
+	var m: Vector4i = look.get("popup_box_margins") if look.get("popup_box_margins") != null else Vector4i(100, 64, 100, 64)
+	b.patch_margin_left = m.x
+	b.patch_margin_top = m.y
+	b.patch_margin_right = m.z
+	b.patch_margin_bottom = m.w
 	b.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return b

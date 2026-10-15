@@ -56,6 +56,16 @@ extends Resource
 ## The bar behind every other item.
 @export var row_bar: Texture2D = preload("res://look/bar_row.png")
 @export var row_bar_size := Vector2i(500, 44)
+## The menu arrows: the wheel's up/down buttons, both ends of changeable values, selectors.
+## Empty = look/arrow_left.png, arrow_right.png, arrow_up.png, arrow_down.png.
+@export var arrow_left: Texture2D
+@export var arrow_right: Texture2D
+@export var arrow_up: Texture2D
+@export var arrow_down: Texture2D
+## Popup box (e.g. "Receiving Ranking Data..."). Empty = look/popup_box.png. Its notched
+## corners keep their size (the margins below, in the picture's pixels), the middle stretches.
+@export var popup_box: Texture2D
+@export var popup_box_margins := Vector4i(100, 64, 100, 64)   # left, top, right, bottom
 @export var selected_text := Color("#fff4d6")
 @export var selected_outline := Color("#4a1a08")
 @export var text := Color("#5b3a8c")

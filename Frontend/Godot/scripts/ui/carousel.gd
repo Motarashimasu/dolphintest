@@ -315,7 +315,7 @@ func _pulse(row: Control) -> void:
 func _add_arrow(up: bool) -> void:
 	var b := TextureButton.new()
 	b.focus_mode = Control.FOCUS_NONE
-	b.texture_normal = load("res://look/arrow_%s.png" % ("up" if up else "down"))
+	b.texture_normal = Style.look_texture("arrow_up" if up else "arrow_down", "arrow_up.png" if up else "arrow_down.png")
 	b.ignore_texture_size = true
 	b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	b.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
