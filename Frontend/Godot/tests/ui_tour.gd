@@ -244,6 +244,19 @@ func _tour() -> void:
 	await wait_for("notification bar: red's turn", func(): return nt.shown.back() == "red", 3.0)
 	await frames(30)
 	await shot("notification_red")
+	check("notification bar: red has its picture", nt._sprite.visible and nt._sprite.texture != null)
+	nt._leave(true)
+	await wait_for("notification bar: red gone", func(): return nt.current == "", 3.0)
+	nt.texts = {"red": "", "blue": "", "yellow": "Goku reached the global Top 5 in Single Battle FT2!"}
+	nt._due_ms = 0
+	await frames(20)
+	check("notification bar: no yellow (Tenkaichi 3 ranked news) on the main menu", nt.current == "")
+	app.push(app._game_menu())   # (pushed directly: no game-file prompt this early)
+	await wait_for("notification bar: yellow in the Tenkaichi 3 menu", func(): return nt.current == "yellow", 3.0)
+	await get_tree().create_timer(1.0).timeout
+	await shot("notification_yellow")
+	app.pop()
+	await wait_for("notification bar: yellow leaves outside the Tenkaichi 3 menus", func(): return nt.current == "", 3.0)
 	nt.paused = true   # the rest of the tour without bars
 	await wait_for("notification bar: gone", func(): return nt.current == "", 3.0)
 	var before_mouse: int = top().carousel.index

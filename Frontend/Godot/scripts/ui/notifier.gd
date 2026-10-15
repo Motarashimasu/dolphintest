@@ -2,7 +2,8 @@ extends Control
 ## The notification bars: thin red / blue / yellow bars just above the description bar.
 ##   red    emergencies, updates, notices (always the first one shown)
 ##   blue   general announcements
-##   yellow player news (e.g. a player reaching the global Top 5)
+##   yellow player news (e.g. a player reaching the global Top 5): Tenkaichi 3 ranked, so only in
+##          Tenkaichi 3's menus (see main.gd's notice_color_allowed)
 ## Their text comes from the ranked server (notices.php, in the menu language). A bar slides in
 ## from the left with its picture, stops, runs its text through twice, then slides off to the
 ## right. One bar at a time, taking turns every 30 seconds, never in the first 5 seconds.
@@ -78,7 +79,7 @@ func _process(_delta: float) -> void:
 		_poll()
 	var allowed: bool = not paused and (app == null or app.notices_allowed())
 	if current != "":
-		if not allowed and current != "leaving":
+		if current != "leaving" and not (allowed and _color_ok(current)):
 			_leave(true)
 		return
 	if not allowed or now < _due_ms:
@@ -93,10 +94,14 @@ func _process(_delta: float) -> void:
 func _pick() -> String:
 	for i in ORDER.size():
 		var c: String = ORDER[(_next + i) % ORDER.size()]
-		if texts[c] != "":
+		if texts[c] != "" and _color_ok(c):
 			_next = (ORDER.find(c) + 1) % ORDER.size()
 			return c
 	return ""
+
+
+func _color_ok(color: String) -> bool:
+	return app == null or app.notice_color_allowed(color)
 
 
 func _poll() -> void:

@@ -101,7 +101,7 @@ extends Resource
 @export var notice_sprite_blue: Texture2D
 @export var notice_sprite_yellow: Texture2D
 ## How tall the pictures are drawn (their bottom sits on the description bar).
-@export_range(40, 300) var notice_sprite_height := 150
+@export_range(40, 300) var notice_sprite_height := 190
 ## How fast the text runs through the bar, in pixels per second.
 @export_range(40.0, 600.0, 10.0) var notice_text_speed := 170.0
 

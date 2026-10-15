@@ -4,7 +4,8 @@
 //
 //   red     emergency announcements: updates, important notices. Shown first, before the others.
 //   blue    general announcements.
-//   yellow  player news. Players newly reaching the global Top 5 are added automatically.
+//   yellow  Tenkaichi 3 ranked player news (shown only in the Tenkaichi 3 menus). Players newly
+//           reaching the global Top 5 are added automatically.
 //
 // Each bar has one line per language the launcher supports. A language left empty shows the
 // English line instead. Launchers check for changes every 2 minutes.

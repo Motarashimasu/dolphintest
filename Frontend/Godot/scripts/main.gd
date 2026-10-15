@@ -304,7 +304,7 @@ func _main_menu() -> Control:
 
 
 func _game_menu() -> Control:
-	return _menu("Tenkaichi 3", [
+	var menu := _menu("Tenkaichi 3", [
 		{"label": "Play Offline", "glyph": "P", "color": "#f2b531",
 			"desc": "Play on your own, with your own save data.\nSingle Battle, Team Battle, story mode: everything the game has.",
 			"action": open_checked.bind("play_offline")},
@@ -323,6 +323,8 @@ func _game_menu() -> Control:
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the main menu."},
 	], "game_menu")
+	menu.game = Settings.GAME["id"]   # Tenkaichi 3's menus: the yellow (ranked) notices
+	return menu
 
 
 var _terminology: Dictionary = {}
@@ -615,6 +617,17 @@ func notices_allowed() -> bool:
 	if t == null or not t.get("notices") or _splash or _compact or not _screens.visible:
 		return false
 	return not Dolphin.is_running()
+
+
+## The yellow bar is Tenkaichi 3 ranked news: only while a Tenkaichi 3 menu is open (any of
+## Tenkaichi 3's releases on the stack). Red and blue show in every game's menus.
+const YELLOW_NOTICE_GAMES := ["RDSPAF", "RDSE70", "RDSJAF"]
+
+
+func notice_color_allowed(color: String) -> bool:
+	if color != "yellow":
+		return true
+	return _stack.any(func(sc): return sc.get("game") in YELLOW_NOTICE_GAMES)
 
 
 ## Held Select in game: shrink this window to a small always-on-top panel over the game.

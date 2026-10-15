@@ -16,6 +16,8 @@ var show_desc_bar := true
 var show_header := true
 ## The notification bars (scripts/ui/notifier.gd) may show over this screen.
 var notices := true
+## The game whose menus start here (e.g. "RDSPAF" on the Tenkaichi 3 menu); "" = none.
+var game := ""
 
 
 func _init() -> void:
