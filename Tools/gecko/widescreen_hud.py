@@ -3,7 +3,7 @@
 The game draws every battle-HUD sprite through two functions (textured 0x80108970, flat
 0x80108384) that each set a 2D projection of 0..512 x 0..448 (PS2 coordinates) right before
 drawing. The code widens that projection per sprite, only for sprites drawn by the battle HUD
-(caller in 0x80100000-0x80106000):
+(caller in the battle-only 2D modules, 0x80100000-0x80111000):
   - a sprite on the left half keeps its true width, pinned to the left edge;
   - one on the right half, pinned to the right edge;
   - one crossing the middle (the timer), centered at its true width;
@@ -19,10 +19,11 @@ def hook(sreg, scratch):
     sreg holds the sprite; scratch = a stack slot whose high word is already 0x43300000."""
     p=Prog()
     p(lfs(4,-0x6208,2))                       # (the replaced instruction)
-    # Only sprites drawn by the battle HUD: the draw function's caller in 0x80100000-0x80106000.
+    # Only battle 2D: the draw function's caller in the battle-only 2D modules, 0x80100000-0x80111000
+    # (the HUD, its damage / flash effects, the combo counters; all set up when a fight starts).
     p(lwz(11,0,1)); p(lwz(11,4,11))
     p(lis(12,0x8010)); p(cmplw(11,12)); p.bc('lt','END')
-    p(ori(12,12,0x6000)); p(cmplw(11,12)); p.bc('ge','END')
+    p(lis(12,0x8011)); p(ori(12,12,0x1000)); p(cmplw(11,12)); p.bc('ge','END')
     # Where the sprite lands on screen: the current matrix (the HUD mirrors P2's side with it)
     # applied to its corners: x' = m0*x + m4*y + m8*z + m12, z = -1.
     p(lwz(10,-0x6e7c,13))                     # current matrix (column-major 4x4)
