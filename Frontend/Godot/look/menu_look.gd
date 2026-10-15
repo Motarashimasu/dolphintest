@@ -6,6 +6,8 @@ extends Resource
 ##
 ## The background behind the menus is its own scene, res://scenes/Backdrop.tscn: open it in the
 ## 2D editor to move, replace or delete the sky, clouds and ground, or to add your own art.
+## Its CornerLeft / CornerRight clouds (look/corner_left.png, corner_right.png) sit over the menu
+## pictures and behind everything else, on every menu.
 
 @export_group("Fonts")
 ## Screen titles (the big one at the top, and in-game menus). Empty = menu_font.
