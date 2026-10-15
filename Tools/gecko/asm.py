@@ -11,6 +11,13 @@ def cmpw(ra,rb): return (31<<26)|(ra<<16)|(rb<<11)|(0<<1)
 def cmplw(ra,rb): return (31<<26)|(ra<<16)|(rb<<11)|(32<<1)
 def mr(ra,rs): return (31<<26)|(rs<<21)|(ra<<16)|(rs<<11)|(444<<1)
 def subf(rd,ra,rb): return (31<<26)|(rd<<21)|(ra<<16)|(rb<<11)|(40<<1)
+def lfd(f,d,ra): return D(50,f,ra,d)
+def stw(r,d,ra): return D(36,r,ra,d)
+def xoris(ra,rs,i): return D(27,rs,ra,i)
+def fsubs(d,a,b): return (59<<26)|(d<<21)|(a<<16)|(b<<11)|(20<<1)
+def fmadds(d,a,c,b): return (59<<26)|(d<<21)|(a<<16)|(b<<11)|(c<<6)|(29<<1)
+def fcmpu(a,b): return (63<<26)|(a<<16)|(b<<11)
+def fmr(d,b): return (63<<26)|(d<<21)|(b<<11)|(72<<1)
 def mflr(r): return 0x7C0802A6|(r<<21)
 def flt(v): return struct.unpack('>I',struct.pack('>f',v))[0]
 class Prog:
