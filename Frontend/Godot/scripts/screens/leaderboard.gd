@@ -3,7 +3,7 @@ extends "res://scripts/screens/screen.gd"
 ## pill for the board (Single Battle FT2 / Team Battle / All-time record) and one for the region
 ## (Global or where the ranked lobby was hosted), three big purple ranking cards over a radar
 ## ring, orange scroll chevrons, your own entry pinned at the bottom, and the blue "Receiving
-## Ranking Data..." box while it loads.
+## Ranking Data..." popup (the striped teal box) while it loads.
 ##
 ## Controls: ▲▼ move between the board pill, the region pill and the list (and scroll it);
 ## ◀▶ change the focused pill (on the list: the board); A on the list opens the website.
@@ -41,10 +41,10 @@ var _top := 0
 var _board_pill: Dictionary
 var _region_pill: Dictionary
 var _cards: Array = []
-var _up: Label
-var _down: Label
+var _up: Control
+var _down: Control
 var _you: Dictionary
-var _overlay: Panel
+var _overlay: Control
 var _overlay_text: Label
 
 
@@ -264,11 +264,8 @@ func _make_pill(x: float, y: float, w: float) -> Dictionary:
 	(text.material as ShaderMaterial).set_shader_parameter("bottom_color", ORANGE)
 	p.add_child(text)
 	for left in [true, false]:
-		var a := Style.label("◀" if left else "▶", 26, ORANGE, 6, Color("#4a1a00"), true)
-		a.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		a.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		a.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-		Style.place(a, 6 if left else w - 46, 0, 40, 50)
+		var a := Style.arrow("left" if left else "right")
+		Style.place(a, 8 if left else w - 44, 7, 36, 36)
 		a.mouse_filter = Control.MOUSE_FILTER_STOP
 		a.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		var key := "board_mode" if x < 640 else "board_region"
@@ -446,31 +443,29 @@ func _fill_you() -> void:
 				else tr("You're not on this board yet")
 
 
-func _chevron(up: bool, y: float) -> Label:
-	var l := Style.label("▲" if up else "▼", 26, ORANGE, 6, Color("#4a1a00"), true)
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	Style.place(l, 610, y, 60, 30)
-	add_child(l)
-	return l
+func _chevron(up: bool, y: float) -> Control:
+	var a := Style.arrow("up" if up else "down")
+	Style.place(a, 618, y, 44, 30)
+	add_child(a)
+	return a
 
 
-## The blue "Receiving Ranking Data..." box with white corner marks.
+## The striped teal popup box (look/popup_box.png) for "Receiving Ranking Data..." and messages.
 func _make_overlay() -> void:
-	_overlay = Style.panel(Color("#1f4fd1", 0.93), 4, 4, Color.WHITE)
-	Style.place(_overlay, 180, 200, 920, 220)
+	_overlay = Control.new()
+	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	Style.place(_overlay, 250, 196, 780, 236)
 	add_child(_overlay)
-	for corner in [Vector2(-6, -6), Vector2(902, -6), Vector2(-6, 202), Vector2(902, 202)]:
-		var mark := Style.panel(Color("#1f4fd1"), 2, 3, Color.WHITE)
-		Style.place(mark, corner.x, corner.y, 24, 24)
-		_overlay.add_child(mark)
-	_overlay_text = Style.label("", 30, Color.WHITE, 6, Color("#0b1f5c"), "button")
+	var box := Style.popup_box()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_overlay.add_child(box)
+	_overlay_text = Style.label("", 30, Color.WHITE, 6, Color("#06302f"), "button")
 	_overlay_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_overlay_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_overlay_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_overlay_text.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_overlay_text.offset_left = 30
-	_overlay_text.offset_right = -30
+	_overlay_text.offset_left = 60
+	_overlay_text.offset_right = -60
 	_overlay.add_child(_overlay_text)
 
 

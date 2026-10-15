@@ -259,6 +259,31 @@ static func title_label(text: String, size: int, scale := 1.0) -> Label:
 	return l
 
 
+## The menu arrows (look/arrow_left/right/up/down.png) as a picture, sized by its rect.
+static func arrow(dir: String) -> TextureRect:
+	var t := TextureRect.new()
+	t.texture = load("res://look/arrow_%s.png" % dir)
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	t.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return t
+
+
+## The striped teal popup box (look/popup_box.png): its notched corners keep their size, the
+## middle stretches.
+static func popup_box() -> NinePatchRect:
+	var b := NinePatchRect.new()
+	b.texture = load("res://look/popup_box.png")
+	b.patch_margin_left = 100
+	b.patch_margin_right = 100
+	b.patch_margin_top = 64
+	b.patch_margin_bottom = 64
+	b.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return b
+
+
 static func box(bg: Color, radius := 0, border := 0, border_color := Color.WHITE) -> StyleBoxFlat:
 	var b := StyleBoxFlat.new()
 	b.bg_color = bg

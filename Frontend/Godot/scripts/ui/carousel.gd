@@ -16,6 +16,8 @@ const SEL_X := 120.0       # the selected row's x
 const HI_IN_S := 0.2       # highlight sweeping in ...
 const HI_OUT_S := 0.12     # ... and out (quick, so fast scrolling leaves no trail)
 const PULSE_S := 0.9       # one half of the highlight's glow pulse
+const SQUISH_S := 0.55     # one half of the selected text's soft squish
+const SQUISH := Vector2(1.025, 0.93)   # at its softest: a touch wider, a little shorter
 
 var visible_range := 2
 var fit_width := 0.0      # > 0: shrink labels wider than this (px at full size)
@@ -258,6 +260,7 @@ func _highlight(row: Control, on: bool, animate: bool) -> void:
 		if running and running.is_valid():
 			running.kill()
 	hi.self_modulate = Color.WHITE
+	_squish(row, on)
 	if not on:
 		if animate:
 			var t := create_tween()
@@ -280,6 +283,24 @@ func _highlight(row: Control, on: bool, animate: bool) -> void:
 		_pulse(row)
 
 
+## The selected item's text gently squishes and springs back while it stays selected.
+func _squish(row: Control, on: bool) -> void:
+	var text: Label = row.get_node("Text")
+	var running: Tween = row.get_meta("squish") if row.has_meta("squish") else null
+	if running and running.is_valid():
+		running.kill()
+	text.pivot_offset = Vector2(0, ROW_H / 2)
+	if not on:
+		var back := create_tween()
+		row.set_meta("squish", back)
+		back.tween_property(text, "scale", Vector2.ONE, 0.12)
+		return
+	var t := create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	row.set_meta("squish", t)
+	t.tween_property(text, "scale", SQUISH, SQUISH_S)
+	t.tween_property(text, "scale", Vector2.ONE, SQUISH_S)
+
+
 ## A soft glow pulse while the row stays selected.
 func _pulse(row: Control) -> void:
 	if not is_instance_valid(row) or not row.get_meta("lit", false):
@@ -292,15 +313,15 @@ func _pulse(row: Control) -> void:
 
 
 func _add_arrow(up: bool) -> void:
-	var b := Button.new()
-	b.flat = true
+	var b := TextureButton.new()
 	b.focus_mode = Control.FOCUS_NONE
-	b.text = "▲" if up else "▼"
-	b.add_theme_font_size_override("font_size", 30)
-	b.add_theme_color_override("font_color", Style.ARROW)
-	b.add_theme_color_override("font_hover_color", Style.ARROW_HOVER)
-	b.add_theme_color_override("font_outline_color", Style.TITLE_EDGE)
-	b.add_theme_constant_override("outline_size", 8)
-	Style.place(b, 400, 0 if up else 356, 64, 40)
+	b.texture_normal = load("res://look/arrow_%s.png" % ("up" if up else "down"))
+	b.ignore_texture_size = true
+	b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	b.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	Style.place(b, 408, 0 if up else 358, 48, 40)
+	b.mouse_entered.connect(func(): b.modulate = Color(1.15, 1.15, 1.15))
+	b.mouse_exited.connect(func(): b.modulate = Color.WHITE)
 	b.pressed.connect(move.bind(-1 if up else 1))
 	add_child(b)

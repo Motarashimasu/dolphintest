@@ -216,6 +216,13 @@ func _rebuild() -> void:
 		value_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		root.add_child(value_l)
 
+		# The ◀ ▶ arrows at both ends of a changeable value.
+		var arrows: Array = []
+		if r.get("type", "") in ["choice", "toggle", "number"]:
+			for dir in ["left", "right"]:
+				var a := Style.arrow(dir)
+				root.add_child(a)
+				arrows.append(a)
 		var edit: LineEdit = null
 		if r.get("type", "") == "text":
 			edit = Style.line_edit(String(r.get("placeholder", "")), int(r.get("max_length", 0)))
@@ -230,7 +237,8 @@ func _rebuild() -> void:
 			icon = LinkIcon.new()
 			icon.link = String(r["icon"])
 			root.add_child(icon)
-		_nodes.append({"root": root, "name": name_l, "value": value_l, "edit": edit, "icon": icon})
+		_nodes.append({"root": root, "name": name_l, "value": value_l, "edit": edit, "icon": icon,
+				"arrows": arrows})
 	_layout_rows()
 
 
@@ -248,6 +256,11 @@ func _layout_rows() -> void:
 		y += row_height + row_gap
 		Style.place(n.name, 18, 0, lw - 24, row_height)
 		Style.place(n.value, lw, 0, w - lw - (56 if n.icon else 12), row_height)
+		if not n.arrows.is_empty():
+			var s := row_height * 0.62
+			var vw := w - lw - 12
+			Style.place(n.arrows[0], lw + vw * 0.12, (row_height - s) / 2, s, s)
+			Style.place(n.arrows[1], lw + vw * 0.88 - s, (row_height - s) / 2, s, s)
 		if n.icon:
 			var s := row_height * 0.6
 			Style.place(n.icon, w - 18 - s, (row_height - s) / 2, s, s)
@@ -331,11 +344,11 @@ func _value_text(r: Dictionary) -> String:
 			var values: Array = r.get("values", [])
 			var names: Array = r.get("names", values)
 			var at := values.find(v)
-			return "◀   %s   ▶" % (tr(String(names[at])) if at >= 0 and at < names.size() else tr(str(v)))
+			return tr(String(names[at])) if at >= 0 and at < names.size() else tr(str(v))
 		"toggle":
-			return "◀   %s   ▶" % tr(r.get("on_text", "On") if v else r.get("off_text", "Off"))
+			return tr(r.get("on_text", "On") if v else r.get("off_text", "Off"))
 		"number":
-			return "◀   %s   ▶" % str(v)
+			return str(v)
 		"text":
 			return ""
 	return "" if v == null else String(str(v))
