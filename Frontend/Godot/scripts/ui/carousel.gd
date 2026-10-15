@@ -1,6 +1,7 @@
 extends Control
-## BT3-style menu wheel: the selected row sits on the selected bar (look: selected_bar), the
-## others on their own row bars (row_bar); neighbours shrink, slide left and fade; rows past `visible_range` are hidden. Wraps around. Up/Down move, Accept picks.
+## BT3-style menu wheel: every row has its own bar (look: row_bar); the selected one lights up
+## with the highlight (selected_bar), which sweeps in, gently pulses and travels with its row;
+## neighbours shrink, slide left and fade; rows past `visible_range` are hidden. Wraps around. Up/Down move, Accept picks.
 ## Items: [{label, glyph, color (Color or "#hex"), desc, disabled?}]
 
 signal changed(index: int)
@@ -11,6 +12,10 @@ const Style := preload("res://scripts/ui/style.gd")
 const ROW_H := 60.0
 const CENTER_Y := 152.0   # selected row's top inside the 860x400 box
 const TWEEN_S := 0.22
+const SEL_X := 120.0       # the selected row's x
+const HI_IN_S := 0.2       # highlight sweeping in ...
+const HI_OUT_S := 0.12     # ... and out (quick, so fast scrolling leaves no trail)
+const PULSE_S := 0.9       # one half of the highlight's glow pulse
 
 var visible_range := 2
 var fit_width := 0.0      # > 0: shrink labels wider than this (px at full size)
@@ -18,7 +23,6 @@ var row_gap := 64.0
 var items: Array = []
 var index := 0
 
-var _band: TextureRect
 var _rows: Array[Control] = []
 var _wheel_lock := 0
 
@@ -30,10 +34,6 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	# The selected bar stays put; the rows slide over it.
-	_band = _bar(Style.SEL_BAR)
-	Style.place(_band, 0, CENTER_Y + ROW_H / 2 - Style.SEL_BAR_SIZE.y / 2, Style.SEL_BAR_SIZE.x, Style.SEL_BAR_SIZE.y)
-	add_child(_band)
 	_add_arrow(true)
 	_add_arrow(false)
 	if not items.is_empty():
@@ -132,7 +132,15 @@ func _make_row(item: Dictionary, i: int) -> Control:
 	row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	row.gui_input.connect(_on_row_input.bind(i))
 
-	# The row's own bar (hidden while it's the selected one: it sits on the selected bar then).
+	# The highlight: from the wheel's left edge (the row sits at SEL_X when selected), behind the
+	# row's bar, badge and text. Hidden unless this row is the selected one.
+	var hi := _bar(Style.SEL_BAR)
+	hi.name = "Highlight"
+	Style.place(hi, -SEL_X, (ROW_H - Style.SEL_BAR_SIZE.y) / 2, Style.SEL_BAR_SIZE.x, Style.SEL_BAR_SIZE.y)
+	hi.pivot_offset = Vector2(0, Style.SEL_BAR_SIZE.y / 2)
+	hi.modulate.a = 0.0
+	row.add_child(hi)
+	# The row's own bar (fades out while the row is highlighted).
 	var bar := _bar(Style.ROW_BAR)
 	bar.name = "Bar"
 	Style.place(bar, 0, (ROW_H - Style.ROW_BAR_SIZE.y) / 2, Style.ROW_BAR_SIZE.x, Style.ROW_BAR_SIZE.y)
@@ -187,7 +195,7 @@ func _layout(animate: bool) -> void:
 		var visible_row := a <= visible_range
 		var is_sel := d == 0
 		var s := 1.0 if is_sel else (0.84 if a == 1 else 0.72)
-		var x := 120.0 if is_sel else 100.0 - a * 26.0
+		var x := SEL_X if is_sel else 100.0 - a * 26.0
 		var y := CENTER_Y + d * row_gap + (0.0 if is_sel else signf(d) * 6.0)
 		var alpha := 0.0 if not visible_row else (0.55 if a >= 2 else 1.0)
 		var shade := 0.75 if a >= 2 else 1.0
@@ -212,6 +220,7 @@ func _layout(animate: bool) -> void:
 			row.scale = Vector2(s, s)
 			row.modulate = target_mod
 			row.get_node("Bar").modulate.a = 0.0 if is_sel else 1.0
+		_highlight(row, is_sel, animate)
 
 		var color := _color(item)
 		var disabled: bool = item.get("disabled", false)
@@ -235,6 +244,51 @@ func _layout(animate: bool) -> void:
 			ls.outline_color = Style.IDLE_EDGE
 			ls.shadow_size = 0
 			ls.shadow_offset = Vector2.ZERO
+
+
+## Lights a row up (sweeps in from the left, then pulses) or lets it go (quick fade).
+func _highlight(row: Control, on: bool, animate: bool) -> void:
+	var hi: TextureRect = row.get_node("Highlight")
+	var was_on: bool = row.get_meta("lit", false)
+	if was_on == on and animate:
+		return
+	row.set_meta("lit", on)
+	for key in ["hi_tween", "hi_pulse"]:
+		var running: Tween = row.get_meta(key) if row.has_meta(key) else null
+		if running and running.is_valid():
+			running.kill()
+	hi.self_modulate = Color.WHITE
+	if not on:
+		if animate:
+			var t := create_tween()
+			row.set_meta("hi_tween", t)
+			t.tween_property(hi, "modulate:a", 0.0, HI_OUT_S)
+		else:
+			hi.modulate.a = 0.0
+		return
+	if animate:
+		hi.modulate.a = 0.0
+		hi.scale = Vector2(0.55, 1.0)
+		var t := create_tween().set_parallel()
+		row.set_meta("hi_tween", t)
+		t.tween_property(hi, "modulate:a", 1.0, HI_IN_S)
+		t.tween_property(hi, "scale:x", 1.0, HI_IN_S).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		t.finished.connect(_pulse.bind(row))
+	else:
+		hi.modulate.a = 1.0
+		hi.scale = Vector2.ONE
+		_pulse(row)
+
+
+## A soft glow pulse while the row stays selected.
+func _pulse(row: Control) -> void:
+	if not is_instance_valid(row) or not row.get_meta("lit", false):
+		return
+	var hi: TextureRect = row.get_node("Highlight")
+	var p := create_tween().set_loops().set_trans(Tween.TRANS_SINE)
+	row.set_meta("hi_pulse", p)
+	p.tween_property(hi, "self_modulate", Color(1.12, 1.12, 1.08), PULSE_S)
+	p.tween_property(hi, "self_modulate", Color.WHITE, PULSE_S)
 
 
 func _add_arrow(up: bool) -> void:
