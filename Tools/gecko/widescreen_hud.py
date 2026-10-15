@@ -10,22 +10,45 @@ drawing. The code widens that projection per sprite, only for sprites drawn by t
   - the pieces of one HUD element (drawn at the same position, like a life bar's fill and the
     sliding piece that cuts it to the health left) follow the element's first piece;
   - full-width ones (400+ wide: flashes, fades) are left alone.
-Usage: python3 widescreen_hud.py [squeeze]   (squeeze = game aspect / shown aspect; 16:9 = 0.75)
+Usage: python3 widescreen_hud.py [squeeze] [--params GAME.json]
+  squeeze = game aspect / shown aspect (16:9 = 0.75). Without --params: BT3 PAL (RDSPAF).
+  Another build (NTSC-U, Japanese): python3 find_hud_sites.py mem1.raw > GAME.json first
+  (see README.md).
 """
 from asm import *  # noqa: F403 (Tools/gecko/asm.py)
+import json
 import sys
-s=float(sys.argv[1]) if len(sys.argv)>1 else 0.75
+
+# BT3 PAL (RDSPAF), as find_hud_sites.py reports it.
+P = {'hooks': [{'addr': 0x801089d4, 'sprite_reg': 28, 'scratch': 0xd0},
+               {'addr': 0x801083d0, 'sprite_reg': 31, 'scratch': 0x90}],
+     'matrix_r13': -0x6e7c, 'magic_r2': -0x6218, 'ortho_r2': -0x6208,
+     'battle_lo': 0x80100000, 'battle_hi': 0x80111000}
+args = [a for a in sys.argv[1:]]
+if '--params' in args:
+    i = args.index('--params')
+    q = json.load(open(args[i + 1]))
+    del args[i:i + 2]
+    h0 = q['hooks'][0]
+    P = {'hooks': q['hooks'], 'matrix_r13': h0['matrix_r13'], 'magic_r2': h0['magic_r2'],
+         'ortho_r2': h0['ortho_r2'], 'battle_lo': q['battle_lo'], 'battle_hi': q['battle_hi']}
+s = float(args[0]) if args else 0.75
 W=512/s; W2=256/s
 def hook(sreg, scratch):
     """At the draw function's `lfs f4, 512` (the ortho's right edge): f3 = left, f4 = right.
     sreg holds the sprite; scratch = a stack slot whose high word is already 0x43300000."""
     p=Prog()
-    p(lfs(4,-0x6208,2))                       # (the replaced instruction)
+    p(lfs(4,P['ortho_r2'],2))                 # (the replaced instruction)
     # Only battle 2D: the draw function's caller in the battle-only 2D modules, 0x80100000-0x80111000
     # (the HUD, its damage / flash effects, the combo counters; all set up when a fight starts).
     p(lwz(11,0,1)); p(lwz(11,4,11))
-    p(lis(12,0x8010)); p(cmplw(11,12)); p.bc('lt','END')
-    p(lis(12,0x8011)); p(ori(12,12,0x1000)); p(cmplw(11,12)); p.bc('ge','END')
+    lo, hi = P['battle_lo'], P['battle_hi']
+    p(lis(12,lo>>16))
+    if lo & 0xffff: p(ori(12,12,lo&0xffff))
+    p(cmplw(11,12)); p.bc('lt','END')
+    p(lis(12,hi>>16))
+    if hi & 0xffff: p(ori(12,12,hi&0xffff))
+    p(cmplw(11,12)); p.bc('ge','END')
     p.b('DATA',link=True)
     p(flt(W)); p(flt(512-W)); p(flt(256-W2)); p(flt(256+W2))     # 0 4 8 12
     p(flt(400.0)); p(flt(256.0)); p(flt(0.5)); p(flt(16.0))      # 16 20 24 28
@@ -34,8 +57,8 @@ def hook(sreg, scratch):
     p(mflr(12))
     # Where the sprite lands on screen: the current matrix (each HUD element's position)
     # applied to its corners: x' = m0*x + m4*y + m8*z + m12, z = -1.
-    p(lwz(10,-0x6e7c,13))                     # current matrix (column-major 4x4)
-    p(lfd(8,-0x6218,2))                       # int -> float magic
+    p(lwz(10,P['matrix_r13'],13))                     # current matrix (column-major 4x4)
+    p(lfd(8,P['magic_r2'],2))                       # int -> float magic
     def to_float(fd, off):
         p(lha(11,off,sreg)); p(xoris(11,11,0x8000)); p(stw(11,scratch+4,1))
         p(lfd(fd,scratch,1)); p(fsubs(fd,fd,8))
@@ -76,7 +99,7 @@ def hook(sreg, scratch):
     return p.words()
 
 out=[]
-for addr,reg,scratch in ((0x801089d4,28,0xd0),(0x801083d0,31,0x90)):
-    w=hook(reg,scratch)
+for h in P['hooks']:
+    addr=h['addr']; w=hook(h['sprite_reg'],h['scratch'])
     out.append(c2(addr,w))
 print('\n'.join(out))
