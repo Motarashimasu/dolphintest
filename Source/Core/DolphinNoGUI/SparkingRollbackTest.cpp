@@ -26,7 +26,9 @@
 #include "Core/State.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/SparkingIO.h"
+#include "DolphinNoGUI/SparkingWatch.h"
 #include "InputCommon/GCPadStatus.h"
+#include "VideoCommon/Present.h"
 #include "VideoCommon/VideoEvents.h"
 
 namespace Sparking
@@ -80,6 +82,9 @@ Clock::time_point s_replay_start;
 float s_saved_speed = 1.0f;
 int s_cycles = 0, s_mismatches = 0;
 Stat s_save, s_load, s_resim;  // ms; s_resim per field
+std::vector<double> s_recent_resim;  // the last 20 re-runs (ms per field)
+int s_extra_polls = 0;               // polls in a re-run beyond the recorded ones
+Clock::time_point s_test_start;
 std::string s_log_path;
 Common::EventHook s_field_hook;
 
@@ -126,6 +131,12 @@ void EmitStats()
                  .AddRaw("load_ms_max", fmt::format("{:.2f}", s_load.max))
                  .AddRaw("rerun_ms_per_field", fmt::format("{:.2f}", s_resim.Avg()))
                  .AddRaw("rerun_ms_per_field_max", fmt::format("{:.2f}", s_resim.max))
+                 .AddRaw("rerun_ms_recent", fmt::format("{:.2f}", [] {
+                   double t = 0;
+                   for (double v : s_recent_resim)
+                     t += v;
+                   return s_recent_resim.empty() ? 0.0 : t / s_recent_resim.size();
+                 }()))
                  .Add("state_kb", static_cast<int64_t>(s_state_size / 1024))
                  .Add("max_rollback_fields", MaxRollbackFields()));
 }
@@ -143,7 +154,8 @@ void CopyGameMemory(Core::System& system, std::vector<u8>* mem1, std::vector<u8>
 }
 
 // Differing 32-byte lines of MEM1, merged into ranges (the first 16), as JSON.
-std::string DiffRanges(const std::vector<u8>& a, const u8* b, std::size_t size, u64* total)
+std::string DiffRanges(const std::vector<u8>& a, const u8* b, std::size_t size, u64* total,
+                       std::vector<std::size_t>* starts)
 {
   constexpr std::size_t LINE = 32;
   std::vector<std::string> ranges;
@@ -155,6 +167,7 @@ std::string DiffRanges(const std::vector<u8>& a, const u8* b, std::size_t size, 
     {
       ranges.push_back(fmt::format("{{\"address\":\"0x{:08X}\",\"bytes\":{}}}",
                                    0x80000000u + static_cast<u32>(start), end - start));
+      starts->push_back(start);
     }
     open = false;
   };
@@ -177,6 +190,33 @@ std::string DiffRanges(const std::vector<u8>& a, const u8* b, std::size_t size, 
   }
   close();
   return JsonArray(ranges);
+}
+
+std::string Hex(const u8* p, std::size_t n)
+{
+  std::string out;
+  for (std::size_t i = 0; i < n; ++i)
+    out += fmt::format("{:02X}", p[i]);
+  return out;
+}
+
+// The first differing bytes of the first ranges, first run vs re-run (to see what the data is).
+std::string Samples(const std::vector<u8>& a, const u8* b, std::size_t size,
+                    const std::vector<std::size_t>& starts)
+{
+  std::vector<std::string> out;
+  for (std::size_t k = 0; k < starts.size() && k < 6; ++k)
+  {
+    std::size_t at = starts[k];
+    while (at < size && a[at] == b[at])
+      ++at;
+    at &= ~std::size_t{3};
+    const std::size_t n = std::min<std::size_t>(16, size - at);
+    out.push_back(fmt::format("{{\"address\":\"0x{:08X}\",\"first_run\":\"{}\",\"re_run\":\"{}\"}}",
+                              0x80000000u + static_cast<u32>(at), Hex(a.data() + at, n),
+                              Hex(b + at, n)));
+  }
+  return JsonArray(out);
 }
 
 void Resume(Core::System& system)
@@ -227,6 +267,8 @@ void JobRewind(Core::System& system)
   s_saved_speed = Config::Get(Config::MAIN_EMULATION_SPEED);
   Config::SetCurrent(Config::MAIN_EMULATION_SPEED, 0.0f);
   s_replay_at = 0;
+  s_extra_polls = 0;
+  VideoCommon::g_sparking_skip_present = true;  // re-runs aren't shown, like real rollback
   s_phase = Phase::Replaying;
   s_fields = 0;
   s_replay_start = Clock::now();
@@ -235,14 +277,21 @@ void JobRewind(Core::System& system)
 
 void JobCompare(Core::System& system)
 {
-  s_resim.Add(Ms(s_replay_start, Clock::now()) / s_depth);
+  const double rerun = Ms(s_replay_start, Clock::now()) / s_depth;
+  s_resim.Add(rerun);
+  s_recent_resim.push_back(rerun);
+  if (s_recent_resim.size() > 20)
+    s_recent_resim.erase(s_recent_resim.begin());
   Config::SetCurrent(Config::MAIN_EMULATION_SPEED, s_saved_speed);
+  VideoCommon::g_sparking_skip_present = false;
   ++s_cycles;
 
   auto& memory = system.GetMemory();
   u64 mem1_diff = 0, aram_diff = 0;
   const std::size_t mem1_size = std::min<std::size_t>(s_mem1_first.size(), memory.GetRamSizeReal());
-  const std::string ranges = DiffRanges(s_mem1_first, memory.GetRAM(), mem1_size, &mem1_diff);
+  std::vector<std::size_t> starts;
+  const std::string ranges =
+      DiffRanges(s_mem1_first, memory.GetRAM(), mem1_size, &mem1_diff, &starts);
   const u8* aram = system.GetDSP().GetARAMPtr();
   if (aram && s_aram_first.size() == DSP::ARAM_SIZE)
   {
@@ -268,7 +317,12 @@ void JobCompare(Core::System& system)
                    .Add("aram_bytes", static_cast<int64_t>(aram_diff))
                    .Add("input_mismatch", s_input_mismatch || unused_inputs)
                    .Add("polls", static_cast<int64_t>(s_polls.size()))
-                   .Add("polls_replayed", static_cast<int64_t>(s_replay_at)));
+                   .Add("polls_replayed", static_cast<int64_t>(s_replay_at))
+                   .Add("polls_extra", s_extra_polls)
+                   .AddRaw("seconds", fmt::format("{:.1f}", Ms(s_test_start, Clock::now()) / 1000))
+                   .Add("state_kb", static_cast<int64_t>(s_state_size / 1024))
+                   .AddRaw("watches", WatchValuesJson())
+                   .AddRaw("samples", Samples(s_mem1_first, memory.GetRAM(), mem1_size, starts)));
   }
   if (s_cycles <= 3 || s_cycles % 20 == 0 || mem1_diff || aram_diff)
     EmitStats();
@@ -334,7 +388,10 @@ void OnPad(int device, GCPadStatus* status)
     if (s_replay_at < s_polls.size() && s_polls[s_replay_at].device == device)
       *status = s_polls[s_replay_at++].status;
     else
+    {
       s_input_mismatch = true;  // the game polled differently the second time
+      ++s_extra_polls;
+    }
   }
 }
 }  // namespace
@@ -348,6 +405,7 @@ void InitRollbackTest(int fields, int gap, const std::string& log_path)
     File::CreateFullPath(s_log_path);
   s_phase = Phase::Starting;
   s_fields = 0;
+  s_test_start = Clock::now();
   g_sparking_pad_hook = &OnPad;
   s_field_hook = Core::System::GetInstance().GetVideoEvents().vi_end_field_event.Register(
       [] { OnField(); });

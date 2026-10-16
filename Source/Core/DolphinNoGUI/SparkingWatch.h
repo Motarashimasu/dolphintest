@@ -39,4 +39,6 @@ void ClearWatches();
 void SetPortNames(const std::array<std::string, 4>& names);
 // Re-sends every current value as one "watch_values" event.
 void EmitWatchValues();
+// The watches' current values as a JSON object ({"p1_health_pct":100,...}).
+std::string WatchValuesJson();
 }  // namespace Sparking

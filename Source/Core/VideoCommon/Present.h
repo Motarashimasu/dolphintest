@@ -12,6 +12,7 @@
 #include "VideoCommon/VideoCommon.h"
 
 #include <array>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <tuple>
@@ -24,6 +25,9 @@ namespace VideoCommon
 {
 class OnScreenUI;
 class SmoothMotion;
+
+// Dolphin-Sparking: while set, video fields are emulated but not shown (rollback re-runs).
+extern std::atomic<bool> g_sparking_skip_present;
 class PostProcessing;
 
 // Presenter is a class that deals with putting the final XFB on the screen.

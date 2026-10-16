@@ -585,5 +585,6 @@
  "Last at video field %d: %d bytes differ (%s).": "Ultimo al campo video %d: %d byte diversi (%s).",
  "audio memory or inputs": "memoria audio o comandi",
  "%s ms (max %s)": "%s ms (max %s)",
- "%d MB": "%d MB"
+ "%d MB": "%d MB",
+ "The last 20 re-runs. Playing normally takes up to 16.7 ms per field.": "Le ultime 20 ripetizioni. Giocare normalmente richiede fino a 16,7 ms per campo."
 }

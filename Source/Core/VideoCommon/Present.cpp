@@ -29,6 +29,8 @@ std::unique_ptr<VideoCommon::Presenter> g_presenter;
 
 namespace VideoCommon
 {
+std::atomic<bool> g_sparking_skip_present{false};
+
 // Stretches the native/internal analog resolution aspect ratio from ~4:3 to ~16:9
 static float SourceAspectRatioToWidescreen(float source_aspect)
 {
@@ -212,6 +214,10 @@ void Presenter::ViSwap(u32 xfb_addr, u32 fb_width, u32 fb_stride, u32 fb_height,
   auto& video_events = GetVideoEvents();
 
   video_events.before_present_event.Trigger(present_info);
+
+  // Rollback re-runs: the fields are emulated again but never shown (like real rollback).
+  if (g_sparking_skip_present)
+    return;
 
   // Smooth Motion shows something new on every field (in-between frames), so repeats are
   // presented too while it's on.

@@ -67,7 +67,10 @@ func _rows(in_game_menu: bool) -> Array:
 			{"type": "info", "key": "save", "label": "Save state", "value": _ms("save_ms"),
 				"desc": "Rollback saves the state every frame: this has to be small."},
 			{"type": "info", "key": "load", "label": "Load state", "value": _ms("load_ms")},
-			{"type": "info", "key": "rerun", "label": "Re-run one field", "value": _ms("rerun_ms_per_field")},
+			{"type": "info", "key": "rerun", "label": "Re-run one field", "value": tr("%s ms (max %s)") % [
+				"%.1f" % float(_stats.get("rerun_ms_recent", _stats.get("rerun_ms_per_field", 0))),
+				"%.1f" % float(_stats.get("rerun_ms_per_field_max", 0))],
+				"desc": "The last 20 re-runs. Playing normally takes up to 16.7 ms per field."},
 			{"type": "info", "key": "size", "label": "State size", "value": tr("%d MB") % (int(_stats.get("state_kb", 0)) / 1024)},
 			{"type": "info", "key": "fit", "label": "This PC could rewind",
 				"value": tr("%d frames") % (fit / 2) if fit >= 0 else "-",

@@ -443,6 +443,15 @@ void ClearWatches()
   s_triggers.clear();
 }
 
+std::string WatchValuesJson()
+{
+  std::lock_guard lk(s_mutex);
+  Json values;
+  for (const Watch& w : s_watches)
+    values.AddRaw(w.name, FormatValue(w.last));
+  return values.Str();
+}
+
 void EmitWatchValues()
 {
   std::lock_guard lk(s_mutex);
