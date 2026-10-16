@@ -40,6 +40,7 @@
 #include "VideoCommon/Assets/CustomTextureData.h"
 #include "VideoCommon/Assets/TextureAssetUtils.h"
 #include "VideoCommon/BPMemory.h"
+#include "VideoCommon/EFBInterface.h"
 #include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/GraphicsModSystem/Runtime/FBInfo.h"
 #include "VideoCommon/GraphicsModSystem/Runtime/GraphicsModActionData.h"
@@ -2429,6 +2430,9 @@ void TextureCacheBase::CopyRenderTargetToTexture(
         // Immediately flush it.
         WriteEFBCopyToRAM(dst, bytes_per_row / sizeof(u32), num_blocks_y, dstStride,
                           std::move(staging_texture));
+        if (g_sparking_gpu_hook)
+          g_sparking_gpu_hook("efb_copy", dstAddr, covered_range,
+                              Common::GetHash64(dst, covered_range, 0));
       }
       else
       {
@@ -2574,6 +2578,9 @@ void TextureCacheBase::FlushEFBCopy(TCacheEntry* entry)
   u8* const dst = memory.GetPointerForRange(entry->addr, covered_range);
   WriteEFBCopyToRAM(dst, entry->pending_efb_copy_width, entry->pending_efb_copy_height,
                     entry->memory_stride, std::move(entry->pending_efb_copy));
+  if (g_sparking_gpu_hook && dst)
+    g_sparking_gpu_hook("efb_copy", entry->addr, covered_range,
+                        Common::GetHash64(dst, covered_range, 0));
 
   // If the EFB copy was invalidated (e.g. the bloom case mentioned in InvalidateTexture), we don't
   // need to do anything more. The entry will be automatically deleted by smart pointers

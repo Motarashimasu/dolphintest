@@ -9,6 +9,11 @@
 
 enum class EFBReinterpretType;
 
+// Dolphin-Sparking rollback test: something the CPU got from the GPU (EFB peeks, bounding box,
+// GPU counters) or the GPU wrote into RAM (EFB copies: address, size, hash). Null = off.
+using SparkingGpuHook = void (*)(const char* what, u32 a, u32 b, u64 c);
+extern SparkingGpuHook g_sparking_gpu_hook;
+
 class EFBInterfaceBase
 {
 public:

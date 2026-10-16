@@ -163,6 +163,9 @@ static u32 EFB_Read(const u32 addr)
     DEBUG_LOG_FMT(MEMMAP, "EFB Color Read @ {}, {}\t= {:#010x}", x, y, var);
   }
 
+  if (g_sparking_gpu_hook)
+    g_sparking_gpu_hook((addr & 0x00400000) ? "efb_peek_z" : "efb_peek", x | (y << 16), var, 0);
+
   return var;
 }
 

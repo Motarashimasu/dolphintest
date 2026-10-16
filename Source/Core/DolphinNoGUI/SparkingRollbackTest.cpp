@@ -8,6 +8,7 @@
 #include <cstring>
 #include <mutex>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include <fmt/format.h>
@@ -33,6 +34,7 @@
 #include "DolphinNoGUI/SparkingIO.h"
 #include "DolphinNoGUI/SparkingWatch.h"
 #include "InputCommon/GCPadStatus.h"
+#include "VideoCommon/EFBInterface.h"
 #include "VideoCommon/Present.h"
 #include "VideoCommon/VideoEvents.h"
 
@@ -113,11 +115,39 @@ void OnIPC(u32 address, u32 command, u32 fd, const std::string& device, s64 now,
   }
 }
 
+// What the CPU got from the GPU goes into the same list (EFB peeks, bounding box, GPU counters:
+// the EFB isn't restored by a rewind unless "Rewind graphics too" is on). EFB copies the GPU
+// writes into RAM (address, size, hash) happen on the GPU thread: they get their own list.
+std::mutex s_gpu_log_lock;
+std::vector<std::string> s_gpu_first, s_gpu_re;
+std::vector<std::string>* s_gpu_into = nullptr;
+
+void OnGpu(const char* what, u32 a, u32 b, u64 c)
+{
+  if (std::string_view(what) == "efb_copy")
+  {
+    std::lock_guard lock(s_gpu_log_lock);
+    if (s_gpu_into && s_gpu_into->size() < 200000)
+      s_gpu_into->push_back(fmt::format("efb_copy to={:x} bytes={} hash={:x}", a, b, c));
+    return;
+  }
+  if (s_log_into && s_log_into->size() < 200000)
+    s_log_into->push_back(fmt::format("{} {:x} = {:x}", what, a, b));
+}
+
+void LogInto(std::vector<std::string>* cpu, std::vector<std::string>* gpu)
+{
+  s_log_into = cpu;
+  std::lock_guard lock(s_gpu_log_lock);
+  s_gpu_into = gpu;
+}
+
 // The first entries where the two runs differ (with a little context), as JSON.
-std::string FirstDivergence()
+std::string FirstDivergence(const std::vector<std::string>& first,
+                            const std::vector<std::string>& re)
 {
   std::size_t i = 0;
-  while (i < s_log_first.size() && i < s_log_re.size() && s_log_first[i] == s_log_re[i])
+  while (i < first.size() && i < re.size() && first[i] == re[i])
     ++i;
   const auto slice = [i](const std::vector<std::string>& v) {
     std::vector<std::string> out;
@@ -125,12 +155,17 @@ std::string FirstDivergence()
       out.push_back(Json::Escape((k == i ? ">> " : "   ") + v[k]));
     return JsonArray(out);
   };
+  std::size_t peeks = 0;
+  for (const std::string& e : first)
+    peeks += e.starts_with("efb_peek") || e.starts_with("bbox") || e.starts_with("gpu_counter");
   return Json()
+      .Add("same", i == first.size() && i == re.size())
       .Add("index", static_cast<int64_t>(i))
-      .Add("first_run_entries", static_cast<int64_t>(s_log_first.size()))
-      .Add("re_run_entries", static_cast<int64_t>(s_log_re.size()))
-      .AddRaw("first_run", slice(s_log_first))
-      .AddRaw("re_run", slice(s_log_re))
+      .Add("first_run_entries", static_cast<int64_t>(first.size()))
+      .Add("re_run_entries", static_cast<int64_t>(re.size()))
+      .Add("gpu_reads_first_run", static_cast<int64_t>(peeks))
+      .AddRaw("first_run", slice(first))
+      .AddRaw("re_run", slice(re))
       .Str();
 }
 
@@ -348,7 +383,12 @@ void JobSave(Core::System& system)
     s_trace_re.clear();
     s_log_first.clear();
     s_log_re.clear();
-    s_log_into = &s_log_first;
+    {
+      std::lock_guard lock(s_gpu_log_lock);
+      s_gpu_first.clear();
+      s_gpu_re.clear();
+    }
+    LogInto(&s_log_first, &s_gpu_first);
     s_cycle_start_field = s_field_no;
     s_phase = Phase::Recording;
   }
@@ -367,12 +407,12 @@ void JobRewind(Core::System& system)
   system.GetJitInterface().SetKeepCacheOnLoad(false);
   Gecko::SetReinstallOnLoad(true);
   s_events_loaded = Events(system);
-  s_log_into = &s_log_re;
+  LogInto(&s_log_re, &s_gpu_re);
   s_load.Add(Ms(t0, Clock::now()));
   if (!ok)
   {
     EmitLogged("rollback_mismatch", Json().Add("error", "load_failed"));
-    s_log_into = nullptr;
+    LogInto(nullptr, nullptr);
     s_phase = Phase::Idle;
     s_fields = 0;
     Resume(system);
@@ -403,7 +443,7 @@ void JobCompare(Core::System& system)
 
   auto& memory = system.GetMemory();
   const std::string events_re_end = Events(system);
-  s_log_into = nullptr;
+  LogInto(nullptr, nullptr);
   u64 mem1_diff = 0, aram_diff = 0;
   const std::size_t mem1_size = std::min<std::size_t>(s_mem1_first.size(), memory.GetRamSizeReal());
   std::vector<std::size_t> starts;
@@ -446,7 +486,8 @@ void JobCompare(Core::System& system)
                    .AddRaw("events_added_by_load", OnlyIn(s_events_loaded, s_events_save))
                    .AddRaw("events_only_first_run", OnlyIn(s_events_first_end, events_re_end))
                    .AddRaw("events_only_re_run", OnlyIn(events_re_end, s_events_first_end))
-                   .AddRaw("first_divergence", FirstDivergence()));
+                   .AddRaw("first_divergence", FirstDivergence(s_log_first, s_log_re))
+                   .AddRaw("gpu_copies_divergence", FirstDivergence(s_gpu_first, s_gpu_re)));
     // Follow the first differing spots from now on (their values field by field).
     for (std::size_t k = 0; k < starts.size() && k < 4 && s_trace.size() < 12; ++k)
     {
@@ -548,6 +589,7 @@ void InitRollbackTest(int fields, int gap, const std::string& log_path,
   g_sparking_pad_hook = &OnPad;
   CoreTiming::g_sparking_event_hook = &OnEvent;
   IOS::HLE::g_sparking_ipc_hook = &OnIPC;
+  g_sparking_gpu_hook = &OnGpu;
   s_field_hook = Core::System::GetInstance().GetVideoEvents().vi_end_field_event.Register(
       [] { OnField(); });
   EmitLogged("rollback_test", Json()

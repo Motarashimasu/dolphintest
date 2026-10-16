@@ -20,6 +20,7 @@
 #include "VideoCommon/VideoConfig.h"
 
 std::unique_ptr<EFBInterfaceBase> g_efb_interface;
+SparkingGpuHook g_sparking_gpu_hook = nullptr;
 
 EFBInterfaceBase::~EFBInterfaceBase() = default;
 
