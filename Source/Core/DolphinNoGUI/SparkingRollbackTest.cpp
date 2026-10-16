@@ -38,6 +38,7 @@ using Clock = std::chrono::steady_clock;
 enum class Phase
 {
   Off,
+  Starting,   // booted: waiting for deterministic emulation to be switched on
   Idle,       // playing normally until the next test
   Recording,  // first pass after the save: inputs recorded
   Replaying,  // second pass after the rewind: inputs replayed
@@ -290,6 +291,21 @@ void OnField()
   {
   case Phase::Off:
     return;
+  case Phase::Starting:
+    // After boot, not before: deterministic mode at boot would give a Wii game a temporary,
+    // empty NAND (as in netplay), without the player's save. Switch it on from the host thread.
+    if (++s_fields == 30)
+    {
+      Core::QueueHostJob([](Core::System& system) {
+        Core::SetForceDeterminism(true);  // as in netplay (GPU thread in sync, clock, ...)
+        Core::UpdateWantDeterminism(system);
+        Core::RunOnCPUThread(system, [] {
+          s_phase = Phase::Idle;
+          s_fields = 0;
+        });
+      });
+    }
+    return;
   case Phase::Idle:
     ++s_field_no;
     if (++s_fields >= s_gap)
@@ -330,9 +346,9 @@ void InitRollbackTest(int fields, int gap, const std::string& log_path)
   s_log_path = log_path;
   if (!s_log_path.empty())
     File::CreateFullPath(s_log_path);
-  s_phase = Phase::Idle;
+  s_phase = Phase::Starting;
+  s_fields = 0;
   g_sparking_pad_hook = &OnPad;
-  Core::SetForceDeterminism(true);  // as in netplay (e.g. GPU thread in sync)
   s_field_hook = Core::System::GetInstance().GetVideoEvents().vi_end_field_event.Register(
       [] { OnField(); });
   EmitLogged("rollback_test", Json()

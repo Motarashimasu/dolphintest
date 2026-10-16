@@ -170,6 +170,9 @@ void UpdateWantDeterminism(Core::System& system, bool initial = false);
 // Dolphin-Sparking: keep emulation deterministic outside netplay/movies too (rollback test mode).
 // Call UpdateWantDeterminism afterwards while running.
 void SetForceDeterminism(bool force);
+// While forced: the console clock's start time (seconds since 1970, fixed when it was turned
+// on), so the clock follows emulated time like in netplay. 0 = not forced.
+u64 GetForcedDeterminismStartTime();
 
 // Queue an arbitrary function to asynchronously run once on the Host thread later.
 // Threadsafe. Can be called by any thread, including the Host itself.

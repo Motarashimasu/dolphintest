@@ -1173,6 +1173,8 @@ def rollback_test_check(exe, work):
         inst.proc.wait(timeout=20)
         with open(log) as f:
             lines = [json.loads(l) for l in f if l.strip()]
+        check("no Dolphin warnings during the test", not any(e["event"] == "alert" and "hidapi" not in e.get("text", "")
+                                                             for e in inst.history))
         check("everything is in the results log", any(l["event"] == "rollback_mismatch" for l in lines)
               and any(l["event"] == "rollback_test_stats" for l in lines))
     finally:

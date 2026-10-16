@@ -95,6 +95,7 @@ namespace Core
 {
 static bool s_wants_determinism;
 static std::atomic<bool> s_force_determinism{false};  // Dolphin-Sparking (rollback test)
+static std::atomic<u64> s_forced_start_time{0};
 
 // Declarations and definitions
 static std::thread s_emu_thread;
@@ -939,6 +940,12 @@ void NotifyStateChanged(const Core::State state)
 void SetForceDeterminism(bool force)
 {
   s_force_determinism = force;
+  s_forced_start_time = force ? Common::Timer::GetLocalTimeSinceJan1970() : 0;
+}
+
+u64 GetForcedDeterminismStartTime()
+{
+  return s_force_determinism ? s_forced_start_time.load() : 0;
 }
 
 void UpdateWantDeterminism(Core::System& system, bool initial)
