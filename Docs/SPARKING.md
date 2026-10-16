@@ -292,6 +292,21 @@ state markers, the costliest 8, last 20 tests). Nearly all of it is copying MEM1
 pages of MEM1 / MEM2 that changed after one game frame (2 fields) and over the rewind (plus
 64 KB blocks): how much a save of only the changed memory would have to copy.
 
+Saves copy only the memory the game changed (`Core/HW/SparkingDirtyPages`): after a save every
+host view of MEM1 / MEM2 (the plain view, the fastmem physical view, the DBAT logical views) is
+write-protected; the first write to a page from any thread faults, and the fault handler (EMM,
+before the JIT's) makes it writable in that view and marks it. A save copies the marked pages
+into a shadow copy and protects them again; a rewind copies them back (states are then saved
+and loaded without MEM1 / MEM2, `State::SaveToMemory(..., skip_ram)`). Host code that writes
+into emulated memory through the OS (the IOS file system's fread, SD card reads) unprotects its
+target first, since the OS fails such a write instead of faulting. DBAT remaps / page table
+mappings / shutdown stop the tracking (everything writable; the next save copies everything).
+In BT3 a fight changes ~200 pages per frame, so save / load drop from ~16 / ~19 ms to ~2 / ~3 ms
+on a Wii test program. Stats: `memory_tracking`, `pages_saved`, `pages_restored`,
+`write_faults_per_field`, `restore_errors` (after every tracked restore MEM1 / MEM2 are compared
+with a full copy taken at the save; must stay 0). `--rollback-full-copy` copies everything as
+before. Each re-run is also compared on MEM2 now, not just MEM1.
+
 Quitting stops the test: Dolphin taps the Wii's power button so the game can shut down, and that
 tap isn't a recorded input (a rewind would take it back, and the runs would differ).
 

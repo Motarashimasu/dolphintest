@@ -32,6 +32,7 @@
 #include "Core/HW/DVD/DVDInterface.h"
 #include "Core/HW/EXI/EXI.h"
 #include "Core/HW/MMIO.h"
+#include "Core/HW/SparkingDirtyPages.h"
 #include "Core/HW/MemoryInterface.h"
 #include "Core/HW/ProcessorInterface.h"
 #include "Core/HW/SI/SI.h"
@@ -145,6 +146,8 @@ void MemoryManager::Init()
     mem_size += region.size;
   }
   m_arena.GrabSHMSegment(mem_size, "dolphin-emu");
+  if (!m_sparking_pages)
+    m_sparking_pages = std::make_unique<SparkingDirtyPages>(m_arena, m_page_size);
 
   m_physical_page_mappings.fill(nullptr);
 
@@ -256,6 +259,7 @@ bool MemoryManager::InitFastmemArena()
 
 void MemoryManager::UpdateDBATMappings(const PowerPC::BatTable& dbat_table)
 {
+  SparkingStopTracking();  // the views change
   for (const auto& [logical_address, entry] : m_dbat_mapped_entries)
   {
     m_arena.UnmapFromMemoryRegion(entry.mapped_pointer, entry.mapped_size);
@@ -317,8 +321,8 @@ void MemoryManager::UpdateDBATMappings(const PowerPC::BatTable& dbat_table)
                             intersection_start, mapped_size, logical_address);
               continue;
             }
-            m_dbat_mapped_entries.emplace(logical_address,
-                                          LogicalMemoryView{mapped_pointer, mapped_size});
+            m_dbat_mapped_entries.emplace(
+                logical_address, LogicalMemoryView{mapped_pointer, mapped_size, position});
           }
 
           u32 bat_index = mapped_logical_address / PowerPC::BAT_PAGE_SIZE;
@@ -333,6 +337,7 @@ void MemoryManager::UpdateDBATMappings(const PowerPC::BatTable& dbat_table)
 
 void MemoryManager::AddPageTableMapping(u32 logical_address, u32 translated_address, bool writeable)
 {
+  SparkingStopTracking();  // page table mappings aren't tracked
   if (!m_is_fastmem_arena_initialized)
     return;
 
@@ -539,19 +544,21 @@ void MemoryManager::DoState(PointerWrap& p)
     return;
   }
 
-  p.DoArray(m_ram, current_ram_size);
+  if (!m_sparking_skip_ram)
+    p.DoArray(m_ram, current_ram_size);
   p.DoArray(m_l1_cache, current_l1_cache_size);
   p.DoMarker("Memory RAM");
   if (current_have_fake_vmem)
     p.DoArray(m_fake_vmem, current_fake_vmem_size);
   p.DoMarker("Memory FakeVMEM");
-  if (current_have_exram)
+  if (current_have_exram && !m_sparking_skip_ram)
     p.DoArray(m_exram, current_exram_size);
   p.DoMarker("Memory EXRAM");
 }
 
 void MemoryManager::Shutdown()
 {
+  SparkingStopTracking();
   ShutdownFastmemArena();
 
   m_is_initialized = false;
@@ -570,6 +577,7 @@ void MemoryManager::Shutdown()
 
 void MemoryManager::ShutdownFastmemArena()
 {
+  SparkingStopTracking();
   if (!m_is_fastmem_arena_initialized)
     return;
 
@@ -605,6 +613,68 @@ void MemoryManager::ShutdownFastmemArena()
   m_logical_base = nullptr;
 
   m_is_fastmem_arena_initialized = false;
+}
+
+bool MemoryManager::SparkingSnapshot(u64* pages)
+{
+  *pages = 0;
+  if (!m_sparking_pages || !m_page_table_mapped_entries.empty())
+    return false;
+  std::vector<SparkingDirtyPages::View> views;
+  std::vector<SparkingDirtyPages::Range> ranges;
+  if (!m_sparking_pages->IsArmed())
+  {
+    for (const std::size_t index : {std::size_t(0), std::size_t(3)})  // MEM1, MEM2
+    {
+      const PhysicalMemoryRegion& region = m_physical_regions[index];
+      if (!region.active || !*region.out_pointer)
+        continue;
+      ranges.push_back({*region.out_pointer, region.shm_position, region.size});
+      views.push_back({*region.out_pointer, region.shm_position, region.size});
+      if (m_is_fastmem_arena_initialized)
+        views.push_back({m_physical_base + region.physical_address, region.shm_position, region.size});
+    }
+    for (const auto& [logical_address, entry] : m_dbat_mapped_entries)
+    {
+      views.push_back(
+          {static_cast<u8*>(entry.mapped_pointer), entry.shm_position, entry.mapped_size});
+    }
+  }
+  m_sparking_pages->Snapshot(views, ranges, pages);
+  return true;
+}
+
+bool MemoryManager::SparkingRestore(u64* pages)
+{
+  *pages = 0;
+  return m_sparking_pages && m_sparking_pages->Restore(pages);
+}
+
+void MemoryManager::SparkingStopTracking()
+{
+  if (m_sparking_pages)
+    m_sparking_pages->Disarm();
+}
+
+bool MemoryManager::SparkingIsTracking() const
+{
+  return m_sparking_pages && m_sparking_pages->IsArmed();
+}
+
+u64 MemoryManager::SparkingFaultCount() const
+{
+  return m_sparking_pages ? m_sparking_pages->GetFaultCount() : 0;
+}
+
+bool MemoryManager::SparkingHandleFault(uintptr_t address)
+{
+  return m_sparking_pages && m_sparking_pages->HandleFault(address);
+}
+
+void MemoryManager::SparkingPrepareHostWrite(const void* address, size_t size)
+{
+  if (m_sparking_pages)
+    m_sparking_pages->PrepareHostWrite(address, size);
 }
 
 void MemoryManager::Clear()

@@ -1260,8 +1260,14 @@ def rollback_ios_check(exe, work):
         check(f"the program keeps opening and closing /dev/fs ({opens} times)", opens > 1000)
         bad = [e for e in inst.history if e["event"] == "rollback_mismatch"]
         check(f"every rewind gives the same file descriptors ({s['cycles']} tests, {s['mismatches']} mismatches"
-              + (f": {bad[0]['first_divergence']['re_run']}" if bad else "") + ")",
+              + (f": {bad[0].get('first_divergence', {}).get('re_run')}" if bad else "") + ")",
               s["mismatches"] == 0)
+        check(f"saves copy only the changed memory pages (tracking: {s['memory_tracking']}, "
+              f"{s['pages_saved']} pages per save, state {s['state_kb']} KB, save {s['save_ms']} ms, "
+              f"load {s['load_ms']} ms)",
+              s["memory_tracking"] is True and int(s["pages_saved"]) < 1000 and s["state_kb"] < 20000)
+        check(f"every rewind restores MEM1 + MEM2 exactly as at the save ({s['restore_errors']} wrong pages)",
+              s["restore_errors"] == 0)
         inst.send("quit")
         inst.proc.wait(timeout=20)
     finally:
@@ -1337,9 +1343,16 @@ def rollback_gpu_check(exe, work):
     check(f"nothing comes out different ({last['cycles']} tests, {last['mismatches']} mismatches)",
           last["mismatches"] == 0)
     check("no GPU errors", not alerts)
+    check(f"tracked saves with the GPU writing its FIFO into memory ({last['pages_saved']} pages per save, "
+          f"{last['write_faults_per_field']} write faults per field, {last['restore_errors']} wrong pages)",
+          last["memory_tracking"] is True and int(last["pages_saved"]) > 0 and last["restore_errors"] == 0)
     check(f"rewinds keep the compiled code (code thrown away {first['jit_clears']} -> "
           f"{last['jit_clears']} times; a state load used to throw it all away)",
           last["jit_clears"] == first["jit_clears"])
+    st, first, last, alerts = run("rbgx-full", ["--rollback-full-copy"])
+    check(f"--rollback-full-copy copies everything ({last['state_kb']} KB states, {last['mismatches']} "
+          "mismatches)", st.get("memory_tracking") is False and last["state_kb"] > 40000
+          and last["mismatches"] == 0 and not alerts)
     st, first, last, alerts = run("rbgx-draw", ["--rollback-draw"])
     check(f"--rollback-draw draws the re-runs ({last['draws_skipped']} skipped, {last['mismatches']} "
           "mismatches)", st.get("skip_draw") is False and last["draws_skipped"] == 0

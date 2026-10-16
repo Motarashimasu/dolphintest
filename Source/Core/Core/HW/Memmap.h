@@ -58,7 +58,10 @@ struct LogicalMemoryView
 {
   void* mapped_pointer;
   u32 mapped_size;
+  u32 shm_position = 0;  // where in the shared memory segment (Dolphin-Sparking page tracking)
 };
+
+class SparkingDirtyPages;
 
 class MemoryManager
 {
@@ -128,6 +131,22 @@ public:
   void CopyFromEmu(void* data, u32 address, size_t size) const;
   void CopyToEmu(u32 address, const void* data, size_t size);
   void Memset(u32 address, u8 value, size_t size);
+
+  // Dolphin-Sparking rollback: saves that copy only the memory the game changed (see
+  // SparkingDirtyPages). Snapshot: MEM1 + MEM2 as they are now (the changed pages; everything the
+  // first time); false if they can't be tracked (page table mappings). Restore: back to the last
+  // snapshot; false if tracking stopped since (mappings changed).
+  bool SparkingSnapshot(u64* pages);
+  bool SparkingRestore(u64* pages);
+  void SparkingStopTracking();
+  bool SparkingIsTracking() const;
+  u64 SparkingFaultCount() const;
+  // From the memory fault handler (any thread). True if it was a write to tracked memory.
+  bool SparkingHandleFault(uintptr_t address);
+  // Before host code writes into emulated memory without going through the CPU (fread into it).
+  void SparkingPrepareHostWrite(const void* address, size_t size);
+  // States without MEM1 / MEM2 (they're kept by SparkingSnapshot instead).
+  void SetSparkingSkipRamInState(bool skip) { m_sparking_skip_ram = skip; }
   u8 Read_U8(u32 address) const;
   u16 Read_U16(u32 address) const;
   u32 Read_U32(u32 address) const;
@@ -285,6 +304,9 @@ private:
   std::map<u32, std::vector<u32>> m_large_writeable_pages;
 
   Core::System& m_system;
+
+  std::unique_ptr<SparkingDirtyPages> m_sparking_pages;
+  bool m_sparking_skip_ram = false;
 
   static HostPageType GetHostPageTypeForPageSize(u32 page_size);
 

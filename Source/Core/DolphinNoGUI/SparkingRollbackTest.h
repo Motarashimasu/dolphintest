@@ -35,6 +35,8 @@ struct RollbackTestOptions
   std::vector<u32> trace;
   bool keep_jit = true;   // keep the compiled code across rewinds (else recompile, like a load)
   bool skip_draw = true;  // re-runs don't draw (like real rollback; their frames aren't shown)
+  // Saves copy all of MEM1 / MEM2 every time (else only the pages the game changed).
+  bool full_copy = false;
   // Log everything the emulator does in both runs (events, IPC, GPU reads) so a mismatch says
   // where the runs parted. Slows the re-runs down.
   bool diagnose = false;

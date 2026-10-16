@@ -273,14 +273,20 @@ static std::size_t SaveToBuffer(Core::System& system, Common::UniqueBuffer<u8>& 
   return 0;
 }
 
-std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer)
+std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer, bool skip_ram)
 {
-  return SaveToBuffer(system, buffer);
+  system.GetMemory().SetSparkingSkipRamInState(skip_ram);
+  const std::size_t size = SaveToBuffer(system, buffer);
+  system.GetMemory().SetSparkingSkipRamInState(false);
+  return size;
 }
 
-bool LoadFromMemory(Core::System& system, std::span<u8> buffer)
+bool LoadFromMemory(Core::System& system, std::span<u8> buffer, bool skip_ram)
 {
-  return LoadFromBuffer(system, buffer);
+  system.GetMemory().SetSparkingSkipRamInState(skip_ram);
+  const bool ok = LoadFromBuffer(system, buffer);
+  system.GetMemory().SetSparkingSkipRamInState(false);
+  return ok;
 }
 
 namespace

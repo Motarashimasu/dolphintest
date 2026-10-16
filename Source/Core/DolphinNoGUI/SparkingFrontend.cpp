@@ -923,6 +923,11 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store_true")
       .help("Rollback test: draw the re-runs too (by default they're skipped, as real rollback "
             "would: their frames are never shown)");
+  parser.add_option("--rollback-full-copy")
+      .dest("rollback_full_copy")
+      .action("store_true")
+      .help("Rollback test: every save copies all of MEM1 / MEM2 (by default only the memory pages "
+            "the game changed since the last save, found by write-protecting them)");
   parser.add_option("--rollback-diagnose")
       .dest("rollback_diagnose")
       .action("store_true")
@@ -1119,6 +1124,7 @@ void InitFromOptions(const optparse::Values& options)
       test.keep_jit = !options.is_set_by_user("rollback_recompile");
       test.skip_draw = !options.is_set_by_user("rollback_draw");
       test.diagnose = options.is_set_by_user("rollback_diagnose");
+      test.full_copy = options.is_set_by_user("rollback_full_copy");
       InitRollbackTest(test);
     }
     InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off",

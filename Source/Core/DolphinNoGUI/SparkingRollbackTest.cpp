@@ -231,6 +231,14 @@ Recent s_first_cpu, s_rerun_cpu, s_rerun_first_field, s_rerun_later_fields;
 // cleanly. That tap isn't part of the recorded inputs, so stop rewinding (a rewind would also
 // take the tap back).
 std::atomic<bool> s_stopping{false};
+// Saves keep MEM1 / MEM2 by copying only the pages the game changed (MemoryManager page tracking)
+// instead of all 88 MB; --rollback-full-copy (or tracking that can't work) copies them all.
+bool s_tracked = true;
+Recent s_pages_saved, s_pages_restored;
+u64 s_restore_errors = 0;   // pages that came back different from the copy taken at the save
+u64 s_last_faults = 0, s_last_fault_field = 0;
+double s_faults_per_field = 0;
+std::vector<u8> s_mem2_first;  // MEM2 at the end of the first run (compared after the re-run)
 // Changed-memory measurements (see CountChanges).
 std::vector<u8> s_base_mem1, s_base_mem2;
 Recent s_frame_pages1, s_frame_pages2, s_window_pages1, s_window_pages2, s_window_blocks1,
@@ -374,6 +382,15 @@ int MaxRollbackFields()
 
 void EmitStats()
 {
+  // Write faults per played field since the last stats (each one marks a page changed).
+  const u64 faults = Core::System::GetInstance().GetMemory().SparkingFaultCount();
+  if (s_field_no > s_last_fault_field)
+  {
+    s_faults_per_field = static_cast<double>(faults - s_last_faults) /
+                         static_cast<double>(s_field_no - s_last_fault_field);
+    s_last_faults = faults;
+    s_last_fault_field = s_field_no;
+  }
   EmitLogged("rollback_test_stats",
              Json()
                  .Add("cycles", s_cycles)
@@ -395,6 +412,11 @@ void EmitStats()
                  .AddRaw("rerun_cpu_ms_per_field", fmt::format("{:.2f}", s_rerun_cpu.Avg()))
                  .AddRaw("rerun_first_field_ms", fmt::format("{:.2f}", s_rerun_first_field.Avg()))
                  .AddRaw("rerun_later_fields_ms", fmt::format("{:.2f}", s_rerun_later_fields.Avg()))
+                 .Add("memory_tracking", s_tracked)
+                 .AddRaw("pages_saved", fmt::format("{:.0f}", s_pages_saved.Avg()))
+                 .AddRaw("pages_restored", fmt::format("{:.0f}", s_pages_restored.Avg()))
+                 .AddRaw("write_faults_per_field", fmt::format("{:.0f}", s_faults_per_field))
+                 .Add("restore_errors", static_cast<int64_t>(s_restore_errors))
                  .AddRaw("pages_changed_per_frame",
                          Json()
                              .AddRaw("mem1", fmt::format("{:.0f}", s_frame_pages1.Avg()))
@@ -488,7 +510,7 @@ void CountChanges(Core::System& system, bool window)
 
 // Differing 32-byte lines of MEM1, merged into ranges (the first 16), as JSON.
 std::string DiffRanges(const std::vector<u8>& a, const u8* b, std::size_t size, u64* total,
-                       std::vector<std::size_t>* starts)
+                       std::vector<std::size_t>* starts, u32 base_address = 0x80000000u)
 {
   constexpr std::size_t LINE = 32;
   std::vector<std::string> ranges;
@@ -499,7 +521,7 @@ std::string DiffRanges(const std::vector<u8>& a, const u8* b, std::size_t size, 
     if (open && ranges.size() < 16)
     {
       ranges.push_back(fmt::format("{{\"address\":\"0x{:08X}\",\"bytes\":{}}}",
-                                   0x80000000u + static_cast<u32>(start), end - start));
+                                   base_address + static_cast<u32>(start), end - start));
       starts->push_back(start);
     }
     open = false;
@@ -563,7 +585,23 @@ void JobSave(Core::System& system)
 {
   const auto t0 = Clock::now();
   BeginParts(&s_save_parts);
-  s_state_size = State::SaveToMemory(system, s_state);
+  s_state_size = State::SaveToMemory(system, s_state, s_tracked);
+  if (s_tracked && s_state_size != 0)
+  {
+    u64 pages = 0;
+    if (system.GetMemory().SparkingSnapshot(&pages))
+    {
+      OnMarker("Memory (changed pages)");
+      s_pages_saved.Add(static_cast<double>(pages));
+    }
+    else
+    {
+      // Can't track this game's memory (page table mappings): copy it all from now on.
+      s_tracked = false;
+      EmitLogged("rollback_test", Json().Add("state", "full_copies").Add("reason", "page_table"));
+      s_state_size = State::SaveToMemory(system, s_state, false);
+    }
+  }
   EndParts();
   s_events_save = Events(system);
   s_save.Add(Ms(t0, Clock::now()));
@@ -604,16 +642,54 @@ void JobRewind(Core::System& system)
   {
     LogInto(nullptr, nullptr);
     s_phase = Phase::Off;
+    system.GetMemory().SparkingStopTracking();
     Resume(system);
     return;
   }
   CopyGameMemory(system, &s_mem1_first, &s_aram_first);
+  {
+    auto& memory = system.GetMemory();
+    if (memory.GetEXRAM())
+      s_mem2_first.assign(memory.GetEXRAM(), memory.GetEXRAM() + memory.GetExRamSizeReal());
+    else
+      s_mem2_first.clear();
+  }
   s_events_first_end = Events(system);
-  const auto t0 = Clock::now();
+  auto t0 = Clock::now();
   Gecko::SetReinstallOnLoad(false);  // same session, same codes: leave the handler as it was
   system.GetJitInterface().SetKeepCacheOnLoad(s_keep_jit);
   BeginParts(&s_load_parts);
-  const bool ok = State::LoadFromMemory(system, std::span<u8>(s_state.data(), s_state_size));
+  bool ok = true;
+  if (s_tracked)
+  {
+    u64 pages = 0;
+    ok = system.GetMemory().SparkingRestore(&pages);
+    OnMarker("Memory (changed pages)");
+    s_pages_restored.Add(static_cast<double>(pages));
+    if (ok)
+    {
+      // Check (not timed): MEM1 / MEM2 must now be exactly the copy taken at the save.
+      const auto v0 = Clock::now();
+      auto& memory = system.GetMemory();
+      const u64 wrong1 = ChangedPages(s_base_mem1, memory.GetRAM()).first;
+      const u64 wrong2 =
+          s_base_mem2.empty() ? 0 : ChangedPages(s_base_mem2, memory.GetEXRAM()).first;
+      if (wrong1 || wrong2)
+      {
+        s_restore_errors += wrong1 + wrong2;
+        EmitLogged("rollback_mismatch", Json()
+                                            .Add("error", "restore_wrong")
+                                            .Add("cycle", s_cycles + 1)
+                                            .Add("mem1_pages", static_cast<int64_t>(wrong1))
+                                            .Add("mem2_pages", static_cast<int64_t>(wrong2)));
+      }
+      const auto v1 = Clock::now();
+      t0 += v1 - v0;
+      s_part_start += v1 - v0;
+    }
+  }
+  if (ok)
+    ok = State::LoadFromMemory(system, std::span<u8>(s_state.data(), s_state_size), s_tracked);
   EndParts();
   system.GetJitInterface().SetKeepCacheOnLoad(false);
   Gecko::SetReinstallOnLoad(true);
@@ -622,7 +698,12 @@ void JobRewind(Core::System& system)
   s_load.Add(Ms(t0, Clock::now()));
   if (!ok)
   {
-    EmitLogged("rollback_mismatch", Json().Add("error", "load_failed"));
+    // (A failed page restore: the game's memory mappings changed since the save, so tracking
+    // started over. The game just goes on.)
+    EmitLogged("rollback_mismatch",
+               Json().Add("error", system.GetMemory().SparkingIsTracking() || !s_tracked ?
+                                       "load_failed" :
+                                       "tracking_restarted"));
     LogInto(nullptr, nullptr);
     s_phase = Phase::Idle;
     s_fields = 0;
@@ -667,6 +748,7 @@ void JobCompare(Core::System& system)
     // The power button tap landed in one run and not the other: nothing to compare.
     LogInto(nullptr, nullptr);
     s_phase = Phase::Off;
+    system.GetMemory().SparkingStopTracking();
     Resume(system);
     return;
   }
@@ -692,8 +774,18 @@ void JobCompare(Core::System& system)
       }
     }
   }
+  u64 mem2_diff = 0;
+  std::vector<std::size_t> mem2_starts;
+  std::string mem2_ranges = "[]";
+  if (!s_mem2_first.empty() && memory.GetEXRAM())
+  {
+    mem2_ranges =
+        DiffRanges(s_mem2_first, memory.GetEXRAM(),
+                   std::min<std::size_t>(s_mem2_first.size(), memory.GetExRamSizeReal()),
+                   &mem2_diff, &mem2_starts, 0x90000000u);
+  }
   const bool unused_inputs = s_replay_at != s_polls.size();
-  if (mem1_diff || aram_diff || s_input_mismatch || unused_inputs)
+  if (mem1_diff || mem2_diff || aram_diff || s_input_mismatch || unused_inputs)
   {
     ++s_mismatches;
     Json report;
@@ -701,6 +793,8 @@ void JobCompare(Core::System& system)
                    .Add("field", static_cast<int64_t>(s_cycle_start_field))
                    .Add("mem1_bytes", static_cast<int64_t>(mem1_diff))
                    .AddRaw("mem1", ranges)
+                   .Add("mem2_bytes", static_cast<int64_t>(mem2_diff))
+                   .AddRaw("mem2", mem2_ranges)
                    .Add("aram_bytes", static_cast<int64_t>(aram_diff))
                    .Add("input_mismatch", s_input_mismatch || unused_inputs)
                    .Add("polls", static_cast<int64_t>(s_polls.size()))
@@ -774,6 +868,7 @@ void OnField()
     if (s_stopping)
     {
       s_phase = Phase::Off;
+      Core::System::GetInstance().GetMemory().SparkingStopTracking();
       return;
     }
     if (++s_fields >= s_gap)
@@ -823,6 +918,7 @@ void InitRollbackTest(const RollbackTestOptions& options)
 {
   s_keep_jit = options.keep_jit;
   s_skip_draw = options.skip_draw;
+  s_tracked = !options.full_copy;
   s_diagnose = options.diagnose;
   s_trace = options.trace;
   s_depth = std::clamp(options.fields, 1, 16);
@@ -849,6 +945,7 @@ void InitRollbackTest(const RollbackTestOptions& options)
                                   .Add("gpu_state", Config::Get(Config::GFX_SAVE_TEXTURE_CACHE_TO_STATE))
                                   .Add("keep_jit", s_keep_jit)
                                   .Add("skip_draw", s_skip_draw)
+                                  .Add("memory_tracking", s_tracked)
                                   .Add("diagnose", s_diagnose)
                                   .Add("log", s_log_path));
 }

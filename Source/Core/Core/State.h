@@ -111,8 +111,11 @@ bool LastLoadSucceeded();
 // Dolphin-Sparking (rollback test): the whole emulated state to / from memory, no files. CPU
 // thread with the CPU stopped (a CPU-thread job), like the slot saves. Save returns the size
 // (0 = failed); the buffer grows as needed.
-std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer);
-bool LoadFromMemory(Core::System& system, std::span<u8> buffer);
+// `skip_ram`: without MEM1 / MEM2 (the rollback test keeps those with
+// MemoryManager::SparkingSnapshot); a state saved that way must be loaded that way.
+std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer,
+                         bool skip_ram = false);
+bool LoadFromMemory(Core::System& system, std::span<u8> buffer, bool skip_ram = false);
 
 void LoadLastSaved(Core::System& system, int i = 1);
 void SaveFirstSaved(Core::System& system);

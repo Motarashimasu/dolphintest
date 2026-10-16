@@ -8,6 +8,7 @@
 #include "Common/CommonFuncs.h"
 #include "Common/MsgHandler.h"
 
+#include "Core/HW/Memmap.h"
 #include "Core/MachineContext.h"
 #include "Core/PowerPC/JitInterface.h"
 #include "Core/System.h"
@@ -61,6 +62,13 @@ static LONG NTAPI Handler(PEXCEPTION_POINTERS pPtrs)
     // virtual address of the inaccessible data
     uintptr_t fault_address = (uintptr_t)pPtrs->ExceptionRecord->ExceptionInformation[1];
     SContext* ctx = pPtrs->ContextRecord;
+
+    // Dolphin-Sparking: a write to memory the rollback saves track (any thread).
+    if (access_type == 1 &&
+        Core::System::GetInstance().GetMemory().SparkingHandleFault(fault_address))
+    {
+      return EXCEPTION_CONTINUE_EXECUTION;
+    }
 
     if (Core::System::GetInstance().GetJitInterface().HandleFault(fault_address, ctx))
     {
@@ -292,6 +300,9 @@ static void sigsegv_handler(int sig, siginfo_t* info, void* raw_context)
 #else
   SContext* const ctx = &context->uc_mcontext;
 #endif
+  // Dolphin-Sparking: a write to memory the rollback saves track (any thread).
+  if (Core::System::GetInstance().GetMemory().SparkingHandleFault(bad_address))
+    return;
   if (Core::System::GetInstance().GetJitInterface().HandleFault(bad_address, ctx))
     return;
 
