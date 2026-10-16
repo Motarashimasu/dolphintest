@@ -586,5 +586,7 @@
  "audio memory or inputs": "memoria audio o comandi",
  "%s ms (max %s)": "%s ms (max %s)",
  "%d MB": "%d MB",
- "The last 20 re-runs. Playing normally takes up to 16.7 ms per field.": "Le ultime 20 ripetizioni. Giocare normalmente richiede fino a 16,7 ms per campo."
+ "The last 20 re-runs. Playing normally takes up to 16.7 ms per field.": "Le ultime 20 ripetizioni. Giocare normalmente richiede fino a 16,7 ms per campo.",
+ "Rewind graphics too": "Riavvolgi anche la grafica",
+ "On: each rewind also saves and reloads the graphics card's textures (slow,\nbig). Off: only the game itself, like real rollback would.": "Sì: ogni riavvolgimento salva e ricarica anche le texture della scheda video (lento,\npesante). No: solo il gioco, come farebbe il vero rollback."
 }

@@ -9,6 +9,7 @@ const InGamePanel := preload("res://scripts/ui/ingame_panel.gd")
 const DEPTHS := [2, 4, 6, 8]   # video fields (BT3 runs its game logic every 2)
 
 var _depth := 4
+var _gpu_state := false   # also save / load the graphics card's textures (Dolphin's default: on)
 var _state := "ready"   # ready, starting, running, stopping
 var _stats := {}
 var _mismatches := 0
@@ -58,6 +59,9 @@ func _rows(in_game_menu: bool) -> Array:
 			"names": DEPTHS.map(func(d): return tr("%d frames") % (d / 2)), "value": _depth,
 			"disabled": running,
 			"desc": "How far back each test rewinds (game frames, 1 = 2 video fields).\nStart small; real rollback rarely goes past 3."})
+		rows.append({"type": "toggle", "key": "gpu_state", "label": "Rewind graphics too",
+			"value": _gpu_state, "on_text": "On", "off_text": "Off", "disabled": running,
+			"desc": "On: each rewind also saves and reloads the graphics card's textures (slow,\nbig). Off: only the game itself, like real rollback would."})
 	if not _stats.is_empty():
 		var fit := int(_stats.get("max_rollback_fields", -1))
 		rows.append_array([
@@ -106,6 +110,8 @@ func _refresh() -> void:
 func on_value(key: String, value: Variant) -> void:
 	if key == "depth":
 		_depth = int(value)
+	elif key == "gpu_state":
+		_gpu_state = bool(value)
 
 
 func on_press(key: String) -> void:
@@ -118,7 +124,7 @@ func on_press(key: String) -> void:
 			_last_mismatch = ""
 			_log = Settings.data_path("rollback_test").path_join(
 				Time.get_datetime_string_from_system().replace(":", "-") + ".jsonl")
-			if Dolphin.launch(Settings.rollback_test_args(_depth, _log)):
+			if Dolphin.launch(Settings.rollback_test_args(_depth, _log, _gpu_state)):
 				_state = "starting"
 			else:
 				app.toast("Couldn't start Dolphin-Sparking (is the Dolphin folder next to the launcher?).")
