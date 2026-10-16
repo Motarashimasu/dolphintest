@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstring>
 #include <mutex>
+#include <span>
 #include <vector>
 
 #include <fmt/format.h>
@@ -128,7 +129,7 @@ void EmitStats()
                  .Add("max_rollback_fields", MaxRollbackFields()));
 }
 
-void CopyMemory(Core::System& system, std::vector<u8>* mem1, std::vector<u8>* aram)
+void CopyGameMemory(Core::System& system, std::vector<u8>* mem1, std::vector<u8>* aram)
 {
   auto& memory = system.GetMemory();
   const u8* ram = memory.GetRAM();
@@ -207,7 +208,7 @@ void JobSave(Core::System& system)
 
 void JobRewind(Core::System& system)
 {
-  CopyMemory(system, &s_mem1_first, &s_aram_first);
+  CopyGameMemory(system, &s_mem1_first, &s_aram_first);
   const auto t0 = Clock::now();
   Gecko::SetReinstallOnLoad(false);  // same session, same codes: leave the handler as it was
   const bool ok = State::LoadFromMemory(system, std::span<u8>(s_state.data(), s_state_size));

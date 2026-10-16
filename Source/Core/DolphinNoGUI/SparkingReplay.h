@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-class BootParameters;
+struct BootParameters;
 
 namespace Sparking
 {
