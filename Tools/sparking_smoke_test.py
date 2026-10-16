@@ -1146,13 +1146,16 @@ def rollback_test_check(exe, work):
         f.write("[Gecko]\n$Test Code [Sparking]\n04001200 12345678\n")
     inst = Instance("rbtest", [exe, "-p", "headless", "-v", "Null", "--sparking", "-u", u, "--test-hooks",
                                "--gecko", "Test Code",
-                               "--rollback-test", "4", "--rollback-gap", "10", "--rollback-log", log, "-e", dol])
+                               "--rollback-test", "4", "--rollback-gap", "10", "--rollback-log", log,
+                               "--rollback-trace", "80001100",
+                               "-C", "Graphics.Settings.SaveTextureCacheToState=False", "-e", dol])
     try:
         inst.send("hello")
         ga = inst.seen("gecko_active")
         check(f"a Gecko code is on during the test {ga['codes']}", ga["codes"] == ["Test Code"])
         st = inst.seen("rollback_test", timeout=30)
-        check(f"rollback test started ({st['fields']} fields, every {st['gap']})", st["fields"] == 4)
+        check(f"rollback test started ({st['fields']} fields, every {st['gap']}, graphics in states: "
+              f"{st['gpu_state']})", st["fields"] == 4 and st["gpu_state"] is False)
         s = inst.wait_for("rollback_test_stats", lambda e: e["cycles"] >= 15, timeout=120)
         check(f"every rewind re-runs to the same memory ({s['cycles']} tests, {s['mismatches']} mismatches)",
               s["mismatches"] == 0)
@@ -1169,6 +1172,11 @@ def rollback_test_check(exe, work):
         m = inst.seen("rollback_mismatch", timeout=10)
         check(f"a change from outside the game is caught at its address {m['mem1']}",
               any(r["address"] == "0x80001100" for r in m["mem1"]))
+        tr = [t for t in m["trace"] if t["address"] == "0x80001100"]
+        check(f"the traced word field by field: first run {tr[0]['first_run'] if tr else '-'}, "
+              f"re-run {tr[0]['re_run'] if tr else '-'}",
+              bool(tr) and len(tr[0]["first_run"]) == 4 and len(tr[0]["re_run"]) == 4
+              and tr[0]["first_run"] != tr[0]["re_run"])
         inst.send("quit")
         inst.proc.wait(timeout=20)
         with open(log) as f:

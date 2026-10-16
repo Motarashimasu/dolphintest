@@ -250,7 +250,10 @@ func rollback_test_args(fields: int, log: String, gpu_state := false) -> PackedS
 	var extra := PackedStringArray(["--rollback-test", str(fields), "--rollback-gap", "20",
 		"--rollback-log", log])
 	# Dolphin's states normally carry the graphics card's textures too; rollback won't.
-	extra.append_array(["-C", "GFX.Settings.SaveTextureCacheToState=%s" % ("True" if gpu_state else "False")])
+	# (-C takes the system's name as Dolphin writes it: "Graphics", not "GFX".)
+	extra.append_array(["-C", "Graphics.Settings.SaveTextureCacheToState=%s" % ("True" if gpu_state else "False")])
+	# BT3 PAL: the two words that came out different at every fight's "Ready... Fight!" (5 vs 7).
+	extra.append_array(["--rollback-trace", "8055A910,805DBD10"])
 	for i in extra.size():
 		a.insert(game + i, extra[i])
 	return a

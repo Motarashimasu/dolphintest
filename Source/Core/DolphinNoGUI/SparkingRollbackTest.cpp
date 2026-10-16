@@ -16,6 +16,7 @@
 #include "Common/FileUtil.h"
 #include "Common/IOFile.h"
 #include "Common/HookableEvent.h"
+#include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Core.h"
 #include "Core/GeckoCode.h"
@@ -85,6 +86,40 @@ Stat s_save, s_load, s_resim;  // ms; s_resim per field
 std::vector<double> s_recent_resim;  // the last 20 re-runs (ms per field)
 int s_extra_polls = 0;               // polls in a re-run beyond the recorded ones
 Clock::time_point s_test_start;
+// Traced words (--rollback-trace, plus the first differing spots of each mismatch): their value
+// at every field of the first run and of the re-run.
+std::vector<u32> s_trace;
+std::vector<std::vector<u32>> s_trace_first, s_trace_re;
+
+void TraceField(std::vector<std::vector<u32>>* into)
+{
+  if (s_trace.empty())
+    return;
+  auto& memory = Core::System::GetInstance().GetMemory();
+  into->resize(s_trace.size());
+  for (std::size_t i = 0; i < s_trace.size(); ++i)
+    (*into)[i].push_back(memory.Read_U32(s_trace[i]));
+}
+
+std::string TraceJson()
+{
+  std::vector<std::string> out;
+  const auto list = [](const std::vector<std::vector<u32>>& v, std::size_t i) {
+    std::vector<std::string> items;
+    if (i < v.size())
+    {
+      for (const u32 x : v[i])
+        items.push_back(fmt::format("\"{:08X}\"", x));
+    }
+    return JsonArray(items);
+  };
+  for (std::size_t i = 0; i < s_trace.size(); ++i)
+  {
+    out.push_back(fmt::format("{{\"address\":\"0x{:08X}\",\"first_run\":{},\"re_run\":{}}}",
+                              s_trace[i], list(s_trace_first, i), list(s_trace_re, i)));
+  }
+  return JsonArray(out);
+}
 std::string s_log_path;
 Common::EventHook s_field_hook;
 
@@ -240,6 +275,8 @@ void JobSave(Core::System& system)
   {
     s_polls.clear();
     s_input_mismatch = false;
+    s_trace_first.clear();
+    s_trace_re.clear();
     s_cycle_start_field = s_field_no;
     s_phase = Phase::Recording;
   }
@@ -322,7 +359,18 @@ void JobCompare(Core::System& system)
                    .AddRaw("seconds", fmt::format("{:.1f}", Ms(s_test_start, Clock::now()) / 1000))
                    .Add("state_kb", static_cast<int64_t>(s_state_size / 1024))
                    .AddRaw("watches", WatchValuesJson())
-                   .AddRaw("samples", Samples(s_mem1_first, memory.GetRAM(), mem1_size, starts)));
+                   .AddRaw("samples", Samples(s_mem1_first, memory.GetRAM(), mem1_size, starts))
+                   .AddRaw("trace", TraceJson()));
+    // Follow the first differing spots from now on (their values field by field).
+    for (std::size_t k = 0; k < starts.size() && k < 4 && s_trace.size() < 12; ++k)
+    {
+      std::size_t at = starts[k];
+      while (at < mem1_size && s_mem1_first[at] == memory.GetRAM()[at])
+        ++at;
+      const u32 addr = 0x80000000u + static_cast<u32>(at & ~std::size_t{3});
+      if (std::ranges::find(s_trace, addr) == s_trace.end())
+        s_trace.push_back(addr);
+    }
   }
   if (s_cycles <= 3 || s_cycles % 20 == 0 || mem1_diff || aram_diff)
     EmitStats();
@@ -367,10 +415,12 @@ void OnField()
     return;
   case Phase::Recording:
     ++s_field_no;
+    TraceField(&s_trace_first);
     if (++s_fields >= s_depth)
       AtThisField(JobRewind);
     return;
   case Phase::Replaying:
+    TraceField(&s_trace_re);
     if (++s_fields >= s_depth)
       AtThisField(JobCompare);
     return;
@@ -396,8 +446,10 @@ void OnPad(int device, GCPadStatus* status)
 }
 }  // namespace
 
-void InitRollbackTest(int fields, int gap, const std::string& log_path)
+void InitRollbackTest(int fields, int gap, const std::string& log_path,
+                      const std::vector<u32>& trace)
 {
+  s_trace = trace;
   s_depth = std::clamp(fields, 1, 16);
   s_gap = std::clamp(gap, 1, 600);
   s_log_path = log_path;
@@ -413,6 +465,7 @@ void InitRollbackTest(int fields, int gap, const std::string& log_path)
                                   .Add("state", "started")
                                   .Add("fields", s_depth)
                                   .Add("gap", s_gap)
+                                  .Add("gpu_state", Config::Get(Config::GFX_SAVE_TEXTURE_CACHE_TO_STATE))
                                   .Add("log", s_log_path));
 }
 

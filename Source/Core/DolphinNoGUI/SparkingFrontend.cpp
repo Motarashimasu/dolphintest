@@ -908,6 +908,11 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .set_default("20")
       .help("Rollback test: video fields between tests (default 20)");
+  parser.add_option("--rollback-trace")
+      .dest("rollback_trace")
+      .action("store")
+      .help("Rollback test: comma-separated addresses (hex) whose 32-bit values are logged field by "
+            "field with each mismatch");
   parser.add_option("--rollback-log")
       .dest("rollback_log")
       .action("store")
@@ -1082,11 +1087,22 @@ void InitFromOptions(const optparse::Values& options)
     InitWatcher();
     if (options.is_set("rollback_test") && !netplay)
     {
+      std::vector<u32> trace;
+      if (options.is_set("rollback_trace"))
+      {
+        for (const std::string& a :
+             SplitString(static_cast<const char*>(options.get("rollback_trace")), ','))
+        {
+          if (!a.empty())
+            trace.push_back(static_cast<u32>(std::strtoul(a.c_str(), nullptr, 16)));
+        }
+      }
       InitRollbackTest(std::atoi(static_cast<const char*>(options.get("rollback_test"))),
                        std::atoi(static_cast<const char*>(options.get("rollback_gap"))),
                        options.is_set("rollback_log") ?
                            std::string(static_cast<const char*>(options.get("rollback_log"))) :
-                           std::string());
+                           std::string(),
+                       trace);
     }
     InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off",
             std::string_view(static_cast<const char*>(options.get("hud_health"))) != "off");

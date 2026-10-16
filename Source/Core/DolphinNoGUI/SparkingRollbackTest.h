@@ -19,11 +19,17 @@
 #pragma once
 
 #include <string>
+#include <vector>
+
+#include "Common/CommonTypes.h"
 
 namespace Sparking
 {
 // Before booting. `fields` = how far back each test rewinds (1-16 video fields; BT3 runs its
 // game logic every 2 fields), `gap` = fields between tests.
-void InitRollbackTest(int fields, int gap, const std::string& log_path);
+// `trace`: words whose values are logged field by field with each mismatch (the first
+// differing spots of every mismatch are added automatically).
+void InitRollbackTest(int fields, int gap, const std::string& log_path,
+                      const std::vector<u32>& trace = {});
 bool RollbackTestActive();
 }  // namespace Sparking
