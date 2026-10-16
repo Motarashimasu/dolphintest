@@ -53,6 +53,7 @@
 #include "VideoCommon/TextureCacheBase.h"
 #include "DolphinNoGUI/SparkingNetPlay.h"
 #include "DolphinNoGUI/SparkingReplay.h"
+#include "DolphinNoGUI/SparkingRollbackTest.h"
 #include "DolphinNoGUI/SparkingDiscord.h"
 #include "DolphinNoGUI/SparkingHud.h"
 #include "DolphinNoGUI/SparkingLobby.h"
@@ -896,6 +897,21 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .set_default("3")
       .help("Sparking mode internal resolution as a multiple of native (3 = 1080p, default)");
+  parser.add_option("--rollback-test")
+      .dest("rollback_test")
+      .action("store")
+      .help("Solo: rollback test mode. Every --rollback-gap fields, save the state, play this many "
+            "video fields, rewind and re-run them with the same inputs, and report any memory "
+            "that came out different plus the save / load / re-run times");
+  parser.add_option("--rollback-gap")
+      .dest("rollback_gap")
+      .action("store")
+      .set_default("20")
+      .help("Rollback test: video fields between tests (default 20)");
+  parser.add_option("--rollback-log")
+      .dest("rollback_log")
+      .action("store")
+      .help("Rollback test: also append every result to this file (JSON lines)");
   parser.add_option("--record-replays")
       .dest("record_replays")
       .action("store")
@@ -1064,6 +1080,14 @@ void InitFromOptions(const optparse::Values& options)
     Common::RegisterMsgAlertHandler(EventMsgAlertHandler);
     OSD::SetMessageObserver(ForwardOsdMessage);
     InitWatcher();
+    if (options.is_set("rollback_test") && !netplay)
+    {
+      InitRollbackTest(std::atoi(static_cast<const char*>(options.get("rollback_test"))),
+                       std::atoi(static_cast<const char*>(options.get("rollback_gap"))),
+                       options.is_set("rollback_log") ?
+                           std::string(static_cast<const char*>(options.get("rollback_log"))) :
+                           std::string());
+    }
     InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off",
             std::string_view(static_cast<const char*>(options.get("hud_health"))) != "off");
     {

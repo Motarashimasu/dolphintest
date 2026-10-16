@@ -14,6 +14,11 @@ namespace Movie
 class MovieManager;
 }
 
+// Dolphin-Sparking (rollback test): sees / replaces every GameCube pad poll after the movie and
+// netplay handling. CPU thread. nullptr = off.
+using SparkingPadHook = void (*)(int device_number, GCPadStatus* status);
+extern SparkingPadHook g_sparking_pad_hook;
+
 namespace SerialInterface
 {
 class CSIDevice_GCController : public ISIDevice

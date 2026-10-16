@@ -273,6 +273,16 @@ static std::size_t SaveToBuffer(Core::System& system, Common::UniqueBuffer<u8>& 
   return 0;
 }
 
+std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer)
+{
+  return SaveToBuffer(system, buffer);
+}
+
+bool LoadFromMemory(Core::System& system, std::span<u8> buffer)
+{
+  return LoadFromBuffer(system, buffer);
+}
+
 namespace
 {
 struct SlotWithTimestamp

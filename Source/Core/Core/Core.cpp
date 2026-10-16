@@ -94,6 +94,7 @@
 namespace Core
 {
 static bool s_wants_determinism;
+static std::atomic<bool> s_force_determinism{false};  // Dolphin-Sparking (rollback test)
 
 // Declarations and definitions
 static std::thread s_emu_thread;
@@ -935,6 +936,11 @@ void NotifyStateChanged(const Core::State state)
   s_state_changed_event.Trigger(state);
 }
 
+void SetForceDeterminism(bool force)
+{
+  s_force_determinism = force;
+}
+
 void UpdateWantDeterminism(Core::System& system, bool initial)
 {
   const Core::CPUThreadGuard guard(system);
@@ -942,7 +948,8 @@ void UpdateWantDeterminism(Core::System& system, bool initial)
   // For now, this value is not itself configurable.  Instead, individual
   // settings that depend on it, such as GPU determinism mode. should have
   // override options for testing,
-  bool new_want_determinism = system.GetMovie().IsMovieActive() || NetPlay::IsNetPlayRunning();
+  bool new_want_determinism = system.GetMovie().IsMovieActive() || NetPlay::IsNetPlayRunning() ||
+                              s_force_determinism;
   if (new_want_determinism != s_wants_determinism || initial)
   {
     NOTICE_LOG_FMT(COMMON, "Want determinism <- {}", new_want_determinism ? "true" : "false");

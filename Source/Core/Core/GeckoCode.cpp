@@ -4,6 +4,7 @@
 #include "Core/GeckoCode.h"
 
 #include <algorithm>
+#include <atomic>
 #include <iterator>
 #include <mutex>
 #include <tuple>
@@ -48,6 +49,7 @@ static Installation s_code_handler_installed = Installation::Uninstalled;
 static std::vector<GeckoCode> s_active_codes;
 static std::vector<GeckoCode> s_synced_codes;
 static std::mutex s_active_codes_lock;
+static std::atomic<bool> s_reinstall_on_load{true};  // Sparking (see DoState)
 
 size_t CountEnabledCodes()
 {
@@ -228,8 +230,15 @@ void DoState(PointerWrap& p)
   // codes were on when it was captured and keep running those (netplay's per-port codes, e.g.
   // the splitscreen remover for the player's own pad, would never apply). Rewrite the list from
   // the codes active now, at the next hook (the handler is never mid-run there).
-  if (p.IsReadMode() && s_code_handler_installed == Installation::Installed)
+  // Not for a rollback's rewind (same session, same codes): rewriting the handler there changes
+  // its RAM, so the re-run wouldn't match the first run (found by the rollback test mode).
+  if (p.IsReadMode() && s_code_handler_installed == Installation::Installed && s_reinstall_on_load)
     s_code_handler_installed = Installation::Uninstalled;
+}
+
+void SetReinstallOnLoad(bool reinstall)
+{
+  s_reinstall_on_load = reinstall;
 }
 
 void Shutdown()

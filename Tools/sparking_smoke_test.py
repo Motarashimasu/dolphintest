@@ -719,6 +719,7 @@ def main():
         gecko_state_check(exe, dol, work, game_id)
         ranked_check(exe, dol, work, game_id)
         replay_check(exe, dol, work, game_id)
+        rollback_test_check(exe, work)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
@@ -1108,6 +1109,75 @@ def replay_check(exe, dol, work, game_id):
         for inst in insts:
             if inst.proc.poll() is None:
                 inst.proc.kill()
+
+
+def rollback_test_check(exe, work):
+    """--rollback-test: a program that changes memory every instant (a counter) with a Gecko
+    code on rewinds and re-runs to exactly the same memory every time; a change from outside the
+    game (a poke) during a test is caught at its address; the times and the log are reported."""
+    print("rollback test mode")
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "gecko"))
+    from asm import Prog, li, lis, ori, addi, lwz, stw
+    p = Prog()
+    p(lis(1, 0x8000)); p(ori(1, 1, 0x4000))
+    p(lis(5, 0x8000)); p(ori(5, 5, 0x2000))
+    p.label("loop")
+    p(lwz(4, 0, 5)); p(addi(4, 4, 1)); p(stw(4, 0, 5))
+    p.b("loop")
+    code = b"".join(struct.pack(">I", w) for w in p.words())
+    header = bytearray(0x100)
+    struct.pack_into(">I", header, 0x00, 0x100)
+    struct.pack_into(">I", header, 0x48, 0x80003100)
+    struct.pack_into(">I", header, 0x90, len(code))
+    struct.pack_into(">I", header, 0xE0, 0x80003100)
+    dol = os.path.join(work, "counter.dol")
+    with open(dol, "wb") as f:
+        f.write(bytes(header) + code)
+    u = os.path.join(work, "rbtest")
+    os.makedirs(os.path.join(u, "Config"), exist_ok=True)
+    log = os.path.join(work, "rbtest.jsonl")
+    probe = Instance("rbtest-id", [exe, "-p", "headless", "-v", "Null", "--sparking", "-u", u, "-e", dol])
+    probe.send("hello")
+    gid = probe.seen("game_info")["game_id"]
+    probe.send("quit")
+    probe.proc.wait(timeout=20)
+    os.makedirs(os.path.join(u, "GameSettings"), exist_ok=True)
+    with open(os.path.join(u, "GameSettings", f"{gid}.ini"), "w") as f:
+        f.write("[Gecko]\n$Test Code [Sparking]\n04001200 12345678\n")
+    inst = Instance("rbtest", [exe, "-p", "headless", "-v", "Null", "--sparking", "-u", u, "--test-hooks",
+                               "--gecko", "Test Code",
+                               "--rollback-test", "4", "--rollback-gap", "10", "--rollback-log", log, "-e", dol])
+    try:
+        inst.send("hello")
+        ga = inst.seen("gecko_active")
+        check(f"a Gecko code is on during the test {ga['codes']}", ga["codes"] == ["Test Code"])
+        st = inst.seen("rollback_test", timeout=30)
+        check(f"rollback test started ({st['fields']} fields, every {st['gap']})", st["fields"] == 4)
+        s = inst.wait_for("rollback_test_stats", lambda e: e["cycles"] >= 15, timeout=120)
+        check(f"every rewind re-runs to the same memory ({s['cycles']} tests, {s['mismatches']} mismatches)",
+              s["mismatches"] == 0)
+        check(f"times measured: save {s['save_ms']} ms, load {s['load_ms']} ms, re-run "
+              f"{s['rerun_ms_per_field']} ms/field, state {s['state_kb']} KB",
+              s["save_ms"] > 0 and s["load_ms"] > 0 and s["rerun_ms_per_field"] > 0 and s["state_kb"] > 0)
+        # Poke until one lands between a save and its compare (timing varies with the PC).
+        deadline = time.time() + 60
+        i = 0
+        while time.time() < deadline and not any(e["event"] == "rollback_mismatch" for e in list(inst.history)):
+            inst.send(f"poke 80001100 {i:08X}")
+            i += 1
+            time.sleep(0.03)
+        m = inst.seen("rollback_mismatch", timeout=10)
+        check(f"a change from outside the game is caught at its address {m['mem1']}",
+              any(r["address"] == "0x80001100" for r in m["mem1"]))
+        inst.send("quit")
+        inst.proc.wait(timeout=20)
+        with open(log) as f:
+            lines = [json.loads(l) for l in f if l.strip()]
+        check("everything is in the results log", any(l["event"] == "rollback_mismatch" for l in lines)
+              and any(l["event"] == "rollback_test_stats" for l in lines))
+    finally:
+        if inst.proc.poll() is None:
+            inst.proc.kill()
 
 
 def gecko_state_check(exe, dol, work, game_id):

@@ -1,0 +1,348 @@
+// Copyright 2026 Dolphin-Sparking Project
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#include "DolphinNoGUI/SparkingRollbackTest.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cstring>
+#include <mutex>
+#include <vector>
+
+#include <fmt/format.h>
+
+#include "Common/Buffer.h"
+#include "Common/FileUtil.h"
+#include "Common/IOFile.h"
+#include "Common/HookableEvent.h"
+#include "Core/Config/MainSettings.h"
+#include "Core/Core.h"
+#include "Core/GeckoCode.h"
+#include "Core/HW/CPU.h"
+#include "Core/HW/DSP.h"
+#include "Core/HW/Memmap.h"
+#include "Core/HW/SI/SI_DeviceGCController.h"
+#include "Core/State.h"
+#include "Core/System.h"
+#include "DolphinNoGUI/SparkingIO.h"
+#include "InputCommon/GCPadStatus.h"
+#include "VideoCommon/VideoEvents.h"
+
+namespace Sparking
+{
+namespace
+{
+using Clock = std::chrono::steady_clock;
+
+enum class Phase
+{
+  Off,
+  Idle,       // playing normally until the next test
+  Recording,  // first pass after the save: inputs recorded
+  Replaying,  // second pass after the rewind: inputs replayed
+};
+
+struct Poll
+{
+  int device;
+  GCPadStatus status;
+};
+
+struct Stat
+{
+  double total = 0, max = 0;
+  int n = 0;
+  void Add(double v)
+  {
+    total += v;
+    max = std::max(max, v);
+    ++n;
+  }
+  double Avg() const { return n ? total / n : 0; }
+};
+
+// All of this is touched on the CPU thread only (field hook, pad hook, CPU-thread jobs).
+Phase s_phase = Phase::Off;
+int s_depth = 4;
+int s_gap = 20;
+int s_fields = 0;     // fields since the current phase began
+u64 s_field_no = 0;   // fields since boot (first pass numbering)
+u64 s_cycle_start_field = 0;
+Common::UniqueBuffer<u8> s_state;
+std::size_t s_state_size = 0;
+std::vector<Poll> s_polls;
+std::size_t s_replay_at = 0;
+bool s_input_mismatch = false;
+std::vector<u8> s_mem1_first, s_aram_first;
+Clock::time_point s_replay_start;
+float s_saved_speed = 1.0f;
+int s_cycles = 0, s_mismatches = 0;
+Stat s_save, s_load, s_resim;  // ms; s_resim per field
+std::string s_log_path;
+Common::EventHook s_field_hook;
+
+void Log(const std::string& line)
+{
+  if (s_log_path.empty())
+    return;
+  File::IOFile f(s_log_path, "ab");
+  f.WriteString(line + "\n");
+}
+
+void EmitLogged(std::string_view event, const Json& json)
+{
+  Emit(event, json);
+  Log(fmt::format("{{\"event\":\"{}\",{}", event, json.Str().substr(1)));
+}
+
+double Ms(Clock::time_point a, Clock::time_point b)
+{
+  return std::chrono::duration<double, std::milli>(b - a).count();
+}
+
+// How many fields this PC could re-run inside one field (16.7 ms), after saving that field's
+// state and loading the rewind state: rollback netplay's budget. -1 = not measured yet.
+int MaxRollbackFields()
+{
+  if (!s_resim.n || s_resim.Avg() <= 0)
+    return -1;
+  constexpr double FIELD_MS = 1000.0 / 59.94;
+  const double left = FIELD_MS - s_save.Avg() - s_load.Avg();
+  // One field is the normal one (the present); the rest can be re-runs.
+  return std::max(0, static_cast<int>(left / s_resim.Avg()) - 1);
+}
+
+void EmitStats()
+{
+  EmitLogged("rollback_test_stats",
+             Json()
+                 .Add("cycles", s_cycles)
+                 .Add("mismatches", s_mismatches)
+                 .AddRaw("save_ms", fmt::format("{:.2f}", s_save.Avg()))
+                 .AddRaw("save_ms_max", fmt::format("{:.2f}", s_save.max))
+                 .AddRaw("load_ms", fmt::format("{:.2f}", s_load.Avg()))
+                 .AddRaw("load_ms_max", fmt::format("{:.2f}", s_load.max))
+                 .AddRaw("rerun_ms_per_field", fmt::format("{:.2f}", s_resim.Avg()))
+                 .AddRaw("rerun_ms_per_field_max", fmt::format("{:.2f}", s_resim.max))
+                 .Add("state_kb", static_cast<int64_t>(s_state_size / 1024))
+                 .Add("max_rollback_fields", MaxRollbackFields()));
+}
+
+void CopyMemory(Core::System& system, std::vector<u8>* mem1, std::vector<u8>* aram)
+{
+  auto& memory = system.GetMemory();
+  const u8* ram = memory.GetRAM();
+  mem1->assign(ram, ram + memory.GetRamSizeReal());
+  const u8* a = system.GetDSP().GetARAMPtr();
+  if (a)
+    aram->assign(a, a + DSP::ARAM_SIZE);
+  else
+    aram->clear();
+}
+
+// Differing 32-byte lines of MEM1, merged into ranges (the first 16), as JSON.
+std::string DiffRanges(const std::vector<u8>& a, const u8* b, std::size_t size, u64* total)
+{
+  constexpr std::size_t LINE = 32;
+  std::vector<std::string> ranges;
+  *total = 0;
+  std::size_t start = 0, end = 0;
+  bool open = false;
+  const auto close = [&] {
+    if (open && ranges.size() < 16)
+    {
+      ranges.push_back(fmt::format("{{\"address\":\"0x{:08X}\",\"bytes\":{}}}",
+                                   0x80000000u + static_cast<u32>(start), end - start));
+    }
+    open = false;
+  };
+  for (std::size_t at = 0; at < size; at += LINE)
+  {
+    const std::size_t n = std::min(LINE, size - at);
+    if (std::memcmp(a.data() + at, b + at, n) == 0)
+      continue;
+    for (std::size_t i = 0; i < n; ++i)
+      *total += a[at + i] != b[at + i];
+    if (open && at <= end + LINE * 4)  // nearby differences: one range
+    {
+      end = at + n;
+      continue;
+    }
+    close();
+    start = at;
+    end = at + n;
+    open = true;
+  }
+  close();
+  return JsonArray(ranges);
+}
+
+void Resume(Core::System& system)
+{
+  system.GetCPU().SetStepping(false);
+}
+
+// --- the three steps, each a CPU-thread job with the CPU stopped right after a field ---------
+
+void JobSave(Core::System& system)
+{
+  const auto t0 = Clock::now();
+  s_state_size = State::SaveToMemory(system, s_state);
+  s_save.Add(Ms(t0, Clock::now()));
+  if (s_state_size == 0)
+  {
+    EmitLogged("rollback_mismatch", Json().Add("error", "save_failed"));
+    s_phase = Phase::Idle;
+  }
+  else
+  {
+    s_polls.clear();
+    s_input_mismatch = false;
+    s_cycle_start_field = s_field_no;
+    s_phase = Phase::Recording;
+  }
+  s_fields = 0;
+  Resume(system);
+}
+
+void JobRewind(Core::System& system)
+{
+  CopyMemory(system, &s_mem1_first, &s_aram_first);
+  const auto t0 = Clock::now();
+  Gecko::SetReinstallOnLoad(false);  // same session, same codes: leave the handler as it was
+  const bool ok = State::LoadFromMemory(system, std::span<u8>(s_state.data(), s_state_size));
+  Gecko::SetReinstallOnLoad(true);
+  s_load.Add(Ms(t0, Clock::now()));
+  if (!ok)
+  {
+    EmitLogged("rollback_mismatch", Json().Add("error", "load_failed"));
+    s_phase = Phase::Idle;
+    s_fields = 0;
+    Resume(system);
+    return;
+  }
+  // Re-run as fast as possible, like rollback netcode does.
+  s_saved_speed = Config::Get(Config::MAIN_EMULATION_SPEED);
+  Config::SetCurrent(Config::MAIN_EMULATION_SPEED, 0.0f);
+  s_replay_at = 0;
+  s_phase = Phase::Replaying;
+  s_fields = 0;
+  s_replay_start = Clock::now();
+  Resume(system);
+}
+
+void JobCompare(Core::System& system)
+{
+  s_resim.Add(Ms(s_replay_start, Clock::now()) / s_depth);
+  Config::SetCurrent(Config::MAIN_EMULATION_SPEED, s_saved_speed);
+  ++s_cycles;
+
+  auto& memory = system.GetMemory();
+  u64 mem1_diff = 0, aram_diff = 0;
+  const std::size_t mem1_size = std::min<std::size_t>(s_mem1_first.size(), memory.GetRamSizeReal());
+  const std::string ranges = DiffRanges(s_mem1_first, memory.GetRAM(), mem1_size, &mem1_diff);
+  const u8* aram = system.GetDSP().GetARAMPtr();
+  if (aram && s_aram_first.size() == DSP::ARAM_SIZE)
+  {
+    for (std::size_t i = 0; i < DSP::ARAM_SIZE; i += 4096)
+    {
+      if (std::memcmp(s_aram_first.data() + i, aram + i, 4096) != 0)
+      {
+        for (std::size_t j = i; j < i + 4096; ++j)
+          aram_diff += s_aram_first[j] != aram[j];
+      }
+    }
+  }
+  const bool unused_inputs = s_replay_at != s_polls.size();
+  if (mem1_diff || aram_diff || s_input_mismatch || unused_inputs)
+  {
+    ++s_mismatches;
+    EmitLogged("rollback_mismatch",
+               Json()
+                   .Add("cycle", s_cycles)
+                   .Add("field", static_cast<int64_t>(s_cycle_start_field))
+                   .Add("mem1_bytes", static_cast<int64_t>(mem1_diff))
+                   .AddRaw("mem1", ranges)
+                   .Add("aram_bytes", static_cast<int64_t>(aram_diff))
+                   .Add("input_mismatch", s_input_mismatch || unused_inputs)
+                   .Add("polls", static_cast<int64_t>(s_polls.size()))
+                   .Add("polls_replayed", static_cast<int64_t>(s_replay_at)));
+  }
+  if (s_cycles <= 3 || s_cycles % 20 == 0 || mem1_diff || aram_diff)
+    EmitStats();
+  s_phase = Phase::Idle;
+  s_fields = 0;
+  Resume(system);
+}
+
+// After a field ends, stop the CPU right there and run `job` (the same point every time).
+void AtThisField(void (*job)(Core::System&))
+{
+  auto& system = Core::System::GetInstance();
+  system.GetCPU().AddCPUThreadJob([job, &system] { job(system); });
+  system.GetCPU().Break();
+}
+
+void OnField()
+{
+  switch (s_phase)
+  {
+  case Phase::Off:
+    return;
+  case Phase::Idle:
+    ++s_field_no;
+    if (++s_fields >= s_gap)
+      AtThisField(JobSave);
+    return;
+  case Phase::Recording:
+    ++s_field_no;
+    if (++s_fields >= s_depth)
+      AtThisField(JobRewind);
+    return;
+  case Phase::Replaying:
+    if (++s_fields >= s_depth)
+      AtThisField(JobCompare);
+    return;
+  }
+}
+
+void OnPad(int device, GCPadStatus* status)
+{
+  if (s_phase == Phase::Recording)
+  {
+    s_polls.push_back({device, *status});
+  }
+  else if (s_phase == Phase::Replaying)
+  {
+    if (s_replay_at < s_polls.size() && s_polls[s_replay_at].device == device)
+      *status = s_polls[s_replay_at++].status;
+    else
+      s_input_mismatch = true;  // the game polled differently the second time
+  }
+}
+}  // namespace
+
+void InitRollbackTest(int fields, int gap, const std::string& log_path)
+{
+  s_depth = std::clamp(fields, 1, 16);
+  s_gap = std::clamp(gap, 1, 600);
+  s_log_path = log_path;
+  if (!s_log_path.empty())
+    File::CreateFullPath(s_log_path);
+  s_phase = Phase::Idle;
+  g_sparking_pad_hook = &OnPad;
+  Core::SetForceDeterminism(true);  // as in netplay (e.g. GPU thread in sync)
+  s_field_hook = Core::System::GetInstance().GetVideoEvents().vi_end_field_event.Register(
+      [] { OnField(); });
+  EmitLogged("rollback_test", Json()
+                                  .Add("state", "started")
+                                  .Add("fields", s_depth)
+                                  .Add("gap", s_gap)
+                                  .Add("log", s_log_path));
+}
+
+bool RollbackTestActive()
+{
+  return s_phase != Phase::Off;
+}
+}  // namespace Sparking

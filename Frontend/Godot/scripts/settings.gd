@@ -242,6 +242,18 @@ func replay_args(dtm_path: String, codes: Array) -> PackedStringArray:
 	return a
 
 
+## DRAGON NET > Rollback Test: offline, with Dolphin rewinding and re-running `fields` video
+## fields again and again (--rollback-test), results to `log` (JSON lines).
+func rollback_test_args(fields: int, log: String) -> PackedStringArray:
+	var a := solo_args()
+	var game := a.size() - 2   # (solo_args ends with -e <game>)
+	var extra := PackedStringArray(["--rollback-test", str(fields), "--rollback-gap", "20",
+		"--rollback-log", log])
+	for i in extra.size():
+		a.insert(game + i, extra[i])
+	return a
+
+
 func _netplay_base(nickname := "") -> PackedStringArray:
 	var a := common_args()
 	a.append_array(["--hud", "on"])   # score bar + ping always on in netplay matches

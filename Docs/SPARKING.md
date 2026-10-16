@@ -255,6 +255,18 @@ match nobody won is dropped. Both players save their own copy.
 launcher passes the `.json`'s `gecko` list) and stops the game when the inputs run out. A replay
 needs the same game, Dolphin-Sparking version and per-port codes to play back exactly.
 
+## Rollback test mode
+
+`--rollback-test <fields> [--rollback-gap <fields>] [--rollback-log <file>]` (solo, `--sparking`):
+the first step toward rollback netplay. Every `gap` video fields Dolphin saves the whole state to
+memory, plays `fields` fields while recording the controller polls, copies MEM1 + ARAM, rewinds
+and re-runs those fields as fast as it can with the recorded inputs, and compares. Emulation is
+kept deterministic (as in netplay) while it runs. Events: `rollback_test`, `rollback_mismatch`
+(`field`, `mem1` ranges, `mem1_bytes`, `aram_bytes`, `input_mismatch`) and `rollback_test_stats`
+(`cycles`, `mismatches`, `save_ms`, `load_ms`, `rerun_ms_per_field` (+ `_max`), `state_kb`,
+`max_rollback_fields`: fields this PC could re-run inside one 16.7 ms field after a save and a
+load). The launcher's DRAGON NET > Rollback Test runs it and writes `<data>/rollback_test/*.jsonl`.
+
 ## Save data: solo vs netplay
 
 Wii games keep their saves in Dolphin's emulated Wii NAND, so separate saves = separate NAND

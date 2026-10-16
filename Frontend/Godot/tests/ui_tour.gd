@@ -650,6 +650,23 @@ func _tour() -> void:
 	await wait_for("left training", func(): return app.top() != training, 15)
 	await wait_for("Dolphin exited (training)", func(): return not Dolphin.is_running(), 10)
 
+	# --- Rollback Test: offline, Dolphin keeps rewinding and re-running a few frames --------
+	await choose("Rollback Test")
+	var rt: Control = top()
+	check("Rollback Test screen", app._title.text == "Rollback Test")
+	await pick("start", rt.list)
+	await wait_for("rollback test running", func(): return rt._state == "running", 30)
+	await wait_for("rollback tests done (5+)", func(): return int(rt._stats.get("cycles", 0)) >= 5, 90)
+	check("every rewind matched (the test program is deterministic)", rt._mismatches == 0)
+	check("save / load / re-run times measured", float(rt._stats.get("save_ms", 0)) > 0
+			and float(rt._stats.get("load_ms", 0)) > 0 and float(rt._stats.get("rerun_ms_per_field", 0)) > 0)
+	check("results written to the results file", FileAccess.file_exists(rt._log))
+	await shot("rollback_test")
+	await pick("stop", rt.list)
+	await wait_for("rollback test stopped", func(): return rt._state == "ready", 30)
+	await wait_for("Dolphin exited (rollback test)", func(): return not Dolphin.is_running(), 10)
+	await back()
+
 	# --- Offline -------------------------------------------------------------------------
 	await back()   # netplay -> game menu
 	check("back at the game menu", app._title.text == "Tenkaichi 3")

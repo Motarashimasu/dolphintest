@@ -7,9 +7,11 @@
 
 #include <cstddef>
 #include <functional>
+#include <span>
 #include <string>
 #include <type_traits>
 
+#include "Common/Buffer.h"
 #include "Common/CommonTypes.h"
 
 namespace Core
@@ -105,6 +107,12 @@ void AllowNextNetPlayBootLoad();
 // Dolphin-Sparking: whether the most recent LoadAs/Load actually restored a state. Valid inside
 // the after-load callback, which upstream invokes on failure too.
 bool LastLoadSucceeded();
+
+// Dolphin-Sparking (rollback test): the whole emulated state to / from memory, no files. CPU
+// thread with the CPU stopped (a CPU-thread job), like the slot saves. Save returns the size
+// (0 = failed); the buffer grows as needed.
+std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer);
+bool LoadFromMemory(Core::System& system, std::span<u8> buffer);
 
 void LoadLastSaved(Core::System& system, int i = 1);
 void SaveFirstSaved(Core::System& system);

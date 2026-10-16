@@ -68,5 +68,8 @@ std::vector<GeckoCode> SetAndReturnActiveCodes(std::span<const GeckoCode> gcodes
 void RunCodeHandler(const Core::CPUThreadGuard& guard);
 void Shutdown();
 void DoState(PointerWrap&);
+// Dolphin-Sparking: whether loading a state rewrites the code list from the codes active now
+// (default; netplay battle states need it). Off for rollback rewinds within one session.
+void SetReinstallOnLoad(bool reinstall);
 
 }  // namespace Gecko
