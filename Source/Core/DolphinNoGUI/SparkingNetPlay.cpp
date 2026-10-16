@@ -5,6 +5,7 @@
 
 #include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingGecko.h"
+#include "DolphinNoGUI/SparkingReplay.h"
 #include "DolphinNoGUI/SparkingHud.h"
 #include "DolphinNoGUI/SparkingLobby.h"
 #include "DolphinNoGUI/SparkingNet.h"
@@ -1057,10 +1058,14 @@ void NetPlaySession::BootGame(const std::string& filename,
       missing = ActivateExclusiveGeckoCodes(game->GetGameID(), game->GetRevision(), names);
     ApplyAspectForBoot();  // output stretch only, per player
     std::vector<std::string> active, miss;
+    m_active_gecko.clear();
     for (const auto& n : names)
     {
       if (std::ranges::find(missing, n) == missing.end())
+      {
         active.push_back(Json::Escape(n));
+        m_active_gecko.push_back(n);
+      }
     }
     for (const auto& n : missing)
       miss.push_back(Json::Escape(n));
@@ -1068,6 +1073,43 @@ void NetPlaySession::BootGame(const std::string& filename,
                              .Add("port", port)
                              .AddRaw("codes", JsonArray(active))
                              .AddRaw("missing", JsonArray(miss)));
+  }
+  // Ranked replays (--record-replays): this game may be recorded from its first round.
+  if (ReplaysEnabled())
+  {
+    ReplayMatch match;
+    std::shared_ptr<const UICommon::GameFile> game;
+    {
+      std::lock_guard lk(m_game_mutex);
+      game = FindGameFile(m_current_game);
+    }
+    if (game)
+    {
+      match.game_id = game->GetGameID();
+      match.revision = game->GetRevision();
+    }
+    match.mode = m_mode;
+    if (match.mode == "any" && m_seen_koth_cap > 0)  // joiner: Team Battle is 1 win, Single FT2
+      match.mode = m_seen_koth_cap == 1 ? "team" : "single";
+    const auto& pad_map = m_client->GetPadMapping();
+    for (const NetPlay::Player* p : m_client->GetPlayers())
+    {
+      for (int i = 0; i < 2; ++i)
+      {
+        if (pad_map[i] == p->pid)
+          match.players[i] = p->name;
+      }
+      if (p->pid == m_client->GetLocalPlayerId())
+      {
+        for (int i = 0; i < 2; ++i)
+        {
+          if (pad_map[i] == p->pid)
+            match.local_port = i + 1;
+        }
+      }
+    }
+    match.gecko = m_active_gecko;
+    ReplayArm(match);
   }
 
   Emit("game_booting", Json().Add("path", filename).Add("battle_state", state_name));
@@ -1485,6 +1527,7 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
       return;
     if (const auto view = KothView::Parse(parts); view && body != m_last_koth)
     {
+      m_seen_koth_cap = view->cap;  // (replays: a joiner learns the mode from it)
       m_last_koth = body;
       EmitKoth(*view);
     }
@@ -1502,6 +1545,8 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
       }
       return std::string("?");
     };
+    ReplaySetDecided(name_of(parts[1]), name_of(parts[2]), std::atoi(parts[4].c_str()),
+                     std::atoi(parts[5].c_str()));
     Emit("koth_set", Json()
                          .Add("winner", name_of(parts[1]))
                          .Add("loser", name_of(parts[2]))
@@ -2116,6 +2161,7 @@ void NetPlaySession::PumpKoth()
         const LineEntry& winner = m_set_players[i];
         const LineEntry& loser = m_set_players[1 - i];
         const int streak = i == 0 && m_streak > 0 && m_champion == winner.pid ? m_streak + 1 : 1;
+        ReplaySetDecided(winner.name, loser.name, m_set_wins[i], m_set_wins[1 - i]);
         SendControl(fmt::format("kothset {} {} {} {} {}", static_cast<int>(winner.pid),
                                 static_cast<int>(loser.pid), streak, m_set_wins[i],
                                 m_set_wins[1 - i]));

@@ -228,6 +228,20 @@ func solo_args() -> PackedStringArray:
 	return a
 
 
+## Watch a recorded ranked match (replays.gd): from the start of its first round to its end,
+## with the Gecko codes the recording player had on.
+func replay_args(dtm_path: String, codes: Array) -> PackedStringArray:
+	var a := common_args()
+	a.append_array(["--hud", "off", "--sparking", "--local-players", "2"])
+	a.append_array(["--nand", data_path("saves/replay"), "--state-dir", data_path("states")])
+	if codes.is_empty():
+		a.append("--no-gecko")
+	for code in codes:
+		a.append_array(["--gecko", String(code)])
+	a.append_array(["--replay", dtm_path, "-e", get_value("paths", "game")])
+	return a
+
+
 func _netplay_base(nickname := "") -> PackedStringArray:
 	var a := common_args()
 	a.append_array(["--hud", "on"])   # score bar + ping always on in netplay matches
@@ -259,6 +273,7 @@ func host_args(mode: String, public: bool, traversal: bool, koth := false) -> Pa
 func ranked_host_args(mode: String, traversal: bool) -> PackedStringArray:
 	var a := _netplay_base(ranked_nickname())
 	a.append_array(["--mode", mode, "--ranked"])
+	a.append_array(["--record-replays", data_path("replays")])
 	if not traversal:
 		a.append("--netplay-direct")
 	a.append_array(["--netplay-host", get_value("paths", "game")])
@@ -267,6 +282,7 @@ func ranked_host_args(mode: String, traversal: bool) -> PackedStringArray:
 
 func ranked_join_args(target: String) -> PackedStringArray:
 	var a := _netplay_base(ranked_nickname())
+	a.append_array(["--record-replays", data_path("replays")])   # decided matches are saved
 	a.append_array(["--netplay-game", get_value("paths", "game"), "--netplay-join", target])
 	return a
 

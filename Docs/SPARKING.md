@@ -144,6 +144,11 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `textures` | `selection` (`{group: option}`, lowercase) | After a `textures` command |
 | `state_file_saved` | `name`, `sha1` | Solo: a `save_state_file` capture is fully on disk |
 | `state_applied` | | A save state really loaded (solo load, or the netplay battle state at boot) |
+| `replay_recording` | | Ranked replay (`--record-replays`): recording started with the first round |
+| `replay_saved` | `dtm`, `json`, `frames`, `bytes` | The decided match was saved (see Ranked replays) |
+| `replay_dropped` | `reason` (`no_result`) | The recorded match ended without a winner: nothing saved |
+| `replay_error` | `code` | Recording couldn't start / the start state wasn't written |
+| `replay_started` / `replay_progress` / `replay_ended` | `frames` (+ `frame`) | `--replay` playback |
 | `save_data` | `host_hash`, host also `ready`, clients `local_status` | Netplay save fingerprint check updated |
 | `battle_state` | `active`, `name`, `sha1`, `local_ok`, host also `ready` | Battle-state selection changed or a player verified it |
 | `alert` | `severity`, `caption`, `text`, `auto_answer` | A Dolphin panic/assert alert. In Sparking mode these never open a Dolphin dialog; they are reported here and answered "yes/ok" so emulation continues. |
@@ -234,6 +239,21 @@ Only the name and hash cross the network (sent as hidden control messages on the
 channel, so Core's packet protocol is unchanged). Names are restricted to `[A-Za-z0-9._-]`
 ending in `.sst` or `.sav` (regular Dolphin's "Save State to File" format), so a host can't make peers read outside their state folder. States are tied
 to this Dolphin build; recapture them after updating the fork.
+
+## Ranked replays
+
+`--record-replays <dir>` (the launcher passes it for ranked lobbies): when the first round of a
+netplay match starts (both health watches at 100%), Dolphin saves a state and records every
+controller input from there (an input movie "from save state"). Netplay already sends everyone
+every input, so this adds nothing on the network; the state is written in the background and the
+game file isn't checksummed. When the set is decided (`koth_set`) and the game stops, it writes
+`<date>_<P1>_vs_<P2>.dtm` (inputs), `.dtm.sav` (the state at the first round) and `.json`
+(players, wins per port, winner, mode, this player's Gecko codes, date, frames, seconds). A
+match nobody won is dropped. Both players save their own copy.
+
+`--replay <file.dtm> -e <game> --local-players 2` plays one back with the same Gecko codes (the
+launcher passes the `.json`'s `gecko` list) and stops the game when the inputs run out. A replay
+needs the same game, Dolphin-Sparking version and per-port codes to play back exactly.
 
 ## Save data: solo vs netplay
 

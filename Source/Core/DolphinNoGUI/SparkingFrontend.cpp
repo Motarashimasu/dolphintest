@@ -52,6 +52,7 @@
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/TextureCacheBase.h"
 #include "DolphinNoGUI/SparkingNetPlay.h"
+#include "DolphinNoGUI/SparkingReplay.h"
 #include "DolphinNoGUI/SparkingDiscord.h"
 #include "DolphinNoGUI/SparkingHud.h"
 #include "DolphinNoGUI/SparkingLobby.h"
@@ -562,6 +563,7 @@ void RunNetPlayGame(const FrontendHooks& hooks, std::unique_ptr<BootParameters> 
     Emit("error", Json().Add("code", "boot_failed"));
   }
 
+  ReplayFinish();  // ranked replay: saved now if the match was decided (emulation still up)
   Core::Stop(system);
   Core::Shutdown(system);
   hooks.platform.reset();
@@ -894,6 +896,16 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .set_default("3")
       .help("Sparking mode internal resolution as a multiple of native (3 = 1080p, default)");
+  parser.add_option("--record-replays")
+      .dest("record_replays")
+      .action("store")
+      .help("Netplay: record each decided match (King of the Hill / ranked set) from its first "
+            "round into this folder (.dtm + .dtm.sav + .json); the launcher passes it for ranked");
+  parser.add_option("--replay")
+      .dest("replay")
+      .action("store")
+      .help("With -e <game>: play back a recorded match (.dtm from --record-replays) and stop at "
+            "its end");
   parser.add_option("--smooth-motion")
       .dest("smooth_motion")
       .action("store")
@@ -1044,6 +1056,8 @@ void InitFromOptions(const optparse::Values& options)
   if (options.is_set("state_dir"))
     s_state_dir = static_cast<const char*>(options.get("state_dir"));
   s_test_hooks = options.is_set_by_user("test_hooks");
+  if (options.is_set("record_replays"))
+    SetReplayDir(static_cast<const char*>(options.get("record_replays")));
   if (IsEnabled())
   {
     ApplySessionOverrides(options, netplay);

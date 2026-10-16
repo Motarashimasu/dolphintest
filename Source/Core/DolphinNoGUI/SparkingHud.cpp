@@ -15,6 +15,7 @@
 #include <imgui.h>
 
 #include "DolphinNoGUI/SparkingIO.h"
+#include "DolphinNoGUI/SparkingReplay.h"
 #include "VideoCommon/Present.h"
 #include "VideoCommon/OnScreenDisplay.h"
 
@@ -442,6 +443,7 @@ void HudOnWatch(const std::string& name, int port, const std::string& player, do
                                 .Add("round", s_rounds + 1)
                                 .Add("p1", DisplayName(s_sides[0], 1))
                                 .Add("p2", DisplayName(s_sides[1], 2)));
+      ReplayOnRoundStarted();  // a ranked replay starts with the first round
     }
     return;
   }

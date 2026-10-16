@@ -543,6 +543,11 @@ func _tour() -> void:
 		await shot("ranked_lobby")
 		print("TOUR_EVENT ranked_ready")
 		await wait_for("ranked match running", func(): return rl._phase == "playing", 60)
+		# The harness pokes the host's health; this player's game sees the first round too (the
+		# real game has the same memory on both sides), which starts its replay recording.
+		await get_tree().create_timer(1.0).timeout
+		for addr in ["80001100", "80001104"]:
+			Dolphin.send("poke %s 42C80000" % addr)
 		await wait_for("ranked win reported and rated", func():
 			return "\n".join(rl._chat).contains(tr("Ranked win! Rating %+d.") % 16), 60)
 		await wait_for("profile shows the new rating", func(): return Ranked.rating("single") == 1016, 20)
@@ -576,6 +581,26 @@ func _tour() -> void:
 	await choose("Profile")
 	await wait_for("profile loaded", func(): return top()._status == "", 15)
 	await shot("ranked_profile")
+	await back()
+	# Replays: the ranked match above was recorded by Dolphin; watch it back to its end.
+	await choose("Replays")
+	var rp: Control = top()
+	check("Replays screen", app._title.text == "Replays")
+	var rk := ""
+	for r in rp.list.rows:
+		if String(r.get("key", "")).begins_with("replay:") and "Goku" in String(r.get("label", "")):
+			rk = r["key"]
+	check("the ranked match was saved as a replay (%s)" % rp.list.row(rk).get("label", "none"), rk != "")
+	await shot("replays")
+	if rk != "":
+		await pick(rk, rp.list)
+		var player: Control = top()
+		check("replay player opened", player != rp and app._title.text == "Replay")
+		await wait_for("replay playing", func(): return player._state in ["playing", "ended"], 60)
+		await shot("replay_playing")
+		await wait_for("replay plays to its end", func(): return is_instance_valid(player) and player._state == "ended", 180)
+		await wait_for("the replay closes by itself, back to the list", func(): return app.top() == rp, 30)
+		await wait_for("Dolphin exited (replay)", func(): return not Dolphin.is_running(), 10)
 	await back()
 	await back()   # Ranked Match -> DRAGON NET
 	# Logged in: the rating plate slides in while Ranked Match is selected, out when it isn't.

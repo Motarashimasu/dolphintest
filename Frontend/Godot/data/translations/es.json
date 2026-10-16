@@ -542,5 +542,22 @@
  "Widescreen HUD (life bars at the screen edges)": "HUD panorámico (barras de vida en los bordes)",
  "Widescreen Character Select (true shape, 1P left / COM right)": "Selección de personaje panorámica (forma real, 1P a la izquierda / COM a la derecha)",
  "Smooth Motion": "Movimiento fluido",
- "Frame interpolation: in-between frames make 30 fps fights look like 60 fps.\nAdds about one frame of input delay; very fast effects can smear.": "Interpolación de fotogramas: fotogramas intermedios hacen que los combates a 30 fps se vean a 60 fps.\nAñade un fotograma de retraso aprox.; los efectos muy rápidos pueden emborronarse."
+ "Frame interpolation: in-between frames make 30 fps fights look like 60 fps.\nAdds about one frame of input delay; very fast effects can smear.": "Interpolación de fotogramas: fotogramas intermedios hacen que los combates a 30 fps se vean a 60 fps.\nAñade un fotograma de retraso aprox.; los efectos muy rápidos pueden emborronarse.",
+ "Replays": "Repeticiones",
+ "Replay": "Repetición",
+ "Watch your ranked matches again, from the first round\nto the last KO. Saved automatically.": "Vuelve a ver tus partidas clasificatorias, del primer asalto\nal último KO. Se guardan solas.",
+ "Your ranked matches, newest first. Pick one to watch it\nfrom the first round to the last KO.": "Tus partidas clasificatorias, las más recientes primero. Elige una\npara verla del primer asalto al último KO.",
+ "%s  %d - %d  %s": "%s  %d - %d  %s",
+ "Ranked match": "Partida clasificatoria",
+ "No replays yet": "Aún no hay repeticiones",
+ "Every ranked match you finish is saved here automatically.": "Cada partida clasificatoria que terminas se guarda aquí sola.",
+ "Open replays folder": "Abrir la carpeta de repeticiones",
+ "The replay files: .dtm (inputs), .dtm.sav (start of the match), .json (info).": "Los archivos: .dtm (controles), .dtm.sav (inicio de la partida), .json (datos).",
+ "Back to the Ranked Match menu.": "Volver al menú de Partida clasificatoria.",
+ "Hold Select (Back / Share) in game for the in-game menu.": "Mantén Select (Back / Share) en el juego para abrir el menú.",
+ "Finished": "Terminada",
+ "Back to the replay": "Volver a la repetición",
+ "Stop Replay": "Detener repetición",
+ "Close the replay and go back to the list.": "Cierra la repetición y vuelve a la lista.",
+ "%s, %s. Winner: %s.\nPress to watch it.": "%s, %s. Ganador: %s.\nPulsa para verla."
 }

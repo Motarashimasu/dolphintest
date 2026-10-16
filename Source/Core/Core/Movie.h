@@ -201,6 +201,10 @@ public:
   void ChangeWiiPads();
 
   void SetReadOnly(bool bEnabled);
+  // Sparking: don't checksum the whole game file when recording / playing (it reads the full
+  // disc image in the background, which can stutter a netplay match). The game was already
+  // verified by netplay; the header's MD5 is left zero.
+  void SetSkipGameChecksum(bool skip) { m_skip_game_checksum = skip; }
 
   bool BeginRecordingInput(const ControllerTypeArray& controllers,
                            const WiimoteEnabledArray& wiimotes);
@@ -231,6 +235,7 @@ private:
   void GetMD5();
 
   bool m_read_only = true;
+  bool m_skip_game_checksum = false;
   u32 m_rerecords = 0;
   PlayMode m_play_mode = PlayMode::None;
 

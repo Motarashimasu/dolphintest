@@ -23,6 +23,8 @@ add_executable(dolphin-nogui
   SparkingNet.h
   SparkingNetPlay.cpp
   SparkingNetPlay.h
+  SparkingReplay.cpp
+  SparkingReplay.h
   SparkingHud.cpp
   SparkingHud.h
   SparkingWatch.cpp

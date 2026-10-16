@@ -24,6 +24,7 @@
 #include "Core/Host.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/SparkingFrontend.h"
+#include "DolphinNoGUI/SparkingReplay.h"
 #include "DolphinNoGUI/SparkingIO.h"
 
 #include "UICommon/CommandLineParse.h"
@@ -326,6 +327,14 @@ int main(const int argc, char* argv[])
 
   DolphinAnalytics::Instance().ReportDolphinStart("nogui");
   Sparking::BeforeSoloBoot(options, s_platform);
+
+  // --replay: play a recorded ranked match back from its save state (stops at the end).
+  if (options.is_set("replay") &&
+      !Sparking::PrepareReplayPlayback(static_cast<const char*>(options.get("replay")), boot.get()))
+  {
+    Sparking::Emit("exit", Sparking::Json().Add("code", 1));
+    return 1;
+  }
 
   if (!BootManager::BootCore(Core::System::GetInstance(), std::move(boot), wsi))
   {

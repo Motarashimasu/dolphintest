@@ -123,9 +123,11 @@ def main():
                     "$16:9 aspect ratio\n04001008 00000003\n"
                     "[Gecko_Enabled]\n$16:9 aspect ratio\n"
                     "[Sparking.Modes]\nTraining = training.sst\n")
-    # The ranked host counts KOs from these health watches (the harness pokes them).
-    with open(os.path.join(ranked_user, "GameSettings", f"{game_id}.ini"), "a") as f:
-        f.write("[Sparking.Watch]\np1_health_pct = f32 0x80001100\np2_health_pct = f32 0x80001104\n")
+    # The ranked host counts KOs from these health watches (the harness pokes them). The tour's
+    # own Dolphin watches them too: its first full-health round starts the ranked replay.
+    for u in (ranked_user, godot_user):
+        with open(os.path.join(u, "GameSettings", f"{game_id}.ini"), "a") as f:
+            f.write("[Sparking.Watch]\np1_health_pct = f32 0x80001100\np2_health_pct = f32 0x80001104\n")
     # Texture pack with the frontend's variant groups (empty placeholder textures).
     png = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
                         "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
@@ -272,7 +274,7 @@ def main():
             "settings_file": os.path.join(work, "settings.cfg"),
             "settings": {
                 "paths": {"dolphin": exe, "game": dol, "data": data, "profile": "user",
-                          "extra_args": " ".join(COMMON)},
+                          "extra_args": " ".join(COMMON + ["--test-hooks"])},   # (poke: ranked replay)
                 "player": {"nickname": "Goku", "region": "EU"},
                 "netplay": {"public": True, "mode": "single", "traversal": True,
                             "public_address": "127.0.0.1", "find_mode": "any", "buffer": 4},

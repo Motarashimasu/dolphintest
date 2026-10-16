@@ -1430,7 +1430,7 @@ void MovieManager::GetSettings()
 // NOTE: Entrypoint for own thread
 void MovieManager::CheckMD5()
 {
-  if (m_current_file_name.empty())
+  if (m_current_file_name.empty() || m_skip_game_checksum)
     return;
 
   // The MD5 hash was introduced in 3.0-846-gca650d4435.
@@ -1453,7 +1453,9 @@ void MovieManager::CheckMD5()
 // NOTE: Entrypoint for own thread
 void MovieManager::GetMD5()
 {
-  if (m_current_file_name.empty())
+  if (m_skip_game_checksum)
+    m_md5 = {};
+  if (m_current_file_name.empty() || m_skip_game_checksum)
     return;
 
   Core::DisplayMessage("Calculating checksum of game file...", 2000);

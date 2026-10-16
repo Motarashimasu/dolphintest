@@ -24,6 +24,7 @@
 #include "Core/System.h"
 #include "DolphinNoGUI/SparkingHud.h"
 #include "DolphinNoGUI/SparkingIO.h"
+#include "DolphinNoGUI/SparkingReplay.h"
 #include "VideoCommon/VideoEvents.h"
 
 namespace Sparking
@@ -335,6 +336,7 @@ Json& AddPlayer(Json& json, const std::string& name)
 // CPU thread, once per video field.
 void OnField()
 {
+  ReplayOnField();  // replay playback: progress and the end of the inputs
   std::lock_guard lk(s_mutex);
   if (s_watches.empty())
     return;

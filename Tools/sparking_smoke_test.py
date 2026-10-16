@@ -718,6 +718,7 @@ def main():
         koth_check(exe, dol, work, game_id)
         gecko_state_check(exe, dol, work, game_id)
         ranked_check(exe, dol, work, game_id)
+        replay_check(exe, dol, work, game_id)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
@@ -978,6 +979,131 @@ def ranked_check(exe, dol, work, game_id):
         for inst in (vegeta, host):
             inst.send("quit")
             inst.proc.wait(timeout=20)
+    finally:
+        for inst in insts:
+            if inst.proc.poll() is None:
+                inst.proc.kill()
+
+
+def replay_check(exe, dol, work, game_id):
+    """Ranked replays (--record-replays): both players record the decided match from its first
+    round (.dtm + .dtm.sav + .json, same inputs on both sides); a match nobody won is dropped;
+    --replay plays one back and stops at its end, like a demo."""
+    print("netplay: ranked replays")
+    common = ["-p", "headless", "-v", "Null"]
+    FULL, ZERO = "42C80000", "00000000"
+    HP1, HP2 = "80001100", "80001104"
+    dirs = {}
+
+    def setup(name):
+        d = os.path.join(work, "rp-" + name)
+        os.makedirs(os.path.join(d, "Config"), exist_ok=True)
+        os.makedirs(os.path.join(d, "GameSettings"), exist_ok=True)
+        with open(os.path.join(d, "Config", "Dolphin.ini"), "w") as f:
+            f.write("[NetPlay]\nTraversalChoice = direct\nHostPort = 26341\nSyncSaves = False\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        with open(os.path.join(d, "GameSettings", f"{game_id}.ini"), "w") as f:
+            f.write("[Sparking.Watch]\np1_health_pct = f32 0x80001100\np2_health_pct = f32 0x80001104\n")
+        dirs[name] = os.path.join(work, "rp-replays-" + name)
+        return ["-u", d, "--nand", os.path.join(work, "rp-nand-" + name),
+                "--record-replays", dirs[name], "--test-hooks"]
+
+    def count(inst, event, pred=lambda e: True):
+        return len([e for e in list(inst.history) if e["event"] == event and pred(e)])
+
+    host = Instance("rp-host", [exe, *common, *setup("host"), "--netplay-host", dol, "--netplay-direct",
+                                "--ranked", "--mode", "single", "--nickname", "Goku", "--automap", "gc"])
+    insts = [host]
+
+    def poke(addr, val):
+        for inst in (host, vegeta):
+            inst.send(f"poke {addr} {val}")
+            inst.wait_for("poked", lambda e: e["address"] == addr and e["value"] == val)
+        time.sleep(0.15)
+
+    def ko(loser):
+        poke(HP1, FULL); poke(HP2, FULL)
+        n = count(host, "round_result")
+        poke(loser, ZERO)
+        deadline = time.time() + 10
+        while count(host, "round_result") <= n and time.time() < deadline:
+            time.sleep(0.1)
+
+    try:
+        host.send("hello")
+        host.wait_for("lobby_ready")
+        vegeta = Instance("rp-Vegeta", [exe, *common, *setup("Vegeta"), "--netplay-join", "127.0.0.1:26341",
+                                        "--netplay-game", dol, "--nickname", "Vegeta"])
+        insts.append(vegeta)
+        vegeta.send("hello")
+        host.seen("players", lambda e: len(e["players"]) == 2 and
+                  all(p["save_status"] == "ok" for p in e["players"] if not p["is_host"]), timeout=20)
+
+        # A match stopped by hand: recorded from its first round, then dropped (nobody won).
+        host.send("start")
+        for inst in (host, vegeta):
+            inst.wait_for("game_started", timeout=40)
+        poke(HP1, FULL); poke(HP2, FULL)
+        for inst in (host, vegeta):
+            inst.wait_for("replay_recording", timeout=20)
+        check("recording starts with the first round (both players)", True)
+        host.send("stop")
+        for inst in (host, vegeta):
+            d = inst.wait_for("replay_dropped", timeout=20)
+            check(f"{inst.name}: a match nobody won is dropped ({d['reason']})", d["reason"] == "no_result")
+            inst.wait_for("game_stopped", timeout=20)
+        check("nothing written for it", not any(os.listdir(d) for d in dirs.values() if os.path.isdir(d)))
+        host.seen("koth", lambda e: e["state"] == "ready", timeout=20)
+
+        # A decided match: Vegeta wins 2-1. Both players save it.
+        host.send("start")
+        for inst in (host, vegeta):
+            until_n = 2
+            deadline = time.time() + 40
+            while count(inst, "game_started") < until_n and time.time() < deadline:
+                time.sleep(0.1)
+        ko(HP1)
+        for inst in (host, vegeta):
+            deadline = time.time() + 20
+            while count(inst, "replay_recording") < 2 and time.time() < deadline:
+                time.sleep(0.1)
+        time.sleep(1)
+        ko(HP2)
+        ko(HP1)
+        host.seen("koth_set", timeout=10)
+        saved = {}
+        for inst in (host, vegeta):
+            saved[inst.name] = inst.wait_for("replay_saved", timeout=30)
+        sh = saved["rp-host"]
+        check(f"replay saved: inputs + start state ({sh['bytes']} bytes, {sh['frames']} frames)",
+              os.path.isfile(sh["dtm"]) and os.path.isfile(sh["dtm"] + ".sav") and sh["frames"] > 0)
+        with open(sh["json"]) as f:
+            meta = json.load(f)
+        check(f"replay info: players, score, winner, mode {meta['players']} {meta['wins']} {meta['winner']}",
+              meta["players"] == ["Goku", "Vegeta"] and meta["wins"] == [1, 2] and
+              meta["winner"] == "Vegeta" and meta["mode"] == "single" and meta["recorded_by_port"] == 1
+              and meta["game_id"] == game_id and meta["frames"] == sh["frames"])
+        with open(saved["rp-Vegeta"]["json"]) as f:
+            meta_v = json.load(f)
+        check("the other player's copy says the same (recorded from port 2, mode from the host)",
+              meta_v["players"] == meta["players"] and meta_v["wins"] == meta["wins"]
+              and meta_v["recorded_by_port"] == 2 and meta_v["mode"] == "single")
+        for inst in (host, vegeta):
+            inst.send("quit")
+            inst.proc.wait(timeout=20)
+
+        # Playback: from the start state to the end of the inputs, then the game stops by itself.
+        play = Instance("rp-play", [exe, *common, "--sparking", "-u", os.path.join(work, "rp-host"),
+                                    "--nand", os.path.join(work, "rp-nand-host"), "--local-players", "2",
+                                    "--replay", sh["dtm"], "-e", dol])
+        insts.append(play)
+        play.send("hello")
+        st = play.wait_for("replay_started", timeout=30)
+        check(f"replay starts ({st['frames']} frames)", st["frames"] == sh["frames"])
+        play.wait_for("state_applied", timeout=30)
+        end = play.wait_for("replay_ended", timeout=120)
+        check("replay plays to its end and stops, like a demo", end["frames"] == sh["frames"])
+        play.wait_for("exit", timeout=30)
     finally:
         for inst in insts:
             if inst.proc.poll() is None:
