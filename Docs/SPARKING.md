@@ -286,6 +286,12 @@ the same, so the first re-run field recompiled the game (~200 ms in a BT3 fight)
 flag on (rollback loads only) they now do that only when the mappings changed. `jit_clears` in
 the stats counts the clears.
 
+Save / load cost: `save_parts_ms` / `load_parts_ms` time each part of the state (from the save
+state markers, the costliest 8, last 20 tests). Nearly all of it is copying MEM1 and MEM2
+(BT3: ~17 of ~19 ms). `pages_changed_per_frame` / `pages_changed_per_rewind` count the 4 KB
+pages of MEM1 / MEM2 that changed after one game frame (2 fields) and over the rewind (plus
+64 KB blocks): how much a save of only the changed memory would have to copy.
+
 Quitting stops the test: Dolphin taps the Wii's power button so the game can shut down, and that
 tap isn't a recorded input (a rewind would take it back, and the runs would differ).
 

@@ -34,6 +34,10 @@
 #include "Common/Inline.h"
 
 // Wrapper class
+// Dolphin-Sparking (rollback test): called at every save state marker, i.e. after each part of
+// the state, to time the parts. nullptr = off.
+inline void (*g_sparking_marker_hook)(const std::string& name) = nullptr;
+
 class PointerWrap
 {
 public:
@@ -311,6 +315,8 @@ public:
   {
     u32 cookie = arbitraryNumber;
     Do(cookie);
+    if (g_sparking_marker_hook) [[unlikely]]
+      g_sparking_marker_hook(prevName);
 
     if (IsReadMode() && cookie != arbitraryNumber)
     {

@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <span>
 #include <string_view>
@@ -21,6 +22,7 @@
 #endif
 
 #include "Common/Buffer.h"
+#include "Common/ChunkFile.h"
 #include "Common/FileUtil.h"
 #include "Common/IOFile.h"
 #include "Common/StringUtil.h"
@@ -229,6 +231,61 @@ Recent s_first_cpu, s_rerun_cpu, s_rerun_first_field, s_rerun_later_fields;
 // cleanly. That tap isn't part of the recorded inputs, so stop rewinding (a rewind would also
 // take the tap back).
 std::atomic<bool> s_stopping{false};
+// Changed-memory measurements (see CountChanges).
+std::vector<u8> s_base_mem1, s_base_mem2;
+Recent s_frame_pages1, s_frame_pages2, s_window_pages1, s_window_pages2, s_window_blocks1,
+    s_window_blocks2;
+double s_cpu_excluded = 0;  // CPU time of these measurements (not the game's)
+
+double Ms(Clock::time_point a, Clock::time_point b);
+
+// What each part of a save / load costs (ms, last 20 tests), from the save state markers.
+std::map<std::string, Recent> s_save_parts, s_load_parts;
+std::map<std::string, Recent>* s_parts_into = nullptr;
+std::map<std::string, double> s_parts_now;
+Clock::time_point s_part_start;
+
+void OnMarker(const std::string& name)
+{
+  const auto now = Clock::now();
+  if (s_parts_into)
+    s_parts_now[name] += Ms(s_part_start, now);
+  s_part_start = now;
+}
+
+// Times the parts of one save or load (call around it).
+void BeginParts(std::map<std::string, Recent>* into)
+{
+  s_parts_into = into;
+  s_parts_now.clear();
+  s_part_start = Clock::now();
+  g_sparking_marker_hook = &OnMarker;
+}
+
+void EndParts()
+{
+  g_sparking_marker_hook = nullptr;
+  OnMarker("rest");  // after the last marker
+  if (s_parts_into)
+  {
+    for (const auto& [name, ms] : s_parts_now)
+      (*s_parts_into)[name].Add(ms);
+  }
+  s_parts_into = nullptr;
+}
+
+// The costliest parts, as {"name": ms, ...}.
+std::string PartsJson(const std::map<std::string, Recent>& parts)
+{
+  std::vector<std::pair<double, std::string>> v;
+  for (const auto& [name, r] : parts)
+    v.emplace_back(r.Avg(), name);
+  std::ranges::sort(v, std::greater<>());
+  Json j;
+  for (std::size_t i = 0; i < v.size() && i < 8; ++i)
+    j.AddRaw(v[i].second, fmt::format("{:.2f}", v[i].first));
+  return j.Str();
+}
 // The emulator's scheduled events (what happens when: disc reads, IOS replies, audio DMA, ...)
 // at the save, right after the rewind's load, and at the end of each run.
 std::string s_events_save, s_events_loaded, s_events_first_end;
@@ -338,6 +395,20 @@ void EmitStats()
                  .AddRaw("rerun_cpu_ms_per_field", fmt::format("{:.2f}", s_rerun_cpu.Avg()))
                  .AddRaw("rerun_first_field_ms", fmt::format("{:.2f}", s_rerun_first_field.Avg()))
                  .AddRaw("rerun_later_fields_ms", fmt::format("{:.2f}", s_rerun_later_fields.Avg()))
+                 .AddRaw("pages_changed_per_frame",
+                         Json()
+                             .AddRaw("mem1", fmt::format("{:.0f}", s_frame_pages1.Avg()))
+                             .AddRaw("mem2", fmt::format("{:.0f}", s_frame_pages2.Avg()))
+                             .Str())
+                 .AddRaw("pages_changed_per_rewind",
+                         Json()
+                             .AddRaw("mem1", fmt::format("{:.0f}", s_window_pages1.Avg()))
+                             .AddRaw("mem2", fmt::format("{:.0f}", s_window_pages2.Avg()))
+                             .AddRaw("mem1_64k_blocks", fmt::format("{:.0f}", s_window_blocks1.Avg()))
+                             .AddRaw("mem2_64k_blocks", fmt::format("{:.0f}", s_window_blocks2.Avg()))
+                             .Str())
+                 .AddRaw("save_parts_ms", PartsJson(s_save_parts))
+                 .AddRaw("load_parts_ms", PartsJson(s_load_parts))
                  .Add("jit_clears", static_cast<int64_t>(
                                         Core::System::GetInstance().GetJitInterface().GetClearCount()))
                  .Add("draws", static_cast<int64_t>(VideoCommon::g_sparking_draws.load()))
@@ -356,6 +427,63 @@ void CopyGameMemory(Core::System& system, std::vector<u8>* mem1, std::vector<u8>
     aram->assign(a, a + DSP::ARAM_SIZE);
   else
     aram->clear();
+}
+
+// How much of the game's memory changes between saves: the next step (saving only what changed)
+// depends on it. Copies of MEM1 / MEM2 at the save, compared after one game frame (2 fields) and
+// at the rewind, counting changed 4 KB pages (and 64 KB blocks).
+
+void CopyBase(Core::System& system)
+{
+  auto& memory = system.GetMemory();
+  s_base_mem1.assign(memory.GetRAM(), memory.GetRAM() + memory.GetRamSizeReal());
+  if (memory.GetEXRAM())
+    s_base_mem2.assign(memory.GetEXRAM(), memory.GetEXRAM() + memory.GetExRamSizeReal());
+  else
+    s_base_mem2.clear();
+}
+
+// Changed 4 KB pages (and 64 KB blocks) of `now` against `base`.
+std::pair<u64, u64> ChangedPages(const std::vector<u8>& base, const u8* now)
+{
+  constexpr std::size_t PAGE = 4096, BLOCK = 65536;
+  u64 pages = 0, blocks = 0;
+  for (std::size_t b = 0; b < base.size(); b += BLOCK)
+  {
+    bool block_changed = false;
+    for (std::size_t p = b; p < b + BLOCK && p < base.size(); p += PAGE)
+    {
+      if (std::memcmp(base.data() + p, now + p, std::min(PAGE, base.size() - p)) != 0)
+      {
+        ++pages;
+        block_changed = true;
+      }
+    }
+    blocks += block_changed;
+  }
+  return {pages, blocks};
+}
+
+void CountChanges(Core::System& system, bool window)
+{
+  const double t0 = ThreadCpuMs();
+  auto& memory = system.GetMemory();
+  const auto [p1, b1] = ChangedPages(s_base_mem1, memory.GetRAM());
+  const auto [p2, b2] =
+      s_base_mem2.empty() ? std::pair<u64, u64>{} : ChangedPages(s_base_mem2, memory.GetEXRAM());
+  if (window)
+  {
+    s_window_pages1.Add(static_cast<double>(p1));
+    s_window_pages2.Add(static_cast<double>(p2));
+    s_window_blocks1.Add(static_cast<double>(b1));
+    s_window_blocks2.Add(static_cast<double>(b2));
+  }
+  else
+  {
+    s_frame_pages1.Add(static_cast<double>(p1));
+    s_frame_pages2.Add(static_cast<double>(p2));
+  }
+  s_cpu_excluded += ThreadCpuMs() - t0;
 }
 
 // Differing 32-byte lines of MEM1, merged into ranges (the first 16), as JSON.
@@ -434,7 +562,9 @@ void Resume(Core::System& system)
 void JobSave(Core::System& system)
 {
   const auto t0 = Clock::now();
+  BeginParts(&s_save_parts);
   s_state_size = State::SaveToMemory(system, s_state);
+  EndParts();
   s_events_save = Events(system);
   s_save.Add(Ms(t0, Clock::now()));
   if (s_state_size == 0)
@@ -458,6 +588,8 @@ void JobSave(Core::System& system)
     LogInto(&s_log_first, &s_gpu_first);
     s_cycle_start_field = s_field_no;
     s_phase = Phase::Recording;
+    CopyBase(system);
+    s_cpu_excluded = 0;
     s_cpu_mark = ThreadCpuMs();
   }
   s_fields = 0;
@@ -466,7 +598,8 @@ void JobSave(Core::System& system)
 
 void JobRewind(Core::System& system)
 {
-  s_first_cpu.Add((ThreadCpuMs() - s_cpu_mark) / s_depth);
+  CountChanges(system, true);
+  s_first_cpu.Add((ThreadCpuMs() - s_cpu_mark - s_cpu_excluded) / s_depth);
   if (s_stopping)
   {
     LogInto(nullptr, nullptr);
@@ -479,7 +612,9 @@ void JobRewind(Core::System& system)
   const auto t0 = Clock::now();
   Gecko::SetReinstallOnLoad(false);  // same session, same codes: leave the handler as it was
   system.GetJitInterface().SetKeepCacheOnLoad(s_keep_jit);
+  BeginParts(&s_load_parts);
   const bool ok = State::LoadFromMemory(system, std::span<u8>(s_state.data(), s_state_size));
+  EndParts();
   system.GetJitInterface().SetKeepCacheOnLoad(false);
   Gecko::SetReinstallOnLoad(true);
   s_events_loaded = Events(system);
@@ -647,7 +782,9 @@ void OnField()
   case Phase::Recording:
     ++s_field_no;
     TraceField(&s_trace_first);
-    if (++s_fields >= s_depth)
+    if (++s_fields == 2 && s_depth > 2)
+      CountChanges(Core::System::GetInstance(), false);  // one game frame
+    if (s_fields >= s_depth)
       AtThisField(JobRewind);
     return;
   case Phase::Replaying:
