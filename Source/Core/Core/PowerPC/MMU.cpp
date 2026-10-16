@@ -2003,6 +2003,9 @@ void MMU::UpdateFakeMMUBat(BatTable& bat_table, u32 start_addr)
 
 void MMU::DBATUpdated()
 {
+  // Dolphin-Sparking: on a rollback rewind (see IBATUpdated) with the same data mappings as
+  // before, the fastmem views and the compiled code stay valid: skip remapping and clearing.
+  const auto old_table = std::make_unique<BatTable>(m_dbat_table);
   m_dbat_table = {};
   UpdateBATs(m_dbat_table, SPR_DBAT0U);
   bool extended_bats = m_system.IsWii() && HID4(m_ppc_state).SBE;
@@ -2015,6 +2018,12 @@ void MMU::DBATUpdated()
     UpdateFakeMMUBat(m_dbat_table, 0x70000000);
   }
 
+  auto& jit = m_system.GetJitInterface();
+  const bool unchanged =
+      jit.KeepsCacheOnLoad() && *old_table == m_dbat_table && m_page_table.empty();
+  if (unchanged)
+    return;
+
 #ifndef _ARCH_32
   m_memory.UpdateDBATMappings(m_dbat_table);
 
@@ -2026,11 +2035,16 @@ void MMU::DBATUpdated()
 #endif
 
   // IsOptimizable*Address and dcbz depends on the BAT mapping, so we need a flush here.
-  m_system.GetJitInterface().ClearSafe();
+  jit.ClearSafe();
 }
 
 void MMU::IBATUpdated()
 {
+  // Dolphin-Sparking: on a rollback rewind (a state load that keeps the compiled code) the
+  // compiled code only has to go if the instruction mappings changed. The load always calls this
+  // and nearly always restores the same mappings; clearing would recompile all the game's code
+  // in the next frame (~200 ms in a BT3 fight). Anywhere else: cleared as always.
+  const auto old_table = std::make_unique<BatTable>(m_ibat_table);
   m_ibat_table = {};
   UpdateBATs(m_ibat_table, SPR_IBAT0U);
   bool extended_bats = m_system.IsWii() && HID4(m_ppc_state).SBE;
@@ -2042,7 +2056,9 @@ void MMU::IBATUpdated()
     UpdateFakeMMUBat(m_ibat_table, 0x40000000);
     UpdateFakeMMUBat(m_ibat_table, 0x70000000);
   }
-  m_system.GetJitInterface().ClearSafe();
+  auto& jit = m_system.GetJitInterface();
+  if (!jit.KeepsCacheOnLoad() || *old_table != m_ibat_table)
+    jit.ClearSafe();
 }
 
 // Translate effective address using BAT or PAT.  Returns 0 if the address cannot be translated.

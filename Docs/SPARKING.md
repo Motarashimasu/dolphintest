@@ -279,6 +279,13 @@ emulation thread's own CPU time per field (no throttle sleeps, no GPU waits) in 
 and in the re-run, and `rerun_first_field_ms` / `rerun_later_fields_ms` split the re-run's wall
 time into the field right after the load and the others (last 20 tests each).
 
+Rewinds keep the compiled code (`--rollback-recompile` to throw it away like a normal load).
+A state load used to throw it away anyway: `PowerPC::DoState` calls `IBATUpdated` /
+`DBATUpdated`, which cleared the JIT (and remapped fastmem) even when the mappings came back
+the same, so the first re-run field recompiled the game (~200 ms in a BT3 fight). With the keep
+flag on (rollback loads only) they now do that only when the mappings changed. `jit_clears` in
+the stats counts the clears.
+
 Quitting stops the test: Dolphin taps the Wii's power button so the game can shut down, and that
 tap isn't a recorded input (a rewind would take it back, and the runs would differ).
 

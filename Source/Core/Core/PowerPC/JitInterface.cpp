@@ -41,7 +41,10 @@ void JitInterface::SetJit(std::unique_ptr<JitBase> jit)
 void JitInterface::DoState(PointerWrap& p)
 {
   if (m_jit && p.IsReadMode() && !m_keep_cache_on_load)
+  {
     m_jit->ClearCache();
+    ++m_clear_count;
+  }
 }
 
 CPUCoreBase* JitInterface::InitJitCore(PowerPC::CPUCore core)
@@ -232,13 +235,19 @@ bool JitInterface::HandleStackFault()
 void JitInterface::ClearCache(const Core::CPUThreadGuard&)
 {
   if (m_jit)
+  {
     m_jit->ClearCache();
+    ++m_clear_count;
+  }
 }
 
 void JitInterface::ClearSafe()
 {
   if (m_jit)
+  {
     m_jit->GetBlockCache()->Clear();
+    ++m_clear_count;
+  }
 }
 
 void JitInterface::EraseSingleBlock(const JitBlock& block)

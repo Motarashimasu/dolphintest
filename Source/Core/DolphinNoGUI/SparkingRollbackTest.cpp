@@ -338,6 +338,8 @@ void EmitStats()
                  .AddRaw("rerun_cpu_ms_per_field", fmt::format("{:.2f}", s_rerun_cpu.Avg()))
                  .AddRaw("rerun_first_field_ms", fmt::format("{:.2f}", s_rerun_first_field.Avg()))
                  .AddRaw("rerun_later_fields_ms", fmt::format("{:.2f}", s_rerun_later_fields.Avg()))
+                 .Add("jit_clears", static_cast<int64_t>(
+                                        Core::System::GetInstance().GetJitInterface().GetClearCount()))
                  .Add("draws", static_cast<int64_t>(VideoCommon::g_sparking_draws.load()))
                  .Add("draws_skipped",
                       static_cast<int64_t>(VideoCommon::g_sparking_draws_skipped.load()))

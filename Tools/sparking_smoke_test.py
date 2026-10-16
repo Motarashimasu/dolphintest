@@ -1337,6 +1337,9 @@ def rollback_gpu_check(exe, work):
     check(f"nothing comes out different ({last['cycles']} tests, {last['mismatches']} mismatches)",
           last["mismatches"] == 0)
     check("no GPU errors", not alerts)
+    check(f"rewinds keep the compiled code (code thrown away {first['jit_clears']} -> "
+          f"{last['jit_clears']} times; a state load used to throw it all away)",
+          last["jit_clears"] == first["jit_clears"])
     st, first, last, alerts = run("rbgx-draw", ["--rollback-draw"])
     check(f"--rollback-draw draws the re-runs ({last['draws_skipped']} skipped, {last['mismatches']} "
           "mismatches)", st.get("skip_draw") is False and last["draws_skipped"] == 0
