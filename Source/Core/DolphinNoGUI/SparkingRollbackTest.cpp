@@ -15,10 +15,12 @@
 #include "Common/Buffer.h"
 #include "Common/FileUtil.h"
 #include "Common/IOFile.h"
+#include "Common/StringUtil.h"
 #include "Common/HookableEvent.h"
 #include "Core/Config/GraphicsSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Core.h"
+#include "Core/CoreTiming.h"
 #include "Core/GeckoCode.h"
 #include "Core/HW/CPU.h"
 #include "Core/HW/DSP.h"
@@ -89,6 +91,27 @@ Clock::time_point s_test_start;
 // Traced words (--rollback-trace, plus the first differing spots of each mismatch): their value
 // at every field of the first run and of the re-run.
 std::vector<u32> s_trace;
+// The emulator's scheduled events (what happens when: disc reads, IOS replies, audio DMA, ...)
+// at the save, right after the rewind's load, and at the end of each run.
+std::string s_events_save, s_events_loaded, s_events_first_end;
+
+std::string Events(Core::System& system)
+{
+  return system.GetCoreTiming().GetScheduledEventsSummary();
+}
+
+// Lines of `a` that aren't in `b` (at most 10), as a JSON array of strings.
+std::string OnlyIn(const std::string& a, const std::string& b)
+{
+  std::vector<std::string> out;
+  const auto lines_b = SplitString(b, '\n');
+  for (const std::string& line : SplitString(a, '\n'))
+  {
+    if (!line.empty() && out.size() < 10 && std::ranges::find(lines_b, line) == lines_b.end())
+      out.push_back(Json::Escape(line));
+  }
+  return JsonArray(out);
+}
 std::vector<std::vector<u32>> s_trace_first, s_trace_re;
 
 void TraceField(std::vector<std::vector<u32>>* into)
@@ -265,6 +288,7 @@ void JobSave(Core::System& system)
 {
   const auto t0 = Clock::now();
   s_state_size = State::SaveToMemory(system, s_state);
+  s_events_save = Events(system);
   s_save.Add(Ms(t0, Clock::now()));
   if (s_state_size == 0)
   {
@@ -287,10 +311,12 @@ void JobSave(Core::System& system)
 void JobRewind(Core::System& system)
 {
   CopyGameMemory(system, &s_mem1_first, &s_aram_first);
+  s_events_first_end = Events(system);
   const auto t0 = Clock::now();
   Gecko::SetReinstallOnLoad(false);  // same session, same codes: leave the handler as it was
   const bool ok = State::LoadFromMemory(system, std::span<u8>(s_state.data(), s_state_size));
   Gecko::SetReinstallOnLoad(true);
+  s_events_loaded = Events(system);
   s_load.Add(Ms(t0, Clock::now()));
   if (!ok)
   {
@@ -324,6 +350,7 @@ void JobCompare(Core::System& system)
   ++s_cycles;
 
   auto& memory = system.GetMemory();
+  const std::string events_re_end = Events(system);
   u64 mem1_diff = 0, aram_diff = 0;
   const std::size_t mem1_size = std::min<std::size_t>(s_mem1_first.size(), memory.GetRamSizeReal());
   std::vector<std::size_t> starts;
@@ -360,7 +387,12 @@ void JobCompare(Core::System& system)
                    .Add("state_kb", static_cast<int64_t>(s_state_size / 1024))
                    .AddRaw("watches", WatchValuesJson())
                    .AddRaw("samples", Samples(s_mem1_first, memory.GetRAM(), mem1_size, starts))
-                   .AddRaw("trace", TraceJson()));
+                   .AddRaw("trace", TraceJson())
+                   .Add("events_restored", s_events_loaded == s_events_save)
+                   .AddRaw("events_lost_by_load", OnlyIn(s_events_save, s_events_loaded))
+                   .AddRaw("events_added_by_load", OnlyIn(s_events_loaded, s_events_save))
+                   .AddRaw("events_only_first_run", OnlyIn(s_events_first_end, events_re_end))
+                   .AddRaw("events_only_re_run", OnlyIn(events_re_end, s_events_first_end)));
     // Follow the first differing spots from now on (their values field by field).
     for (std::size_t k = 0; k < starts.size() && k < 4 && s_trace.size() < 12; ++k)
     {
