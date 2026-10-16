@@ -40,7 +40,7 @@ void JitInterface::SetJit(std::unique_ptr<JitBase> jit)
 
 void JitInterface::DoState(PointerWrap& p)
 {
-  if (m_jit && p.IsReadMode())
+  if (m_jit && p.IsReadMode() && !m_keep_cache_on_load)
     m_jit->ClearCache();
 }
 

@@ -913,6 +913,11 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .help("Rollback test: comma-separated addresses (hex) whose 32-bit values are logged field by "
             "field with each mismatch");
+  parser.add_option("--rollback-recompile")
+      .dest("rollback_recompile")
+      .action("store_true")
+      .help("Rollback test: recompile the game's code after each rewind (as a normal state load "
+            "does) instead of keeping it");
   parser.add_option("--rollback-log")
       .dest("rollback_log")
       .action("store")
@@ -1102,7 +1107,7 @@ void InitFromOptions(const optparse::Values& options)
                        options.is_set("rollback_log") ?
                            std::string(static_cast<const char*>(options.get("rollback_log"))) :
                            std::string(),
-                       trace);
+                       trace, !options.is_set_by_user("rollback_recompile"));
     }
     InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off",
             std::string_view(static_cast<const char*>(options.get("hud_health"))) != "off");

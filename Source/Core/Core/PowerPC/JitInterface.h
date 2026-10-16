@@ -41,6 +41,10 @@ public:
   ~JitInterface();
 
   void DoState(PointerWrap& p);
+  // Dolphin-Sparking (rollback): keep the compiled code when a state is loaded. A rewind within
+  // a few frames runs the same code; recompiling changes where the compiled blocks start and end,
+  // and with them the exact cycle the emulator's events land on (and costs time).
+  void SetKeepCacheOnLoad(bool keep) { m_keep_cache_on_load = keep; }
 
   CPUCoreBase* InitJitCore(PowerPC::CPUCore core);
   CPUCoreBase* GetCore() const;
@@ -105,6 +109,7 @@ public:
   void Shutdown();
 
 private:
+  bool m_keep_cache_on_load = false;
   std::unique_ptr<JitBase> m_jit;
   Core::System& m_system;
 };

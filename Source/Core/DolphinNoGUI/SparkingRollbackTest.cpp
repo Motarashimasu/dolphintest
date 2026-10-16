@@ -26,6 +26,7 @@
 #include "Core/HW/DSP.h"
 #include "Core/HW/Memmap.h"
 #include "Core/HW/SI/SI_DeviceGCController.h"
+#include "Core/PowerPC/JitInterface.h"
 #include "Core/State.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/SparkingIO.h"
@@ -91,6 +92,7 @@ Clock::time_point s_test_start;
 // Traced words (--rollback-trace, plus the first differing spots of each mismatch): their value
 // at every field of the first run and of the re-run.
 std::vector<u32> s_trace;
+bool s_keep_jit = true;  // keep the compiled code across rewinds (--rollback-recompile: don't)
 // The emulator's scheduled events (what happens when: disc reads, IOS replies, audio DMA, ...)
 // at the save, right after the rewind's load, and at the end of each run.
 std::string s_events_save, s_events_loaded, s_events_first_end;
@@ -314,7 +316,9 @@ void JobRewind(Core::System& system)
   s_events_first_end = Events(system);
   const auto t0 = Clock::now();
   Gecko::SetReinstallOnLoad(false);  // same session, same codes: leave the handler as it was
+  system.GetJitInterface().SetKeepCacheOnLoad(s_keep_jit);
   const bool ok = State::LoadFromMemory(system, std::span<u8>(s_state.data(), s_state_size));
+  system.GetJitInterface().SetKeepCacheOnLoad(false);
   Gecko::SetReinstallOnLoad(true);
   s_events_loaded = Events(system);
   s_load.Add(Ms(t0, Clock::now()));
@@ -479,8 +483,9 @@ void OnPad(int device, GCPadStatus* status)
 }  // namespace
 
 void InitRollbackTest(int fields, int gap, const std::string& log_path,
-                      const std::vector<u32>& trace)
+                      const std::vector<u32>& trace, bool keep_jit)
 {
+  s_keep_jit = keep_jit;
   s_trace = trace;
   s_depth = std::clamp(fields, 1, 16);
   s_gap = std::clamp(gap, 1, 600);
@@ -498,6 +503,7 @@ void InitRollbackTest(int fields, int gap, const std::string& log_path,
                                   .Add("fields", s_depth)
                                   .Add("gap", s_gap)
                                   .Add("gpu_state", Config::Get(Config::GFX_SAVE_TEXTURE_CACHE_TO_STATE))
+                                  .Add("keep_jit", s_keep_jit)
                                   .Add("log", s_log_path));
 }
 

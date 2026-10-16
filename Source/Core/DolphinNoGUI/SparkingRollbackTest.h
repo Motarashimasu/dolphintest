@@ -29,7 +29,9 @@ namespace Sparking
 // game logic every 2 fields), `gap` = fields between tests.
 // `trace`: words whose values are logged field by field with each mismatch (the first
 // differing spots of every mismatch are added automatically).
+// `keep_jit`: keep the compiled code across rewinds (else recompile after each, like a normal
+// state load).
 void InitRollbackTest(int fields, int gap, const std::string& log_path,
-                      const std::vector<u32>& trace = {});
+                      const std::vector<u32>& trace = {}, bool keep_jit = true);
 bool RollbackTestActive();
 }  // namespace Sparking
