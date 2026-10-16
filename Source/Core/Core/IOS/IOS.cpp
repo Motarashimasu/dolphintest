@@ -62,6 +62,8 @@
 
 namespace IOS::HLE
 {
+SparkingIPCHook g_sparking_ipc_hook = nullptr;
+
 constexpr u64 ENQUEUE_REQUEST_FLAG = 0x100000000ULL;
 static CoreTiming::EventType* s_event_enqueue;
 static CoreTiming::EventType* s_event_finish_ppc_bootstrap;
@@ -780,6 +782,13 @@ void EmulationKernel::ExecuteIPCCommand(const u32 address)
   if (ticks_until_last_reply > 0)
     result->reply_delay_ticks += ticks_until_last_reply;
   m_last_reply_time = core_timing.GetTicks() + result->reply_delay_ticks;
+  if (g_sparking_ipc_hook)
+  {
+    const auto device = GetDeviceByFileDescriptor(request.fd);
+    g_sparking_ipc_hook(address, request.command, request.fd,
+                        device ? device->GetDeviceName() : std::string("?"),
+                        static_cast<s64>(core_timing.GetTicks()), result->reply_delay_ticks);
+  }
 
   EnqueueIPCReply(request, result->return_value, result->reply_delay_ticks);
 }

@@ -38,6 +38,10 @@ class System;
 
 namespace CoreTiming
 {
+// Dolphin-Sparking (rollback test): sees every event as it runs (CPU thread). nullptr = off.
+using SparkingEventHook = void (*)(const std::string& name, s64 time, s64 late, u64 userdata);
+extern SparkingEventHook g_sparking_event_hook;
+
 // These really shouldn't be global, but jit64 accesses them directly
 struct Globals
 {

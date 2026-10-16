@@ -26,6 +26,7 @@
 #include "Core/HW/DSP.h"
 #include "Core/HW/Memmap.h"
 #include "Core/HW/SI/SI_DeviceGCController.h"
+#include "Core/IOS/IOS.h"
 #include "Core/PowerPC/JitInterface.h"
 #include "Core/State.h"
 #include "Core/System.h"
@@ -91,6 +92,48 @@ int s_extra_polls = 0;               // polls in a re-run beyond the recorded on
 Clock::time_point s_test_start;
 // Traced words (--rollback-trace, plus the first differing spots of each mismatch): their value
 // at every field of the first run and of the re-run.
+// Everything the emulator did in each run, in order: events that ran (name, time, how late,
+// userdata) and IPC commands IOS handled (device, command, time, reply delay). On a mismatch the
+// first place the two runs part ways is reported.
+std::vector<std::string> s_log_first, s_log_re;
+std::vector<std::string>* s_log_into = nullptr;
+
+void OnEvent(const std::string& name, s64 time, s64 late, u64 userdata)
+{
+  if (s_log_into && s_log_into->size() < 200000)
+    s_log_into->push_back(fmt::format("event {} t={} late={} data={:x}", name, time, late, userdata));
+}
+
+void OnIPC(u32 address, u32 command, u32 fd, const std::string& device, s64 now, s64 delay)
+{
+  if (s_log_into && s_log_into->size() < 200000)
+  {
+    s_log_into->push_back(fmt::format("ipc {} cmd={} fd={} at={:x} t={} reply_in={}", device,
+                                      command, fd, address, now, delay));
+  }
+}
+
+// The first entries where the two runs differ (with a little context), as JSON.
+std::string FirstDivergence()
+{
+  std::size_t i = 0;
+  while (i < s_log_first.size() && i < s_log_re.size() && s_log_first[i] == s_log_re[i])
+    ++i;
+  const auto slice = [i](const std::vector<std::string>& v) {
+    std::vector<std::string> out;
+    for (std::size_t k = i >= 3 ? i - 3 : 0; k < v.size() && k < i + 6; ++k)
+      out.push_back(Json::Escape((k == i ? ">> " : "   ") + v[k]));
+    return JsonArray(out);
+  };
+  return Json()
+      .Add("index", static_cast<int64_t>(i))
+      .Add("first_run_entries", static_cast<int64_t>(s_log_first.size()))
+      .Add("re_run_entries", static_cast<int64_t>(s_log_re.size()))
+      .AddRaw("first_run", slice(s_log_first))
+      .AddRaw("re_run", slice(s_log_re))
+      .Str();
+}
+
 std::vector<u32> s_trace;
 bool s_keep_jit = true;  // keep the compiled code across rewinds (--rollback-recompile: don't)
 // The emulator's scheduled events (what happens when: disc reads, IOS replies, audio DMA, ...)
@@ -303,6 +346,9 @@ void JobSave(Core::System& system)
     s_input_mismatch = false;
     s_trace_first.clear();
     s_trace_re.clear();
+    s_log_first.clear();
+    s_log_re.clear();
+    s_log_into = &s_log_first;
     s_cycle_start_field = s_field_no;
     s_phase = Phase::Recording;
   }
@@ -321,10 +367,12 @@ void JobRewind(Core::System& system)
   system.GetJitInterface().SetKeepCacheOnLoad(false);
   Gecko::SetReinstallOnLoad(true);
   s_events_loaded = Events(system);
+  s_log_into = &s_log_re;
   s_load.Add(Ms(t0, Clock::now()));
   if (!ok)
   {
     EmitLogged("rollback_mismatch", Json().Add("error", "load_failed"));
+    s_log_into = nullptr;
     s_phase = Phase::Idle;
     s_fields = 0;
     Resume(system);
@@ -355,6 +403,7 @@ void JobCompare(Core::System& system)
 
   auto& memory = system.GetMemory();
   const std::string events_re_end = Events(system);
+  s_log_into = nullptr;
   u64 mem1_diff = 0, aram_diff = 0;
   const std::size_t mem1_size = std::min<std::size_t>(s_mem1_first.size(), memory.GetRamSizeReal());
   std::vector<std::size_t> starts;
@@ -396,7 +445,8 @@ void JobCompare(Core::System& system)
                    .AddRaw("events_lost_by_load", OnlyIn(s_events_save, s_events_loaded))
                    .AddRaw("events_added_by_load", OnlyIn(s_events_loaded, s_events_save))
                    .AddRaw("events_only_first_run", OnlyIn(s_events_first_end, events_re_end))
-                   .AddRaw("events_only_re_run", OnlyIn(events_re_end, s_events_first_end)));
+                   .AddRaw("events_only_re_run", OnlyIn(events_re_end, s_events_first_end))
+                   .AddRaw("first_divergence", FirstDivergence()));
     // Follow the first differing spots from now on (their values field by field).
     for (std::size_t k = 0; k < starts.size() && k < 4 && s_trace.size() < 12; ++k)
     {
@@ -496,6 +546,8 @@ void InitRollbackTest(int fields, int gap, const std::string& log_path,
   s_fields = 0;
   s_test_start = Clock::now();
   g_sparking_pad_hook = &OnPad;
+  CoreTiming::g_sparking_event_hook = &OnEvent;
+  IOS::HLE::g_sparking_ipc_hook = &OnIPC;
   s_field_hook = Core::System::GetInstance().GetVideoEvents().vi_end_field_event.Register(
       [] { OnField(); });
   EmitLogged("rollback_test", Json()

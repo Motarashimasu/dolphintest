@@ -29,6 +29,11 @@ class MemoryManager;
 
 namespace IOS::HLE
 {
+// Dolphin-Sparking (rollback test): sees every IPC command IOS handles (CPU thread). nullptr = off.
+using SparkingIPCHook = void (*)(u32 address, u32 command, u32 fd, const std::string& device,
+                                 s64 now, s64 reply_delay);
+extern SparkingIPCHook g_sparking_ipc_hook;
+
 namespace FS
 {
 class FileSystem;
