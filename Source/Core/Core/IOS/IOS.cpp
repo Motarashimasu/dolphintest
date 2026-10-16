@@ -787,7 +787,8 @@ void EmulationKernel::ExecuteIPCCommand(const u32 address)
     const auto device = GetDeviceByFileDescriptor(request.fd);
     g_sparking_ipc_hook(address, request.command, request.fd,
                         device ? device->GetDeviceName() : std::string("?"),
-                        static_cast<s64>(core_timing.GetTicks()), result->reply_delay_ticks);
+                        static_cast<s64>(core_timing.GetTicks()), result->reply_delay_ticks,
+                        result->return_value);
   }
 
   EnqueueIPCReply(request, result->return_value, result->reply_delay_ticks);
@@ -918,6 +919,13 @@ void EmulationKernel::DoState(PointerWrap& p)
           m_fdmap[i]->DoState(p);
           break;
         }
+      }
+      else
+      {
+        // Dolphin-Sparking: not open when the state was saved, so close anything opened since.
+        // (Otherwise the game's next open after a load gets another fd than it did the first
+        // time: BT3's play time record, play_rec.dat, every minute.)
+        m_fdmap[i].reset();
       }
     }
   }

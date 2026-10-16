@@ -106,12 +106,13 @@ void OnEvent(const std::string& name, s64 time, s64 late, u64 userdata)
     s_log_into->push_back(fmt::format("event {} t={} late={} data={:x}", name, time, late, userdata));
 }
 
-void OnIPC(u32 address, u32 command, u32 fd, const std::string& device, s64 now, s64 delay)
+void OnIPC(u32 address, u32 command, u32 fd, const std::string& device, s64 now, s64 delay,
+           s32 result)
 {
   if (s_log_into && s_log_into->size() < 200000)
   {
-    s_log_into->push_back(fmt::format("ipc {} cmd={} fd={} at={:x} t={} reply_in={}", device,
-                                      command, fd, address, now, delay));
+    s_log_into->push_back(fmt::format("ipc {} cmd={} fd={} at={:x} t={} reply_in={} result={}",
+                                      device, command, fd, address, now, delay, result));
   }
 }
 

@@ -720,6 +720,7 @@ def main():
         ranked_check(exe, dol, work, game_id)
         replay_check(exe, dol, work, game_id)
         rollback_test_check(exe, work)
+        rollback_ios_check(exe, work)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
@@ -1185,6 +1186,80 @@ def rollback_test_check(exe, work):
                                                              for e in inst.history))
         check("everything is in the results log", any(l["event"] == "rollback_mismatch" for l in lines)
               and any(l["event"] == "rollback_test_stats" for l in lines))
+    finally:
+        if inst.proc.poll() is None:
+            inst.proc.kill()
+
+
+def rollback_ios_check(exe, work):
+    """--rollback-test on a Wii program that opens and closes an IOS device over and over: a
+    rewind must give the re-run the same file descriptors (a state load used to leave the fds
+    opened after the save taken, so the re-run's open got another one: BT3's play_rec.dat)."""
+    print("rollback test mode: IOS file descriptors")
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "gecko"))
+    from asm import Prog, li, lis, ori, addi, lwz, stw
+
+    def andi_(ra, rs, i):
+        return (28 << 26) | (rs << 21) | (ra << 16) | (i & 0xFFFF)
+    p = Prog()
+    p(lis(1, 0x8000)); p(ori(1, 1, 0x4000))
+    p(lis(9, 0xCD00)); p(lis(5, 0x8000)); p(ori(5, 5, 0x2000)); p(li(6, 0x2000))
+    p(lis(8, 0x4000)); p(lis(7, 0x8000))
+    p(li(3, 6)); p(stw(3, 4, 9)); p(stw(8, 0x30, 9))   # clear the ack / reply left from boot
+    n = [0]
+
+    def call(setup):   # send the request at 0x2000, wait for its reply (clearing the ack)
+        setup()
+        p(stw(6, 0, 9)); p(li(3, 1)); p(stw(3, 4, 9))
+        k = n[0]
+        n[0] += 1
+        p.label(f"w{k}"); p(lwz(3, 4, 9))
+        p(andi_(10, 3, 2)); p.bc("eq", f"n{k}"); p(li(10, 2)); p(stw(10, 4, 9)); p(stw(8, 0x30, 9))
+        p.label(f"n{k}"); p(andi_(10, 3, 4)); p.bc("eq", f"w{k}")
+        p(li(3, 4)); p(stw(3, 4, 9)); p(stw(8, 0x30, 9))
+
+    def open_():   # open("/dev/fs")
+        p(li(3, 1)); p(stw(3, 0, 5)); p(li(3, 0)); p(stw(3, 4, 5)); p(stw(3, 8, 5))
+        p(li(3, 0x2100)); p(stw(3, 0xC, 5)); p(li(3, 0)); p(stw(3, 0x10, 5))
+
+    def close_():
+        p(li(3, 2)); p(stw(3, 0, 5)); p(stw(4, 8, 5))
+    p.label("loop")
+    call(open_)
+    p(lwz(4, 4, 5)); p(stw(4, 0x2300, 7))                          # the fd IOS gave
+    p(lwz(3, 0x2304, 7)); p(addi(3, 3, 1)); p(stw(3, 0x2304, 7))   # opens done
+    call(close_)
+    p.b("loop")
+    p(0x7C13FBA6)   # mtspr HID4 (never run): makes Dolphin boot it as a Wii program
+    code = b"".join(struct.pack(">I", w) for w in p.words())
+    code = code.ljust((len(code) + 31) // 32 * 32, b"\0")
+    data = b"/dev/fs\0".ljust(32, b"\0")
+    header = bytearray(0x100)
+    for o, v in ((0x00, 0x100), (0x48, 0x80003100), (0x90, len(code)), (0x1C, 0x100 + len(code)),
+                 (0x64, 0x80002100), (0xAC, len(data)), (0xE0, 0x80003100)):
+        struct.pack_into(">I", header, o, v)
+    dol = os.path.join(work, "ios_open_close.dol")
+    with open(dol, "wb") as f:
+        f.write(bytes(header) + code + data)
+    u = os.path.join(work, "rbios")
+    os.makedirs(os.path.join(u, "Config"), exist_ok=True)
+    log = os.path.join(work, "rbios.jsonl")
+    inst = Instance("rbios", [exe, "-p", "headless", "-v", "Null", "--sparking", "-u", u, "--test-hooks",
+                              "--rollback-test", "4", "--rollback-gap", "10", "--rollback-log", log,
+                              "-C", "Graphics.Settings.SaveTextureCacheToState=False", "-e", dol])
+    try:
+        inst.send("hello")
+        inst.seen("rollback_test", timeout=30)
+        s = inst.wait_for("rollback_test_stats", lambda e: e["cycles"] >= 30, timeout=120)
+        inst.send("peek 80002304")
+        opens = int(inst.seen("peek")["value"], 16)
+        check(f"the program keeps opening and closing /dev/fs ({opens} times)", opens > 1000)
+        bad = [e for e in inst.history if e["event"] == "rollback_mismatch"]
+        check(f"every rewind gives the same file descriptors ({s['cycles']} tests, {s['mismatches']} mismatches"
+              + (f": {bad[0]['first_divergence']['re_run']}" if bad else "") + ")",
+              s["mismatches"] == 0)
+        inst.send("quit")
+        inst.proc.wait(timeout=20)
     finally:
         if inst.proc.poll() is None:
             inst.proc.kill()

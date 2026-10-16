@@ -267,6 +267,16 @@ kept deterministic (as in netplay) while it runs. Events: `rollback_test`, `roll
 `max_rollback_fields`: fields this PC could re-run inside one 16.7 ms field after a save and a
 load). The launcher's DRAGON NET > Rollback Test runs it and writes `<data>/rollback_test/*.jsonl`.
 
+Each mismatch also carries `first_divergence`: the first entry where the two runs part ways in
+a log of everything the emulator did (CoreTiming events, IOS IPC commands with their results,
+and what the CPU read from the GPU: EFB peeks, bounding box, GPU counters), and
+`gpu_copies_divergence` for EFB copies the GPU wrote into RAM (GPU thread, own list).
+
+Found and fixed with it: loading a state didn't close the IOS file descriptors opened after the
+state was saved, so the next open after a load got another fd than the first time. BT3 hit it
+every minute through the Wii SDK's play time recorder (`play_rec.dat`), at a fixed time after
+boot. The smoke test's "IOS file descriptors" check guards it.
+
 ## Save data: solo vs netplay
 
 Wii games keep their saves in Dolphin's emulated Wii NAND, so separate saves = separate NAND
