@@ -274,6 +274,14 @@ re-run the GPU is synced before drawing resumes, so `rerun_ms_per_field` include
 share. `--rollback-draw` draws them anyway (to compare). Stats carry `draws` / `draws_skipped`
 (vertex batches).
 
+Where re-run time goes: `first_run_cpu_ms_per_field` / `rerun_cpu_ms_per_field` are the
+emulation thread's own CPU time per field (no throttle sleeps, no GPU waits) in the first run
+and in the re-run, and `rerun_first_field_ms` / `rerun_later_fields_ms` split the re-run's wall
+time into the field right after the load and the others (last 20 tests each).
+
+Quitting stops the test: Dolphin taps the Wii's power button so the game can shut down, and that
+tap isn't a recorded input (a rewind would take it back, and the runs would differ).
+
 `--rollback-diagnose` (the launcher's "Detailed log") makes each mismatch also carry
 `first_divergence`: the first entry where the two runs part ways in a log of everything the
 emulator did (CoreTiming events, IOS IPC commands with their results, and what the CPU read from

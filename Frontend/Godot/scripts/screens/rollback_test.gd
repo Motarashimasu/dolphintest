@@ -83,6 +83,9 @@ func _rows(in_game_menu: bool) -> Array:
 				"%.1f" % float(_stats.get("rerun_ms_recent", _stats.get("rerun_ms_per_field", 0))),
 				"%.1f" % float(_stats.get("rerun_ms_per_field_max", 0))],
 				"desc": "The last 20 re-runs. Playing normally takes up to 16.7 ms per field."},
+			{"type": "info", "key": "play", "label": "Play one field (work)", "value": tr("%s ms") %
+				("%.1f" % float(_stats.get("first_run_cpu_ms_per_field", 0))),
+				"desc": "How much work the emulator does for one normal field (the last 20 tests),\nnot counting the waits. A re-run field should cost about the same."},
 			{"type": "info", "key": "size", "label": "State size", "value": tr("%d MB") % (int(_stats.get("state_kb", 0)) / 1024)},
 			{"type": "info", "key": "fit", "label": "This PC could rewind",
 				"value": tr("%d frames") % (fit / 2) if fit >= 0 else "-",

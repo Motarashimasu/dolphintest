@@ -4,6 +4,7 @@
 #include "DolphinNoGUI/SparkingRollbackTest.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <mutex>
@@ -12,6 +13,12 @@
 #include <vector>
 
 #include <fmt/format.h>
+
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <time.h>
+#endif
 
 #include "Common/Buffer.h"
 #include "Common/FileUtil.h"
@@ -58,6 +65,44 @@ struct Poll
 {
   int device;
   GCPadStatus status;
+};
+
+// CPU time this thread has used (ms): the emulation's own work, without the throttle's sleeps
+// or waits for the GPU thread.
+double ThreadCpuMs()
+{
+#ifdef _WIN32
+  FILETIME created, exited, kernel, user;
+  if (!GetThreadTimes(GetCurrentThread(), &created, &exited, &kernel, &user))
+    return 0;
+  const auto ticks = [](const FILETIME& t) {
+    return (static_cast<u64>(t.dwHighDateTime) << 32) | t.dwLowDateTime;
+  };
+  return static_cast<double>(ticks(kernel) + ticks(user)) / 10000.0;  // 100 ns units
+#else
+  timespec ts{};
+  clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+  return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+#endif
+}
+
+// The average of the last 20 values (what the test shows "right now", e.g. during a fight).
+struct Recent
+{
+  std::vector<double> values;
+  void Add(double v)
+  {
+    values.push_back(v);
+    if (values.size() > 20)
+      values.erase(values.begin());
+  }
+  double Avg() const
+  {
+    double t = 0;
+    for (double v : values)
+      t += v;
+    return values.empty() ? 0.0 : t / values.size();
+  }
 };
 
 struct Stat
@@ -175,6 +220,15 @@ std::vector<u32> s_trace;
 bool s_keep_jit = true;  // keep the compiled code across rewinds (--rollback-recompile: don't)
 bool s_skip_draw = true;  // re-runs don't draw (--rollback-draw: they do)
 bool s_diagnose = false;  // --rollback-diagnose: log what the emulator does in both runs
+// Where the re-run time goes: the emulation thread's own CPU time per field in the first run and
+// in the re-run, and the re-run's first field (right after the load) vs the others (wall time).
+double s_cpu_mark = 0;
+Clock::time_point s_first_field_end;
+Recent s_first_cpu, s_rerun_cpu, s_rerun_first_field, s_rerun_later_fields;
+// The player asked to quit: Dolphin taps the Wii's power button so the game can shut down
+// cleanly. That tap isn't part of the recorded inputs, so stop rewinding (a rewind would also
+// take the tap back).
+std::atomic<bool> s_stopping{false};
 // The emulator's scheduled events (what happens when: disc reads, IOS replies, audio DMA, ...)
 // at the save, right after the rewind's load, and at the end of each run.
 std::string s_events_save, s_events_loaded, s_events_first_end;
@@ -280,6 +334,10 @@ void EmitStats()
                    return s_recent_resim.empty() ? 0.0 : t / s_recent_resim.size();
                  }()))
                  .Add("state_kb", static_cast<int64_t>(s_state_size / 1024))
+                 .AddRaw("first_run_cpu_ms_per_field", fmt::format("{:.2f}", s_first_cpu.Avg()))
+                 .AddRaw("rerun_cpu_ms_per_field", fmt::format("{:.2f}", s_rerun_cpu.Avg()))
+                 .AddRaw("rerun_first_field_ms", fmt::format("{:.2f}", s_rerun_first_field.Avg()))
+                 .AddRaw("rerun_later_fields_ms", fmt::format("{:.2f}", s_rerun_later_fields.Avg()))
                  .Add("draws", static_cast<int64_t>(VideoCommon::g_sparking_draws.load()))
                  .Add("draws_skipped",
                       static_cast<int64_t>(VideoCommon::g_sparking_draws_skipped.load()))
@@ -398,6 +456,7 @@ void JobSave(Core::System& system)
     LogInto(&s_log_first, &s_gpu_first);
     s_cycle_start_field = s_field_no;
     s_phase = Phase::Recording;
+    s_cpu_mark = ThreadCpuMs();
   }
   s_fields = 0;
   Resume(system);
@@ -405,6 +464,14 @@ void JobSave(Core::System& system)
 
 void JobRewind(Core::System& system)
 {
+  s_first_cpu.Add((ThreadCpuMs() - s_cpu_mark) / s_depth);
+  if (s_stopping)
+  {
+    LogInto(nullptr, nullptr);
+    s_phase = Phase::Off;
+    Resume(system);
+    return;
+  }
   CopyGameMemory(system, &s_mem1_first, &s_aram_first);
   s_events_first_end = Events(system);
   const auto t0 = Clock::now();
@@ -437,6 +504,7 @@ void JobRewind(Core::System& system)
   s_phase = Phase::Replaying;
   s_fields = 0;
   s_replay_start = Clock::now();
+  s_cpu_mark = ThreadCpuMs();
   Resume(system);
 }
 
@@ -446,13 +514,25 @@ void JobCompare(Core::System& system)
   // the GPU's share and the next real frame is drawn again.
   system.GetFifo().SyncGPU(Fifo::SyncGPUReason::Other, false);
   VideoCommon::g_sparking_skip_draw = false;
-  const double rerun = Ms(s_replay_start, Clock::now()) / s_depth;
+  const auto now = Clock::now();
+  s_rerun_cpu.Add((ThreadCpuMs() - s_cpu_mark) / s_depth);
+  if (s_depth > 1)
+    s_rerun_later_fields.Add(Ms(s_first_field_end, now) / (s_depth - 1));
+  const double rerun = Ms(s_replay_start, now) / s_depth;
   s_resim.Add(rerun);
   s_recent_resim.push_back(rerun);
   if (s_recent_resim.size() > 20)
     s_recent_resim.erase(s_recent_resim.begin());
   Config::SetCurrent(Config::MAIN_EMULATION_SPEED, s_saved_speed);
   VideoCommon::g_sparking_skip_present = false;
+  if (s_stopping)
+  {
+    // The power button tap landed in one run and not the other: nothing to compare.
+    LogInto(nullptr, nullptr);
+    s_phase = Phase::Off;
+    Resume(system);
+    return;
+  }
   ++s_cycles;
 
   auto& memory = system.GetMemory();
@@ -554,6 +634,11 @@ void OnField()
     return;
   case Phase::Idle:
     ++s_field_no;
+    if (s_stopping)
+    {
+      s_phase = Phase::Off;
+      return;
+    }
     if (++s_fields >= s_gap)
       AtThisField(JobSave);
     return;
@@ -565,6 +650,11 @@ void OnField()
     return;
   case Phase::Replaying:
     TraceField(&s_trace_re);
+    if (s_fields == 0)
+    {
+      s_first_field_end = Clock::now();
+      s_rerun_first_field.Add(Ms(s_replay_start, s_first_field_end));
+    }
     if (++s_fields >= s_depth)
       AtThisField(JobCompare);
     return;
@@ -622,6 +712,11 @@ void InitRollbackTest(const RollbackTestOptions& options)
                                   .Add("skip_draw", s_skip_draw)
                                   .Add("diagnose", s_diagnose)
                                   .Add("log", s_log_path));
+}
+
+void RollbackTestShutdownRequested()
+{
+  s_stopping = true;
 }
 
 bool RollbackTestActive()

@@ -43,4 +43,6 @@ struct RollbackTestOptions
 // Before booting.
 void InitRollbackTest(const RollbackTestOptions& options);
 bool RollbackTestActive();
+// The player asked to quit (any thread): stop rewinding before Dolphin taps the power button.
+void RollbackTestShutdownRequested();
 }  // namespace Sparking

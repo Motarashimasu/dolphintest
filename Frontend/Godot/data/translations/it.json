@@ -592,5 +592,8 @@
  "Draw re-runs": "Disegna le ripetizioni",
  "Off: re-run frames aren't drawn (nobody sees them), like real rollback.\nOn: draw them anyway, to compare how much time drawing takes.": "No: i fotogrammi ripetuti non vengono disegnati (nessuno li vede), come nel vero rollback.\nSì: disegnali comunque, per confrontare quanto tempo richiede il disegno.",
  "Detailed log": "Registro dettagliato",
- "On: log everything the emulator does in both runs, so a mismatch shows\nexactly where they parted. Makes re-runs slower: leave Off to measure speed.": "Sì: registra tutto ciò che fa l'emulatore in entrambe le esecuzioni, così una differenza mostra\nesattamente dove si sono separate. Rallenta le ripetizioni: lascialo su No per misurare la velocità."
+ "On: log everything the emulator does in both runs, so a mismatch shows\nexactly where they parted. Makes re-runs slower: leave Off to measure speed.": "Sì: registra tutto ciò che fa l'emulatore in entrambe le esecuzioni, così una differenza mostra\nesattamente dove si sono separate. Rallenta le ripetizioni: lascialo su No per misurare la velocità.",
+ "Play one field (work)": "Giocare un campo (lavoro)",
+ "%s ms": "%s ms",
+ "How much work the emulator does for one normal field (the last 20 tests),\nnot counting the waits. A re-run field should cost about the same.": "Quanto lavoro fa l'emulatore per un campo normale (gli ultimi 20 test),\nsenza contare le attese. Un campo ripetuto dovrebbe costare più o meno lo stesso."
 }
