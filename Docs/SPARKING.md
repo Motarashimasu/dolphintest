@@ -267,10 +267,18 @@ kept deterministic (as in netplay) while it runs. Events: `rollback_test`, `roll
 `max_rollback_fields`: fields this PC could re-run inside one 16.7 ms field after a save and a
 load). The launcher's DRAGON NET > Rollback Test runs it and writes `<data>/rollback_test/*.jsonl`.
 
-Each mismatch also carries `first_divergence`: the first entry where the two runs part ways in
-a log of everything the emulator did (CoreTiming events, IOS IPC commands with their results,
-and what the CPU read from the GPU: EFB peeks, bounding box, GPU counters), and
-`gpu_copies_divergence` for EFB copies the GPU wrote into RAM (GPU thread, own list).
+Re-runs aren't drawn, as real rollback won't draw them (nobody sees those frames): right after
+the rewind's state load the GPU starts skipping vertex loading, draws and EFB copies that stay
+on the GPU (state commands still run; copies into game memory are still made), and after the
+re-run the GPU is synced before drawing resumes, so `rerun_ms_per_field` includes the GPU's
+share. `--rollback-draw` draws them anyway (to compare). Stats carry `draws` / `draws_skipped`
+(vertex batches).
+
+`--rollback-diagnose` (the launcher's "Detailed log") makes each mismatch also carry
+`first_divergence`: the first entry where the two runs part ways in a log of everything the
+emulator did (CoreTiming events, IOS IPC commands with their results, and what the CPU read from
+the GPU: EFB peeks, bounding box, GPU counters), and `gpu_copies_divergence` for EFB copies the
+GPU wrote into RAM (GPU thread, own list). It slows the re-runs down, so it's off by default.
 
 Found and fixed with it: loading a state didn't close the IOS file descriptors opened after the
 state was saved, so the next open after a load got another fd than the first time. BT3 hit it

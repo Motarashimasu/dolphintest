@@ -26,6 +26,7 @@
 #include "VideoCommon/CPMemory.h"
 #include "VideoCommon/DataReader.h"
 #include "VideoCommon/NativeVertexFormat.h"
+#include "VideoCommon/Present.h"
 #include "VideoCommon/Statistics.h"
 #include "VideoCommon/VertexLoaderBase.h"
 #include "VideoCommon/VertexManagerBase.h"
@@ -410,6 +411,14 @@ int RunVertices(int vtx_attr_group, OpcodeDecoder::Primitive primitive, int coun
   {
     // Doing early return for the opposite case would be cleaner
     // but triggers a false unreachable code warning in MSVC debug builds.
+
+    // Dolphin-Sparking: a rollback re-run, nobody sees these vertices.
+    if (VideoCommon::g_sparking_skip_draw.load(std::memory_order_relaxed)) [[unlikely]]
+    {
+      VideoCommon::g_sparking_draws_skipped.fetch_add(1, std::memory_order_relaxed);
+      return size;
+    }
+    VideoCommon::g_sparking_draws.fetch_add(1, std::memory_order_relaxed);
 
     if (g_needs_cp_xf_consistency_check) [[unlikely]]
     {

@@ -35,6 +35,7 @@
 #include "DolphinNoGUI/SparkingWatch.h"
 #include "InputCommon/GCPadStatus.h"
 #include "VideoCommon/EFBInterface.h"
+#include "VideoCommon/Fifo.h"
 #include "VideoCommon/Present.h"
 #include "VideoCommon/VideoEvents.h"
 
@@ -172,6 +173,8 @@ std::string FirstDivergence(const std::vector<std::string>& first,
 
 std::vector<u32> s_trace;
 bool s_keep_jit = true;  // keep the compiled code across rewinds (--rollback-recompile: don't)
+bool s_skip_draw = true;  // re-runs don't draw (--rollback-draw: they do)
+bool s_diagnose = false;  // --rollback-diagnose: log what the emulator does in both runs
 // The emulator's scheduled events (what happens when: disc reads, IOS replies, audio DMA, ...)
 // at the save, right after the rewind's load, and at the end of each run.
 std::string s_events_save, s_events_loaded, s_events_first_end;
@@ -277,6 +280,9 @@ void EmitStats()
                    return s_recent_resim.empty() ? 0.0 : t / s_recent_resim.size();
                  }()))
                  .Add("state_kb", static_cast<int64_t>(s_state_size / 1024))
+                 .Add("draws", static_cast<int64_t>(VideoCommon::g_sparking_draws.load()))
+                 .Add("draws_skipped",
+                      static_cast<int64_t>(VideoCommon::g_sparking_draws_skipped.load()))
                  .Add("max_rollback_fields", MaxRollbackFields()));
 }
 
@@ -425,6 +431,9 @@ void JobRewind(Core::System& system)
   s_replay_at = 0;
   s_extra_polls = 0;
   VideoCommon::g_sparking_skip_present = true;  // re-runs aren't shown, like real rollback
+  // ...so they don't need drawing either. (The load replaced every GPU command still pending, so
+  // only re-run commands are skipped.)
+  VideoCommon::g_sparking_skip_draw = s_skip_draw;
   s_phase = Phase::Replaying;
   s_fields = 0;
   s_replay_start = Clock::now();
@@ -433,6 +442,10 @@ void JobRewind(Core::System& system)
 
 void JobCompare(Core::System& system)
 {
+  // Let the GPU finish the re-run's commands (still skipping them), so the time below includes
+  // the GPU's share and the next real frame is drawn again.
+  system.GetFifo().SyncGPU(Fifo::SyncGPUReason::Other, false);
+  VideoCommon::g_sparking_skip_draw = false;
   const double rerun = Ms(s_replay_start, Clock::now()) / s_depth;
   s_resim.Add(rerun);
   s_recent_resim.push_back(rerun);
@@ -466,9 +479,8 @@ void JobCompare(Core::System& system)
   if (mem1_diff || aram_diff || s_input_mismatch || unused_inputs)
   {
     ++s_mismatches;
-    EmitLogged("rollback_mismatch",
-               Json()
-                   .Add("cycle", s_cycles)
+    Json report;
+    report.Add("cycle", s_cycles)
                    .Add("field", static_cast<int64_t>(s_cycle_start_field))
                    .Add("mem1_bytes", static_cast<int64_t>(mem1_diff))
                    .AddRaw("mem1", ranges)
@@ -486,9 +498,13 @@ void JobCompare(Core::System& system)
                    .AddRaw("events_lost_by_load", OnlyIn(s_events_save, s_events_loaded))
                    .AddRaw("events_added_by_load", OnlyIn(s_events_loaded, s_events_save))
                    .AddRaw("events_only_first_run", OnlyIn(s_events_first_end, events_re_end))
-                   .AddRaw("events_only_re_run", OnlyIn(events_re_end, s_events_first_end))
-                   .AddRaw("first_divergence", FirstDivergence(s_log_first, s_log_re))
-                   .AddRaw("gpu_copies_divergence", FirstDivergence(s_gpu_first, s_gpu_re)));
+                   .AddRaw("events_only_re_run", OnlyIn(events_re_end, s_events_first_end));
+    if (s_diagnose)
+    {
+      report.AddRaw("first_divergence", FirstDivergence(s_log_first, s_log_re))
+          .AddRaw("gpu_copies_divergence", FirstDivergence(s_gpu_first, s_gpu_re));
+    }
+    EmitLogged("rollback_mismatch", report);
     // Follow the first differing spots from now on (their values field by field).
     for (std::size_t k = 0; k < starts.size() && k < 4 && s_trace.size() < 12; ++k)
     {
@@ -574,23 +590,27 @@ void OnPad(int device, GCPadStatus* status)
 }
 }  // namespace
 
-void InitRollbackTest(int fields, int gap, const std::string& log_path,
-                      const std::vector<u32>& trace, bool keep_jit)
+void InitRollbackTest(const RollbackTestOptions& options)
 {
-  s_keep_jit = keep_jit;
-  s_trace = trace;
-  s_depth = std::clamp(fields, 1, 16);
-  s_gap = std::clamp(gap, 1, 600);
-  s_log_path = log_path;
+  s_keep_jit = options.keep_jit;
+  s_skip_draw = options.skip_draw;
+  s_diagnose = options.diagnose;
+  s_trace = options.trace;
+  s_depth = std::clamp(options.fields, 1, 16);
+  s_gap = std::clamp(options.gap, 1, 600);
+  s_log_path = options.log_path;
   if (!s_log_path.empty())
     File::CreateFullPath(s_log_path);
   s_phase = Phase::Starting;
   s_fields = 0;
   s_test_start = Clock::now();
   g_sparking_pad_hook = &OnPad;
-  CoreTiming::g_sparking_event_hook = &OnEvent;
-  IOS::HLE::g_sparking_ipc_hook = &OnIPC;
-  g_sparking_gpu_hook = &OnGpu;
+  if (s_diagnose)
+  {
+    CoreTiming::g_sparking_event_hook = &OnEvent;
+    IOS::HLE::g_sparking_ipc_hook = &OnIPC;
+    g_sparking_gpu_hook = &OnGpu;
+  }
   s_field_hook = Core::System::GetInstance().GetVideoEvents().vi_end_field_event.Register(
       [] { OnField(); });
   EmitLogged("rollback_test", Json()
@@ -599,6 +619,8 @@ void InitRollbackTest(int fields, int gap, const std::string& log_path,
                                   .Add("gap", s_gap)
                                   .Add("gpu_state", Config::Get(Config::GFX_SAVE_TEXTURE_CACHE_TO_STATE))
                                   .Add("keep_jit", s_keep_jit)
+                                  .Add("skip_draw", s_skip_draw)
+                                  .Add("diagnose", s_diagnose)
                                   .Add("log", s_log_path));
 }
 

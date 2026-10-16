@@ -25,13 +25,22 @@
 
 namespace Sparking
 {
-// Before booting. `fields` = how far back each test rewinds (1-16 video fields; BT3 runs its
-// game logic every 2 fields), `gap` = fields between tests.
-// `trace`: words whose values are logged field by field with each mismatch (the first
-// differing spots of every mismatch are added automatically).
-// `keep_jit`: keep the compiled code across rewinds (else recompile after each, like a normal
-// state load).
-void InitRollbackTest(int fields, int gap, const std::string& log_path,
-                      const std::vector<u32>& trace = {}, bool keep_jit = true);
+struct RollbackTestOptions
+{
+  int fields = 4;  // how far back each test rewinds (1-16 video fields; BT3: logic every 2)
+  int gap = 20;    // fields between tests
+  std::string log_path;
+  // Words whose values are logged field by field with each mismatch (the first differing spots
+  // of every mismatch are added automatically).
+  std::vector<u32> trace;
+  bool keep_jit = true;   // keep the compiled code across rewinds (else recompile, like a load)
+  bool skip_draw = true;  // re-runs don't draw (like real rollback; their frames aren't shown)
+  // Log everything the emulator does in both runs (events, IPC, GPU reads) so a mismatch says
+  // where the runs parted. Slows the re-runs down.
+  bool diagnose = false;
+};
+
+// Before booting.
+void InitRollbackTest(const RollbackTestOptions& options);
 bool RollbackTestActive();
 }  // namespace Sparking

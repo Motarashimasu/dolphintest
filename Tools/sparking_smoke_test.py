@@ -721,6 +721,7 @@ def main():
         replay_check(exe, dol, work, game_id)
         rollback_test_check(exe, work)
         rollback_ios_check(exe, work)
+        rollback_gpu_check(exe, work)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
@@ -1148,7 +1149,7 @@ def rollback_test_check(exe, work):
     inst = Instance("rbtest", [exe, "-p", "headless", "-v", "Null", "--sparking", "-u", u, "--test-hooks",
                                "--gecko", "Test Code",
                                "--rollback-test", "4", "--rollback-gap", "10", "--rollback-log", log,
-                               "--rollback-trace", "80001100",
+                               "--rollback-trace", "80001100", "--rollback-diagnose",
                                "-C", "Graphics.Settings.SaveTextureCacheToState=False", "-e", dol])
     try:
         inst.send("hello")
@@ -1173,6 +1174,9 @@ def rollback_test_check(exe, work):
         m = inst.seen("rollback_mismatch", timeout=10)
         check(f"a change from outside the game is caught at its address {m['mem1']}",
               any(r["address"] == "0x80001100" for r in m["mem1"]))
+        check("--rollback-diagnose: the mismatch says where the runs parted "
+              f"({m.get('first_divergence', {}).get('first_run_entries')} entries logged)",
+              "first_divergence" in m and "gpu_copies_divergence" in m)
         tr = [t for t in m["trace"] if t["address"] == "0x80001100"]
         check(f"the traced word field by field: first run {tr[0]['first_run'] if tr else '-'}, "
               f"re-run {tr[0]['re_run'] if tr else '-'}",
@@ -1263,6 +1267,80 @@ def rollback_ios_check(exe, work):
     finally:
         if inst.proc.poll() is None:
             inst.proc.kill()
+
+
+def rollback_gpu_check(exe, work):
+    """--rollback-test on a program that keeps drawing through the GPU FIFO: re-runs skip the
+    vertex loading and drawing (nobody sees those frames), drawing comes back after every re-run,
+    and nothing comes out different; --rollback-draw draws them again."""
+    print("rollback test mode: skipping the drawing in re-runs")
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "gecko"))
+    from asm import Prog, li, lis, ori, addi, lwz, stw, mtctr, D
+
+    def stb(r, d, ra):
+        return D(38, r, ra, d)
+
+    def sth(r, d, ra):
+        return D(44, r, ra, d)
+    p = Prog()
+    p(lis(1, 0x8000)); p(ori(1, 1, 0x4000)); p(lis(9, 0xCC00))
+    p(lis(3, 0x0040)); p(stw(3, 0x300C, 9)); p(stw(3, 0x3014, 9))   # PI FIFO base / write pointer
+    p(lis(3, 0x0050)); p(addi(3, 3, -32)); p(stw(3, 0x3010, 9))      # PI FIFO end
+    for off, val in ((0x20, 0), (0x22, 0x40), (0x24, -32), (0x26, 0x4F), (0x28, 0), (0x2A, 8),
+                     (0x2C, 0x4000), (0x2E, 0), (0x30, 0), (0x32, 0), (0x34, 0), (0x36, 0x40),
+                     (0x38, 0), (0x3A, 0x40), (0x02, 0x11)):
+        p(li(3, val)); p(sth(3, off, 9))   # CP FIFO: the same memory; GP read + linked mode
+    p(lis(8, 0xCC00)); p(ori(8, 8, 0x8000))   # gather pipe
+    for reg, val in ((0x50, 0x200), (0x70, 0x9)):   # VCD: position direct; VAT 0: xyz floats
+        p(li(3, 8)); p(stb(3, 0, 8)); p(li(3, reg)); p(stb(3, 0, 8)); p(li(3, val)); p(stw(3, 0, 8))
+    p(lis(5, 0x3F80)); p(lis(7, 0x8000))
+    p.label("loop")
+    p(li(3, 0x90)); p(stb(3, 0, 8)); p(li(3, 300)); p(sth(3, 0, 8))   # draw 100 triangles
+    p(li(4, 300)); p(mtctr(4))
+    p.label("v"); p(stw(5, 0, 8)); p(stw(5, 0, 8)); p(stw(5, 0, 8)); p.bc("dnz", "v")
+    p(lwz(3, 0x2304, 7)); p(addi(3, 3, 1)); p(stw(3, 0x2304, 7))      # batches sent
+    p(lis(6, 0x0001)); p(mtctr(6)); p.label("d"); p.bc("dnz", "d")     # pause
+    p.b("loop")
+    code = b"".join(struct.pack(">I", w) for w in p.words())
+    code = code.ljust((len(code) + 31) // 32 * 32, b"\0")
+    header = bytearray(0x100)
+    for o, v in ((0x00, 0x100), (0x48, 0x80003100), (0x90, len(code)), (0xE0, 0x80003100)):
+        struct.pack_into(">I", header, o, v)
+    dol = os.path.join(work, "gx_draw.dol")
+    with open(dol, "wb") as f:
+        f.write(bytes(header) + code)
+
+    def run(name, extra):
+        u = os.path.join(work, name)
+        os.makedirs(os.path.join(u, "Config"), exist_ok=True)
+        inst = Instance(name, [exe, "-p", "headless", "-v", "Null", "--sparking", "-u", u,
+                               "--rollback-test", "4", "--rollback-gap", "10", *extra, "-e", dol])
+        try:
+            inst.send("hello")
+            st = inst.seen("rollback_test", timeout=30)
+            first = inst.wait_for("rollback_test_stats", lambda e: e["cycles"] >= 5, timeout=120)
+            last = inst.wait_for("rollback_test_stats", lambda e: e["cycles"] >= 25, timeout=120)
+            alerts = [e for e in inst.history if e["event"] == "alert" and "hidapi" not in e.get("text", "")]
+            inst.send("quit")
+            inst.proc.wait(timeout=20)
+            return st, first, last, alerts
+        finally:
+            if inst.proc.poll() is None:
+                inst.proc.kill()
+    st, first, last, alerts = run("rbgx", [])
+    check(f"re-runs skip the drawing by default (skip_draw: {st.get('skip_draw')}, diagnose: "
+          f"{st.get('diagnose')})", st.get("skip_draw") is True and st.get("diagnose") is False)
+    check(f"the GPU skipped the re-runs' vertex batches ({last['draws_skipped']} skipped, "
+          f"{last['draws']} drawn)", last["draws_skipped"] > 0)
+    check(f"drawing comes back after re-runs ({first['draws']} -> {last['draws']} drawn)",
+          last["draws"] > first["draws"])
+    check(f"nothing comes out different ({last['cycles']} tests, {last['mismatches']} mismatches)",
+          last["mismatches"] == 0)
+    check("no GPU errors", not alerts)
+    st, first, last, alerts = run("rbgx-draw", ["--rollback-draw"])
+    check(f"--rollback-draw draws the re-runs ({last['draws_skipped']} skipped, {last['mismatches']} "
+          "mismatches)", st.get("skip_draw") is False and last["draws_skipped"] == 0
+          and last["mismatches"] == 0 and not alerts)
 
 
 def gecko_state_check(exe, dol, work, game_id):

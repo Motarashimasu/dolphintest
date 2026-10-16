@@ -2221,6 +2221,10 @@ void TextureCacheBase::CopyRenderTargetToTexture(
       !(is_xfb_copy ? g_ActiveConfig.bSkipXFBCopyToRam : g_ActiveConfig.bSkipEFBCopyToRam) ||
       !copy_to_vram;
 
+  // Dolphin-Sparking: a rollback re-run; a copy that stays on the GPU only makes the picture.
+  if (!copy_to_ram && VideoCommon::g_sparking_skip_draw.load(std::memory_order_relaxed))
+    return;
+
   // tex_w and tex_h are the native size of the texture in the GC memory.
   // The size scaled_* represents the emulated texture. Those differ
   // because of upscaling and because of yscaling of XFB copies.

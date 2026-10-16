@@ -30,6 +30,9 @@ std::unique_ptr<VideoCommon::Presenter> g_presenter;
 namespace VideoCommon
 {
 std::atomic<bool> g_sparking_skip_present{false};
+std::atomic<bool> g_sparking_skip_draw{false};
+std::atomic<u64> g_sparking_draws{0};
+std::atomic<u64> g_sparking_draws_skipped{0};
 
 // Stretches the native/internal analog resolution aspect ratio from ~4:3 to ~16:9
 static float SourceAspectRatioToWidescreen(float source_aspect)

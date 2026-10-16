@@ -10,6 +10,8 @@ const DEPTHS := [2, 4, 6, 8]   # video fields (BT3 runs its game logic every 2)
 
 var _depth := 4
 var _gpu_state := false   # also save / load the graphics card's textures (Dolphin's default: on)
+var _draw := false        # draw the re-runs too (real rollback won't)
+var _diagnose := false    # detailed log of both runs, for the developers
 var _state := "ready"   # ready, starting, running, stopping
 var _stats := {}
 var _mismatches := 0
@@ -62,6 +64,12 @@ func _rows(in_game_menu: bool) -> Array:
 		rows.append({"type": "toggle", "key": "gpu_state", "label": "Rewind graphics too",
 			"value": _gpu_state, "on_text": "On", "off_text": "Off", "disabled": running,
 			"desc": "On: each rewind also saves and reloads the graphics card's textures (slow,\nbig). Off: only the game itself, like real rollback would."})
+		rows.append({"type": "toggle", "key": "draw", "label": "Draw re-runs",
+			"value": _draw, "on_text": "On", "off_text": "Off", "disabled": running,
+			"desc": "Off: re-run frames aren't drawn (nobody sees them), like real rollback.\nOn: draw them anyway, to compare how much time drawing takes."})
+		rows.append({"type": "toggle", "key": "diagnose", "label": "Detailed log",
+			"value": _diagnose, "on_text": "On", "off_text": "Off", "disabled": running,
+			"desc": "On: log everything the emulator does in both runs, so a mismatch shows\nexactly where they parted. Makes re-runs slower: leave Off to measure speed."})
 	if not _stats.is_empty():
 		var fit := int(_stats.get("max_rollback_fields", -1))
 		rows.append_array([
@@ -112,6 +120,10 @@ func on_value(key: String, value: Variant) -> void:
 		_depth = int(value)
 	elif key == "gpu_state":
 		_gpu_state = bool(value)
+	elif key == "draw":
+		_draw = bool(value)
+	elif key == "diagnose":
+		_diagnose = bool(value)
 
 
 func on_press(key: String) -> void:
@@ -124,7 +136,7 @@ func on_press(key: String) -> void:
 			_last_mismatch = ""
 			_log = Settings.data_path("rollback_test").path_join(
 				Time.get_datetime_string_from_system().replace(":", "-") + ".jsonl")
-			if Dolphin.launch(Settings.rollback_test_args(_depth, _log, _gpu_state)):
+			if Dolphin.launch(Settings.rollback_test_args(_depth, _log, _gpu_state, _draw, _diagnose)):
 				_state = "starting"
 			else:
 				app.toast("Couldn't start Dolphin-Sparking (is the Dolphin folder next to the launcher?).")

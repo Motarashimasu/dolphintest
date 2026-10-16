@@ -28,6 +28,13 @@ class SmoothMotion;
 
 // Dolphin-Sparking: while set, video fields are emulated but not shown (rollback re-runs).
 extern std::atomic<bool> g_sparking_skip_present;
+// Dolphin-Sparking rollback re-runs: the GPU skips vertex loading, draws and EFB copies that stay
+// on the GPU (everything that only makes the picture; GPU state commands still run, and copies
+// into game memory are still made). Set right after a state load, cleared after a GPU sync.
+extern std::atomic<bool> g_sparking_skip_draw;
+// Vertex batches the GPU loaded and drew / skipped (for the rollback test's stats).
+extern std::atomic<u64> g_sparking_draws;
+extern std::atomic<u64> g_sparking_draws_skipped;
 class PostProcessing;
 
 // Presenter is a class that deals with putting the final XFB on the screen.

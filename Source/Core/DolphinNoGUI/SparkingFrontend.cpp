@@ -918,6 +918,16 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store_true")
       .help("Rollback test: recompile the game's code after each rewind (as a normal state load "
             "does) instead of keeping it");
+  parser.add_option("--rollback-draw")
+      .dest("rollback_draw")
+      .action("store_true")
+      .help("Rollback test: draw the re-runs too (by default they're skipped, as real rollback "
+            "would: their frames are never shown)");
+  parser.add_option("--rollback-diagnose")
+      .dest("rollback_diagnose")
+      .action("store_true")
+      .help("Rollback test: log everything the emulator does in both runs (events, IOS commands, "
+            "GPU reads) so each mismatch says where the runs parted. Slows the re-runs down");
   parser.add_option("--rollback-log")
       .dest("rollback_log")
       .action("store")
@@ -1092,22 +1102,24 @@ void InitFromOptions(const optparse::Values& options)
     InitWatcher();
     if (options.is_set("rollback_test") && !netplay)
     {
-      std::vector<u32> trace;
+      RollbackTestOptions test;
       if (options.is_set("rollback_trace"))
       {
         for (const std::string& a :
              SplitString(static_cast<const char*>(options.get("rollback_trace")), ','))
         {
           if (!a.empty())
-            trace.push_back(static_cast<u32>(std::strtoul(a.c_str(), nullptr, 16)));
+            test.trace.push_back(static_cast<u32>(std::strtoul(a.c_str(), nullptr, 16)));
         }
       }
-      InitRollbackTest(std::atoi(static_cast<const char*>(options.get("rollback_test"))),
-                       std::atoi(static_cast<const char*>(options.get("rollback_gap"))),
-                       options.is_set("rollback_log") ?
-                           std::string(static_cast<const char*>(options.get("rollback_log"))) :
-                           std::string(),
-                       trace, !options.is_set_by_user("rollback_recompile"));
+      test.fields = std::atoi(static_cast<const char*>(options.get("rollback_test")));
+      test.gap = std::atoi(static_cast<const char*>(options.get("rollback_gap")));
+      if (options.is_set("rollback_log"))
+        test.log_path = static_cast<const char*>(options.get("rollback_log"));
+      test.keep_jit = !options.is_set_by_user("rollback_recompile");
+      test.skip_draw = !options.is_set_by_user("rollback_draw");
+      test.diagnose = options.is_set_by_user("rollback_diagnose");
+      InitRollbackTest(test);
     }
     InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off",
             std::string_view(static_cast<const char*>(options.get("hud_health"))) != "off");

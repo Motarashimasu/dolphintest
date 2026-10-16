@@ -244,7 +244,8 @@ func replay_args(dtm_path: String, codes: Array) -> PackedStringArray:
 
 ## DRAGON NET > Rollback Test: offline, with Dolphin rewinding and re-running `fields` video
 ## fields again and again (--rollback-test), results to `log` (JSON lines).
-func rollback_test_args(fields: int, log: String, gpu_state := false) -> PackedStringArray:
+func rollback_test_args(fields: int, log: String, gpu_state := false, draw := false,
+		diagnose := false) -> PackedStringArray:
 	var a := solo_args()
 	var game := a.size() - 2   # (solo_args ends with -e <game>)
 	var extra := PackedStringArray(["--rollback-test", str(fields), "--rollback-gap", "20",
@@ -252,8 +253,10 @@ func rollback_test_args(fields: int, log: String, gpu_state := false) -> PackedS
 	# Dolphin's states normally carry the graphics card's textures too; rollback won't.
 	# (-C takes the system's name as Dolphin writes it: "Graphics", not "GFX".)
 	extra.append_array(["-C", "Graphics.Settings.SaveTextureCacheToState=%s" % ("True" if gpu_state else "False")])
-	# BT3 PAL: the two words that came out different at every fight's "Ready... Fight!" (5 vs 7).
-	extra.append_array(["--rollback-trace", "8055A910,805DBD10"])
+	if draw:
+		extra.append("--rollback-draw")       # re-runs drawn too (normally skipped, as rollback will)
+	if diagnose:
+		extra.append("--rollback-diagnose")   # detailed log: where the runs parted (slower)
 	for i in extra.size():
 		a.insert(game + i, extra[i])
 	return a

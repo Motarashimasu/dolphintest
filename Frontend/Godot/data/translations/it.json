@@ -588,5 +588,9 @@
  "%d MB": "%d MB",
  "The last 20 re-runs. Playing normally takes up to 16.7 ms per field.": "Le ultime 20 ripetizioni. Giocare normalmente richiede fino a 16,7 ms per campo.",
  "Rewind graphics too": "Riavvolgi anche la grafica",
- "On: each rewind also saves and reloads the graphics card's textures (slow,\nbig). Off: only the game itself, like real rollback would.": "Sì: ogni riavvolgimento salva e ricarica anche le texture della scheda video (lento,\npesante). No: solo il gioco, come farebbe il vero rollback."
+ "On: each rewind also saves and reloads the graphics card's textures (slow,\nbig). Off: only the game itself, like real rollback would.": "Sì: ogni riavvolgimento salva e ricarica anche le texture della scheda video (lento,\npesante). No: solo il gioco, come farebbe il vero rollback.",
+ "Draw re-runs": "Disegna le ripetizioni",
+ "Off: re-run frames aren't drawn (nobody sees them), like real rollback.\nOn: draw them anyway, to compare how much time drawing takes.": "No: i fotogrammi ripetuti non vengono disegnati (nessuno li vede), come nel vero rollback.\nSì: disegnali comunque, per confrontare quanto tempo richiede il disegno.",
+ "Detailed log": "Registro dettagliato",
+ "On: log everything the emulator does in both runs, so a mismatch shows\nexactly where they parted. Makes re-runs slower: leave Off to measure speed.": "Sì: registra tutto ciò che fa l'emulatore in entrambe le esecuzioni, così una differenza mostra\nesattamente dove si sono separate. Rallenta le ripetizioni: lascialo su No per misurare la velocità."
 }
