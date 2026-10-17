@@ -595,5 +595,10 @@
  "On: log everything the emulator does in both runs, so a mismatch shows\nexactly where they parted. Makes re-runs slower: leave Off to measure speed.": "Sì: registra tutto ciò che fa l'emulatore in entrambe le esecuzioni, così una differenza mostra\nesattamente dove si sono separate. Rallenta le ripetizioni: lascialo su No per misurare la velocità.",
  "Play one field (work)": "Giocare un campo (lavoro)",
  "%s ms": "%s ms",
- "How much work the emulator does for one normal field (the last 20 tests),\nnot counting the waits. A re-run field should cost about the same.": "Quanto lavoro fa l'emulatore per un campo normale (gli ultimi 20 test),\nsenza contare le attese. Un campo ripetuto dovrebbe costare più o meno lo stesso."
+ "How much work the emulator does for one normal field (the last 20 tests),\nnot counting the waits. A re-run field should cost about the same.": "Quanto lavoro fa l'emulatore per un campo normale (gli ultimi 20 test),\nsenza contare le attese. Un campo ripetuto dovrebbe costare più o meno lo stesso.",
+ "NEOcode on.": "NEOcode attivato.",
+ "NEOcode off.": "NEOcode disattivato.",
+ "NEOcode can't be switched during a match.": "NEOcode non si può cambiare durante una partita.",
+ "NEOcode stopped (%s): the match goes on with the normal netcode.": "NEOcode si è fermato (%s): la partita continua con il netcode normale.",
+ "NEOcode: the players' games are out of sync.": "NEOcode: le partite dei giocatori non sono sincronizzate."
 }

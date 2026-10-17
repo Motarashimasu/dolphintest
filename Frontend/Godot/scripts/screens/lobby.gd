@@ -46,6 +46,9 @@ var _room := {}
 var _public := {}
 var _players: Array = []
 var _buffer := -1
+var _neocode := false     # NEOcode on for this lobby (the host switches it: PgUp + PgDn together)
+var _neo_r := -1          # its "R" while a match runs (-1: none)
+var _neo_out_of_sync := false
 var _chat: PackedStringArray = []
 var _battle := {}
 var _logged_buffer := -1
@@ -326,6 +329,8 @@ func _refresh_info() -> void:
 			right.append(tr("Public · listing..."))
 		else:
 			right.append(tr("Private"))
+	if _neocode and not is_training():
+		right.append("NEOcode" + (" · R %d" % _neo_r if _phase == "playing" and _neo_r >= 0 else ""))
 	_info_right.text = "   ·   ".join(right)
 
 
@@ -628,7 +633,24 @@ func make_ingame_panel() -> Control:
 # --- Input -------------------------------------------------------------------------------
 
 func on_input(event: InputEvent) -> bool:
+	# Hidden: PgUp + PgDn together switch NEOcode (host).
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode in [KEY_PAGEUP, KEY_PAGEDOWN] \
+			and Input.is_key_pressed(KEY_PAGEUP) and Input.is_key_pressed(KEY_PAGEDOWN):
+		_toggle_neocode()
+		return true
 	return _actions.handle_input(event)
+
+
+func _toggle_neocode() -> void:
+	if _role != "host" or is_training():
+		return
+	if _phase == "playing":
+		_system("NEOcode can't be switched during a match.", "#e8663d")
+		return
+	var on := not _neocode
+	Settings.set_value("netplay", "neocode", on)
+	Dolphin.send("netcode " + ("neocode" if on else "delay"))
 
 
 func on_back() -> void:
@@ -775,6 +797,8 @@ func _on_event(name: String, data: Dictionary) -> void:
 			if _role == "host":
 				_buffer = int(Settings.get_value("netplay", "buffer"))
 				_send_buffer_mode()
+				if Settings.get_value("netplay", "neocode") and not is_training():
+					Dolphin.send("netcode neocode")
 			if is_training():
 				_system("Buffer Training: change the pad buffer here or from the menu (hold Select) while you play.")
 			elif is_spectating():
@@ -851,6 +875,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_status = "Syncing save data..."
 		"game_started":
 			_phase = "playing"
+			_neo_out_of_sync = false
 			_status = "Watching the match (hold Select for the menu)" if is_spectating() \
 					else ("Training (hold Select to change the pad buffer)" if is_training()
 					else "Match in progress (hold Select for the menu)")
@@ -867,6 +892,26 @@ func _on_event(name: String, data: Dictionary) -> void:
 			_system(tr("Round %d: %s wins.  (%s)") % [int(data.get("round", 0)), data.get("winner", "?"), " - ".join(parts)], "#f2b531")
 		"desync":
 			_system(tr("Desync detected at frame %s.") % str(data.get("frame", "?")), "#e8663d")
+		"netcode":
+			var on := String(data.get("mode", "")) == "neocode"
+			if on != _neocode:
+				_neocode = on
+				_system("NEOcode on." if on else "NEOcode off.", "#9be7ff")
+			_refresh_info()
+		"neocode":
+			match String(data.get("state", "")):
+				"on":
+					_neo_r = int(data.get("r", 0))
+				"failed":
+					_neo_r = -1
+					_system(tr("NEOcode stopped (%s): the match goes on with the normal netcode.") % String(data.get("reason", "?")), "#e8663d")
+				"off":
+					_neo_r = -1
+			_refresh_info()
+		"neocode_check":
+			if not data.get("match", true) and not _neo_out_of_sync:
+				_neo_out_of_sync = true
+				_system("NEOcode: the players' games are out of sync.", "#e8663d")
 		"connection_lost":
 			_system("Connection lost.", "#e8663d")
 			app.toast("Connection lost")

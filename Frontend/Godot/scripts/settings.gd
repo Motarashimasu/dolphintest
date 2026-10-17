@@ -57,7 +57,8 @@ var defaults := {
 		"language": ""},          # en / es / it ("" = ask at first launch)         # Discord Rich Presence (scripts/presence.gd)
 	"netplay": {"mode": "single", "find_mode": "any", "public": true, "traversal": true,
 		"buffer": 4, "public_address": "",
-		"buffer_auto": false},   # host: pad buffer picked from the pings (match start + after each KO)
+		"buffer_auto": false,    # host: pad buffer picked from the pings (match start + after each KO)
+		"neocode": false},       # host: NEOcode (hidden: PgUp + PgDn together in the lobby)
 	"gecko": {"custom": false, "enabled": []},
 	# DRAGON NET Ranked: the ranked server (Server/ranked) and this install's Discord session.
 	"ranked": {"server": "https://tecshideout.ct.ws/sparking/", "token": "", "name": "",

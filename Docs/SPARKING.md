@@ -330,6 +330,35 @@ state was saved, so the next open after a load got another fd than the first tim
 every minute through the Wii SDK's play time recorder (`play_rec.dat`), at a fixed time after
 boot. The smoke test's "IOS file descriptors" check guards it.
 
+## NEOcode (rollback netplay, hidden)
+
+A host-chosen switch in the netplay lobby, hidden for now: the host presses **PgUp + PgDn**
+together (not during a match, not in buffer training). The UI never says "rollback": the mode is
+called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD bar).
+
+- Commands: `netcode neocode|delay` (host only; refused while a game runs). The host rebroadcasts
+  it to everyone (and to players who connect later) as a control message.
+- Events: `{"event":"netcode","mode":"neocode|delay"}`;
+  `{"event":"neocode","state":"on|waiting|failed|off",...}`: "on" at the start, then every ~60
+  fields with `r` (the biggest re-run since the last one, in game frames: what "R n" shows),
+  `rollbacks`, `stalls`, `guesses`, `wrong_guesses`, `save_ms`, ...; "failed" with `reason`;
+  `{"event":"neocode_check","field":n,"match":true|false}`.
+- Engine (`Core/NeoCode`): the pad buffer stays as a minimum delay; past it a missing remote input
+  is guessed (the last one received). The state is saved at every field end (dirty memory pages,
+  rest of the state, the frontend's watch/HUD state); a wrong guess rewinds to the latest field
+  before it and re-runs to the present unthrottled, without drawing. Guessing stops (the game
+  waits, as in delay netplay) once the oldest unconfirmed input is `MAX_ROLLBACK_FIELDS` (8 fields,
+  4 BT3 frames) old.
+- Events the game "does" (results, watches) are held until final (every input before them
+  confirmed) and dropped when a rewind takes them back, so both players emit the same sequence.
+- Every 120 fields the players exchange the memory checksum (`neosum`); a mismatch shows
+  "NEOcode: the players' games are out of sync." once per match.
+- With NEOcode the automatic pad buffer is lower (`max(1, buffer-6, (buffer+1)/2)`), ranked
+  replays are off, spectators stay on delay netplay, and every player needs this build.
+- If saving / rewinding fails, the match goes on as delay netplay ("NEOcode stopped ...").
+- Test hooks (`--test-hooks`): `test_input <seed>` plays a pseudo-random pad pattern,
+  `test_lag <ms>` holds remote inputs back. The smoke test's "neocode" check uses them.
+
 ## Save data: solo vs netplay
 
 Wii games keep their saves in Dolphin's emulated Wii NAND, so separate saves = separate NAND

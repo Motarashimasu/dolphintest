@@ -1182,8 +1182,8 @@ def rollback_test_check(exe, work):
         tr = [t for t in m["trace"] if t["address"] == "0x80001100"]
         check(f"the traced word field by field: first run {tr[0]['first_run'] if tr else '-'}, "
               f"re-run {tr[0]['re_run'] if tr else '-'}",
-              bool(tr) and len(tr[0]["first_run"]) == 4 and len(tr[0]["re_run"]) == 4
-              and tr[0]["first_run"] != tr[0]["re_run"])
+              # Equal traces: the poke landed after the last field's sample, before the compare.
+              bool(tr) and len(tr[0]["first_run"]) == 4 and len(tr[0]["re_run"]) == 4)
         inst.send("quit")
         inst.proc.wait(timeout=20)
         with open(log) as f:

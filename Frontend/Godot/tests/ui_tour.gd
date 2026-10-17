@@ -190,6 +190,24 @@ func type_into(list: Control, key: String, text: String) -> void:
 	await frames(4)
 
 
+## The hidden NEOcode switch: PgUp, then PgDn while PgUp is still held.
+func pgup_pgdn() -> void:
+	for k in [KEY_PAGEUP, KEY_PAGEDOWN]:
+		var e := InputEventKey.new()
+		e.keycode = k
+		e.physical_keycode = k
+		e.pressed = true
+		Input.parse_input_event(e)
+		await frames(2)
+	for k in [KEY_PAGEDOWN, KEY_PAGEUP]:
+		var e := InputEventKey.new()
+		e.keycode = k
+		e.physical_keycode = k
+		e.pressed = false
+		Input.parse_input_event(e)
+	await frames(4)
+
+
 func stick(y: float) -> void:
 	var e := InputEventJoypadMotion.new()
 	e.device = 0
@@ -362,8 +380,18 @@ func _tour() -> void:
 				return false
 		return true, 15)
 	await shot("lobby_two_players")
+	# Hidden: PgUp + PgDn switch NEOcode on (the joiner is told too).
+	await pgup_pgdn()
+	await wait_for("NEOcode switched on", func(): return lobby._neocode, 10)
+	check("NEOcode shown in the lobby info", "NEOcode" in lobby._info_right.text)
+	check("NEOcode notice in the chat", tr("NEOcode on.") in "\n".join(lobby._chat))
+	check("nothing in the lobby says rollback", not "rollback" in ("\n".join(lobby._chat) + lobby._info_right.text).to_lower())
+	await shot("lobby_neocode")
 	await pick("start", lobby._actions)
 	await wait_for("match running", func(): return lobby._phase == "playing", 30)
+	await pgup_pgdn()
+	check("NEOcode can't be switched during a match", lobby._neocode and
+			tr("NEOcode can't be switched during a match.") in "\n".join(lobby._chat))
 	await shot("lobby_match_running")
 	await wait_for("music faded out while the match runs", func(): return Music.is_muted_for_game() and not Music.is_audible(), 5)
 
@@ -385,6 +413,9 @@ func _tour() -> void:
 	check("match started with the automatic pad buffer",
 			"\n".join(lobby._chat).contains(tr("Automatic pad buffer: %d (%s).").split(":")[0]))
 	await shot("lobby_after_match")
+	await pgup_pgdn()   # NEOcode back off (it's remembered for the next lobby)
+	await wait_for("NEOcode switched off", func(): return not lobby._neocode, 10)
+	check("NEOcode off: gone from the lobby info", not "NEOcode" in lobby._info_right.text)
 	print("TOUR_EVENT joiner_leave")   # Vegeta leaves: the player_leave sound
 	await wait_for("player_leave sound when Vegeta leaves", func(): return Sfx.played.has("player_leave"), 20)
 	await back()  # B -> Leave Lobby row
