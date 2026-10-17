@@ -4,6 +4,7 @@
 #include "Core/IOS/FS/HostBackend/FS.h"
 
 #include <algorithm>
+#include <atomic>
 #include <expected>
 #include <optional>
 #include <string_view>
@@ -24,6 +25,7 @@
 #include "Core/IOS/ES/ES.h"
 #include "Core/IOS/IOS.h"
 #include "Core/Movie.h"
+#include "Core/State.h"
 #include "Core/System.h"
 #include "Core/WiiRoot.h"
 
@@ -277,6 +279,13 @@ HostFileSystem::FstEntry* HostFileSystem::GetFstEntryForPath(const std::string& 
   return entry;
 }
 
+static std::atomic<u64> s_sparking_next_generation{1};
+
+void HostFileSystem::SparkingChanged()
+{
+  m_sparking_generation = s_sparking_next_generation.fetch_add(1);
+}
+
 void HostFileSystem::DoState(PointerWrap& p)
 {
   // This piece of code is handling four separate problems:
@@ -306,6 +315,56 @@ void HostFileSystem::DoState(PointerWrap& p)
   // then a call to p.DoExternal() will be used to skip over reading the contents of the "/"
   // directory (it skips over the number of bytes specified by size_of_nand)
 
+  if (State::IsRollbackState())
+  {
+    // Dolphin-Sparking rollback states (in memory only): /tmp with a size and the contents' id,
+    // and a load restores /tmp only if it changed since that save (else nothing touches the disk).
+    u64 generation = m_sparking_generation;
+    p.Do(generation);
+    if (!p.IsReadMode())
+    {
+      u8* const size_ptr = p.ReserveU32();
+      DoStateWriteOrMeasure(p, "/tmp");
+      if (p.IsWriteMode())
+      {
+        const u32 size = p.GetOffsetFromPreviousPosition(size_ptr) - sizeof(u32);
+        memcpy(size_ptr, &size, sizeof(size));
+      }
+      m_handles = std::move(handles_copy);
+    }
+    else
+    {
+      u32 size = 0;
+      if (generation == m_sparking_generation)
+      {
+        (void)p.DoExternal(size);  // (reads the size, then skips that much)
+      }
+      else
+      {
+        p.Do(size);
+        DoStateRead(p, "/tmp");
+        m_sparking_generation = generation;  // the contents are that state's again
+      }
+    }
+  }
+  else
+  {
+    DoStateRegular(p, std::move(handles_copy));
+  }
+
+  for (Handle& handle : m_handles)
+  {
+    p.Do(handle.opened);
+    p.Do(handle.mode);
+    p.Do(handle.wii_path);
+    p.Do(handle.file_offset);
+    if (handle.opened)
+      handle.host_file = OpenHostFile(BuildFilename(handle.wii_path).host_path);
+  }
+}
+
+void HostFileSystem::DoStateRegular(PointerWrap& p, std::array<Handle, 16>&& handles_copy)
+{
   auto& movie = Core::System::GetInstance().GetMovie();
 
   const bool is_full_nand_wanted = movie.IsMovieActive() && Core::WiiRootIsTemporary();
@@ -344,20 +403,11 @@ void HostFileSystem::DoState(PointerWrap& p)
       (void)p.DoExternal(size_of_nand);
     }
   }
-
-  for (Handle& handle : m_handles)
-  {
-    p.Do(handle.opened);
-    p.Do(handle.mode);
-    p.Do(handle.wii_path);
-    p.Do(handle.file_offset);
-    if (handle.opened)
-      handle.host_file = OpenHostFile(BuildFilename(handle.wii_path).host_path);
-  }
 }
 
 ResultCode HostFileSystem::Format(Uid uid)
 {
+  SparkingChanged();
   if (uid != 0)
     return ResultCode::AccessDenied;
   if (m_root_path.empty())
@@ -375,6 +425,7 @@ ResultCode HostFileSystem::Format(Uid uid)
 ResultCode HostFileSystem::CreateFileOrDirectory(Uid uid, Gid gid, const std::string& path,
                                                  FileAttribute attr, Modes modes, bool is_file)
 {
+  SparkingChanged();
   if (!IsValidNonRootPath(path) || !std::ranges::all_of(path, Common::IsPrintableCharacter))
   {
     return ResultCode::Invalid;
@@ -443,6 +494,7 @@ bool HostFileSystem::IsDirectoryInUse(const std::string& path) const
 
 ResultCode HostFileSystem::Delete(Uid uid, Gid gid, const std::string& path)
 {
+  SparkingChanged();
   if (!IsValidNonRootPath(path))
     return ResultCode::Invalid;
 
@@ -477,6 +529,7 @@ ResultCode HostFileSystem::Delete(Uid uid, Gid gid, const std::string& path)
 ResultCode HostFileSystem::Rename(Uid uid, Gid gid, const std::string& old_path,
                                   const std::string& new_path)
 {
+  SparkingChanged();
   if (!IsValidNonRootPath(old_path) || !IsValidNonRootPath(new_path))
     return ResultCode::Invalid;
 
@@ -656,6 +709,7 @@ Result<Metadata> HostFileSystem::GetMetadata(Uid uid, Gid gid, const std::string
 ResultCode HostFileSystem::SetMetadata(Uid caller_uid, const std::string& path, Uid uid, Gid gid,
                                        FileAttribute attr, Modes modes)
 {
+  SparkingChanged();
   if (!IsValidPath(path))
     return ResultCode::Invalid;
 

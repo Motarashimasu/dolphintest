@@ -307,6 +307,12 @@ on a Wii test program. Stats: `memory_tracking`, `pages_saved`, `pages_restored`
 with a full copy taken at the save; must stay 0). `--rollback-full-copy` copies everything as
 before. Each re-run is also compared on MEM2 now, not just MEM1.
 
+Rollback states (`State::IsRollbackState()`: in memory, without MEM1 / MEM2) also skip work a
+normal load does: the presenter doesn't re-display the last frame (the rewind's frames aren't
+shown), and the IOS file system restores `/tmp` (deleting and rewriting it on disk) only if it
+changed since that save: every change (create / delete / rename / write / metadata / format)
+gives the file system a new, never reused id, saved with the state.
+
 Quitting stops the test: Dolphin taps the Wii's power button so the game can shut down, and that
 tap isn't a recorded input (a rewind would take it back, and the runs would differ).
 

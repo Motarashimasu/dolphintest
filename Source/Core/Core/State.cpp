@@ -273,10 +273,19 @@ static std::size_t SaveToBuffer(Core::System& system, Common::UniqueBuffer<u8>& 
   return 0;
 }
 
+static bool s_rollback_state = false;
+
+bool IsRollbackState()
+{
+  return s_rollback_state;
+}
+
 std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer, bool skip_ram)
 {
   system.GetMemory().SetSparkingSkipRamInState(skip_ram);
+  s_rollback_state = skip_ram;
   const std::size_t size = SaveToBuffer(system, buffer);
+  s_rollback_state = false;
   system.GetMemory().SetSparkingSkipRamInState(false);
   return size;
 }
@@ -284,7 +293,9 @@ std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer,
 bool LoadFromMemory(Core::System& system, std::span<u8> buffer, bool skip_ram)
 {
   system.GetMemory().SetSparkingSkipRamInState(skip_ram);
+  s_rollback_state = skip_ram;
   const bool ok = LoadFromBuffer(system, buffer);
+  s_rollback_state = false;
   system.GetMemory().SetSparkingSkipRamInState(false);
   return ok;
 }

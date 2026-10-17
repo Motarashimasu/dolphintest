@@ -658,6 +658,7 @@ void JobRewind(Core::System& system)
   auto t0 = Clock::now();
   Gecko::SetReinstallOnLoad(false);  // same session, same codes: leave the handler as it was
   system.GetJitInterface().SetKeepCacheOnLoad(s_keep_jit);
+  VideoCommon::g_sparking_skip_present = true;  // (the load would re-display the last frame)
   BeginParts(&s_load_parts);
   bool ok = true;
   if (s_tracked)
@@ -704,6 +705,7 @@ void JobRewind(Core::System& system)
                Json().Add("error", system.GetMemory().SparkingIsTracking() || !s_tracked ?
                                        "load_failed" :
                                        "tracking_restarted"));
+    VideoCommon::g_sparking_skip_present = false;
     LogInto(nullptr, nullptr);
     s_phase = Phase::Idle;
     s_fields = 0;

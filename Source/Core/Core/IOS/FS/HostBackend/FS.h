@@ -60,6 +60,11 @@ public:
   void SetNandRedirects(std::vector<NandRedirect> nand_redirects) override;
 
 private:
+  // Dolphin-Sparking: identifies the file system's contents. Every change gets a new, never used
+  // value; a rollback load restores a state's /tmp only when the value differs from the state's.
+  u64 m_sparking_generation = 0;
+  void SparkingChanged();
+
   struct FstEntry
   {
     bool CheckPermission(Uid uid, Gid gid, Mode requested_mode) const;
@@ -119,6 +124,8 @@ private:
   std::string m_root_path;
   std::map<std::string, std::weak_ptr<File::IOFile>> m_open_files;
   std::array<Handle, 16> m_handles{};
+  // DoState for regular states (/tmp, plus the whole NAND during movies).
+  void DoStateRegular(PointerWrap& p, std::array<Handle, 16>&& handles_copy);
 
   FstEntry m_redirect_fst{};
   std::vector<NandRedirect> m_nand_redirects;

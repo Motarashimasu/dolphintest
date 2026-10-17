@@ -153,6 +153,7 @@ Result<u32> HostFileSystem::ReadBytesFromFile(Fd fd, u8* ptr, u32 count)
 
 Result<u32> HostFileSystem::WriteBytesToFile(Fd fd, const u8* ptr, u32 count)
 {
+  SparkingChanged();
   Handle* handle = GetHandleFromFd(fd);
   if (!handle || !handle->host_file->IsOpen())
     return std::unexpected{ResultCode::Invalid};

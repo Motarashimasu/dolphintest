@@ -721,6 +721,7 @@ def main():
         replay_check(exe, dol, work, game_id)
         rollback_test_check(exe, work)
         rollback_ios_check(exe, work)
+        rollback_fs_check(exe, work)
         rollback_gpu_check(exe, work)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
@@ -1268,6 +1269,96 @@ def rollback_ios_check(exe, work):
               s["memory_tracking"] is True and int(s["pages_saved"]) < 1000 and s["state_kb"] < 20000)
         check(f"every rewind restores MEM1 + MEM2 exactly as at the save ({s['restore_errors']} wrong pages)",
               s["restore_errors"] == 0)
+        inst.send("quit")
+        inst.proc.wait(timeout=20)
+    finally:
+        if inst.proc.poll() is None:
+            inst.proc.kill()
+
+
+def rollback_fs_check(exe, work):
+    """--rollback-test on a Wii program that keeps creating /tmp/sparking.bin, holding it a while,
+    deleting it and waiting: rollback states skip an unchanged /tmp on load, so a rewind across a
+    create or a delete must still bring /tmp back (else the re-run's create / delete answers
+    differently)."""
+    print("rollback test mode: the Wii file system's /tmp across rewinds")
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "gecko"))
+    from asm import Prog, li, lis, ori, addi, lwz, stw, mtctr
+
+    def andi_(ra, rs, i):
+        return (28 << 26) | (rs << 21) | (ra << 16) | (i & 0xFFFF)
+    p = Prog()
+    p(lis(1, 0x8000)); p(ori(1, 1, 0x4000))
+    p(lis(9, 0xCD00)); p(lis(5, 0x8000)); p(ori(5, 5, 0x2000)); p(li(6, 0x2000))
+    p(lis(8, 0x4000)); p(lis(7, 0x8000))
+    p(li(3, 6)); p(stw(3, 4, 9)); p(stw(8, 0x30, 9))   # clear the ack / reply left from boot
+    n = [0]
+
+    def call(setup):   # send the request at 0x2000, wait for its reply (clearing the ack)
+        setup()
+        p(stw(6, 0, 9)); p(li(3, 1)); p(stw(3, 4, 9))
+        k = n[0]
+        n[0] += 1
+        p.label(f"w{k}"); p(lwz(3, 4, 9))
+        p(andi_(10, 3, 2)); p.bc("eq", f"n{k}"); p(li(10, 2)); p(stw(10, 4, 9)); p(stw(8, 0x30, 9))
+        p.label(f"n{k}"); p(andi_(10, 3, 4)); p.bc("eq", f"w{k}")
+        p(li(3, 4)); p(stw(3, 4, 9)); p(stw(8, 0x30, 9))
+
+    def open_():   # open("/dev/fs")
+        p(li(3, 1)); p(stw(3, 0, 5)); p(li(3, 0)); p(stw(3, 4, 5)); p(stw(3, 8, 5))
+        p(li(3, 0x2100)); p(stw(3, 0xC, 5)); p(li(3, 0)); p(stw(3, 0x10, 5))
+
+    def ioctl(num, inbuf, insize):
+        def setup():
+            p(li(3, 6)); p(stw(3, 0, 5)); p(li(3, 0)); p(stw(3, 4, 5)); p(stw(20, 8, 5))
+            p(li(3, num)); p(stw(3, 0xC, 5)); p(li(3, inbuf)); p(stw(3, 0x10, 5))
+            p(li(3, insize)); p(stw(3, 0x14, 5)); p(li(3, 0)); p(stw(3, 0x18, 5)); p(stw(3, 0x1C, 5))
+        return setup
+    call(open_)
+    p(lwz(20, 4, 5))   # the /dev/fs fd
+    p.label("loop")
+    call(ioctl(9, 0x2400, 0x4C))                        # CreateFile /tmp/sparking.bin
+    p(lwz(4, 4, 5)); p(stw(4, 0x2300, 7))
+    p(lis(11, 0x80)); p(mtctr(11)); p.label("d1"); p.bc("dnz", "d1")   # keep it a while
+    call(ioctl(7, 0x2500, 0x40))                        # Delete it
+    p(lwz(4, 4, 5)); p(stw(4, 0x2304, 7))
+    p(lwz(3, 0x2308, 7)); p(addi(3, 3, 1)); p(stw(3, 0x2308, 7))
+    p(lis(11, 0x80)); p(mtctr(11)); p.label("d2"); p.bc("dnz", "d2")   # and go without it
+    p.b("loop")
+    p(0x7C13FBA6)   # mtspr HID4 (never run): makes Dolphin boot it as a Wii program
+    code = b"".join(struct.pack(">I", w) for w in p.words())
+    code = code.ljust((len(code) + 31) // 32 * 32, b"\0")
+    path = b"/tmp/sparking.bin".ljust(64, b"\0")
+    data = bytearray(0x480)
+    data[0:8] = b"/dev/fs\0"
+    attr = struct.pack(">IH", 0, 0) + path + bytes([3, 3, 3, 0])   # owner, group, path, modes
+    data[0x300:0x300 + len(attr)] = attr   # 0x80002400
+    data[0x400:0x440] = path               # 0x80002500
+    header = bytearray(0x100)
+    for o, v in ((0x00, 0x100), (0x48, 0x80003100), (0x90, len(code)), (0x1C, 0x100 + len(code)),
+                 (0x64, 0x80002100), (0xAC, len(data)), (0xE0, 0x80003100)):
+        struct.pack_into(">I", header, o, v)
+    dol = os.path.join(work, "fs_tmp.dol")
+    with open(dol, "wb") as f:
+        f.write(bytes(header) + code + bytes(data))
+    u = os.path.join(work, "rbfs")
+    os.makedirs(os.path.join(u, "Config"), exist_ok=True)
+    inst = Instance("rbfs", [exe, "-p", "headless", "-v", "Null", "--sparking", "-u", u, "--test-hooks",
+                             "--rollback-test", "4", "--rollback-gap", "10",
+                             "-C", "Graphics.Settings.SaveTextureCacheToState=False", "-e", dol])
+    try:
+        inst.send("hello")
+        inst.seen("rollback_test", timeout=30)
+        s = inst.wait_for("rollback_test_stats", lambda e: e["cycles"] >= 40, timeout=180)
+        peeks = {}
+        for a in ("80002300", "80002304", "80002308"):
+            inst.send(f"peek {a}")
+            peeks[a] = int(inst.seen("peek", lambda e, a=a: e["address"] == a)["value"], 16)
+        check(f"the program keeps creating and deleting /tmp/sparking.bin ({peeks['80002308']} times, "
+              f"last results {peeks['80002300']:#x} / {peeks['80002304']:#x})",
+              peeks["80002308"] > 20 and peeks["80002300"] == 0 and peeks["80002304"] == 0)
+        check(f"every rewind brings /tmp back as it was ({s['cycles']} tests, {s['mismatches']} mismatches)",
+              s["mismatches"] == 0)
         inst.send("quit")
         inst.proc.wait(timeout=20)
     finally:

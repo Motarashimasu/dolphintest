@@ -116,6 +116,9 @@ bool LastLoadSucceeded();
 std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer,
                          bool skip_ram = false);
 bool LoadFromMemory(Core::System& system, std::span<u8> buffer, bool skip_ram = false);
+// Inside SaveToMemory / LoadFromMemory with skip_ram: a rollback state, kept in memory only, so
+// parts can use a faster format (the IOS file system skips an unchanged /tmp).
+bool IsRollbackState();
 
 void LoadLastSaved(Core::System& system, int i = 1);
 void SaveFirstSaved(Core::System& system);

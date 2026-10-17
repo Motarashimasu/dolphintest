@@ -1103,8 +1103,9 @@ void Presenter::DoState(PointerWrap& p)
   p.Do(m_last_xfb_stride);
   p.Do(m_last_xfb_height);
 
-  // If we're loading and there is a last XFB, re-display it.
-  if (p.IsReadMode() && m_last_xfb_stride != 0)
+  // If we're loading and there is a last XFB, re-display it. (Not for a rollback rewind: its
+  // frames aren't shown, and the re-display decodes and presents a whole frame.)
+  if (p.IsReadMode() && m_last_xfb_stride != 0 && !g_sparking_skip_present)
   {
     // This technically counts as the end of the frame
     GetVideoEvents().after_frame_event.Trigger(Core::System::GetInstance());
