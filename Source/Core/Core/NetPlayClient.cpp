@@ -2284,7 +2284,13 @@ bool NetPlayClient::PollLocalPad(const int local_pad, sf::Packet& packet)
   {
     // adjust the buffer either up or down
     // inserting multiple padstates or dropping states
-    while (m_pad_buffer[ingame_pad].Size() <= m_target_buffer_size)
+    // (NEOcode moves received inputs out of m_pad_buffer into its own log right away: the ones
+    // waiting there count too, or every poll would add a whole buffer's worth again.)
+    const auto queued = [&] {
+      return m_pad_buffer[ingame_pad].Size() +
+             (m_neocode_active ? static_cast<size_t>(NeoCode::Queued(ingame_pad)) : 0);
+    };
+    while (queued() <= m_target_buffer_size)
     {
       // add to buffer
       m_pad_buffer[ingame_pad].Push(pad_status);

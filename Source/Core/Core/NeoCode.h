@@ -52,6 +52,7 @@ struct Stats
   u64 polls = 0;                // controller polls so far (all pads)
   u64 guesses = 0;              // inputs played with a guess
   u64 wrong_guesses = 0;
+  u64 queued = 0;               // most inputs any pad has received and not played yet
 };
 
 struct Callbacks
@@ -86,6 +87,8 @@ bool IsResimulating();
 void Confirm(int pad, const GCPadStatus& status);
 // The input for this poll of `pad`: confirmed, or a guess. False: too far ahead, wait for input.
 bool GetInput(int pad, GCPadStatus* status);
+// Real inputs of `pad` received and not played yet (the local pad's: its pad buffer).
+u64 Queued(int pad);
 // For the frontend: the emulated time now (to stamp what the game does).
 u64 NowTicks();
 }  // namespace NeoCode

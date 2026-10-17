@@ -212,6 +212,9 @@ def main():
         check("solo --gecko: unknown code reported", ga["missing"] == ["Nope"])
         ga, count = solo_gecko(["--no-gecko"])
         check("solo --no-gecko: all codes off", count == 0 and ga["codes"] == [])
+        ga, count = solo_gecko(["--gecko-extra", "Splitscreen Remover P1"])
+        check(f"solo --gecko-extra: the defaults + the extra code ({ga['codes']})",
+              count == 2 and ga["codes"] == ["Infinite Health", "Splitscreen Remover P1"])
 
         print("aspect ratio (16:9 default, also 21:9; F3 / aspect command <-> 4:3, output only)")
         d = os.path.join(user_dir("aspect"), "GameSettings")
@@ -1531,7 +1534,7 @@ def neocode_check(exe, work):
                       timeout=30)
         joiner.send("netcode neocode")
         check("only the host can switch the netcode", joiner.wait_for("error")["code"] == "host_only")
-        host.send("buffer 0")
+        host.send("buffer 2")   # a real pad buffer: NEOcode must keep it at 2, not add 2 per poll
         host.send("netcode neocode")
         check("the host switches to NEOcode", host.wait_for("netcode")["mode"] == "neocode")
         check("the joiner is told", joiner.seen("netcode", timeout=10)["mode"] == "neocode")
@@ -1552,6 +1555,9 @@ def neocode_check(exe, work):
         for inst in (host, joiner):
             stats = [e for e in inst.history if e["event"] == "neocode" and "rollbacks" in e][-1]
             checks = [e for e in inst.history if e["event"] == "neocode_check"]
+            queued = [e["queued"] for e in inst.history if e["event"] == "neocode" and "queued" in e]
+            check(f"{inst.name}: inputs don't pile up (most queued per stats: {queued})",
+                  len(queued) >= 3 and max(queued) <= 12)
             check(f"{inst.name}: wrong guesses are rewound and re-run ({stats['wrong_guesses']} wrong of "
                   f"{stats['guesses']} guesses, {stats['rollbacks']} rewinds, R {stats['r']})",
                   stats["wrong_guesses"] > 0 and stats["rollbacks"] > 0)

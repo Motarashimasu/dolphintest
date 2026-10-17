@@ -225,6 +225,9 @@ void EmitStats()
   s_stats.save_ms = s_saves ? s_save_total / s_saves : 0;
   s_stats.load_ms = s_loads ? s_load_total / s_loads : 0;
   s_stats.guessing = s_armed && !s_broken;
+  s_stats.queued = 0;
+  for (int pad = 0; pad < 4; ++pad)
+    s_stats.queued = std::max(s_stats.queued, Queued(pad));
   if (s_cb.stats)
     s_cb.stats(s_stats);
   s_stats.rollback_fields = 0;
@@ -532,6 +535,13 @@ bool GetInput(int pad, GCPadStatus* status)
   *status = entry.value;
   ++s_poll[pad];
   return true;
+}
+
+u64 Queued(int pad)
+{
+  if (pad < 0 || pad >= 4)
+    return 0;
+  return s_confirmed[pad] > s_poll[pad] ? s_confirmed[pad] - s_poll[pad] : 0;
 }
 
 u64 NowTicks()

@@ -708,6 +708,12 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("append")
       .metavar("NAME")
       .help("Solo: enable exactly these Gecko codes (repeatable); all others off for this run");
+  parser.add_option("--gecko-extra")
+      .dest("gecko_extra")
+      .action("append")
+      .metavar("NAME")
+      .help("Solo: the game's default Gecko codes plus these (repeatable), e.g. a netplay-only code "
+            "for capturing battle states the way a netplay match runs");
   parser.add_option("--no-gecko")
       .dest("no_gecko")
       .action("store_true")
@@ -1203,7 +1209,8 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
   ApplyTexturesDir(options);
 
   const bool no_gecko = options.is_set_by_user("no_gecko");
-  if (!no_gecko && !options.is_set("gecko"))
+  const bool extra = options.is_set("gecko_extra");
+  if (!no_gecko && !options.is_set("gecko") && !extra)
     return;  // leave Dolphin's per-game ini selection alone
   if (!options.is_set("exec"))
   {
@@ -1216,8 +1223,20 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
   std::vector<std::string> names;
   if (!no_gecko)
   {
-    for (const std::string& n : options.all("gecko"))
-      names.push_back(n);
+    if (options.is_set("gecko"))
+    {
+      for (const std::string& n : options.all("gecko"))
+        names.push_back(n);
+    }
+    else if (extra)
+    {
+      // The defaults (minus the extras, in case one is on by default too), then the extras.
+      std::vector<std::string> extras;
+      for (const std::string& n : options.all("gecko_extra"))
+        extras.push_back(n);
+      names = DefaultEnabledGeckoNames(game.GetGameID(), game.GetRevision(), extras);
+      names.insert(names.end(), extras.begin(), extras.end());
+    }
   }
   const std::vector<std::string> missing =
       ActivateExclusiveGeckoCodes(game.GetGameID(), game.GetRevision(), names);

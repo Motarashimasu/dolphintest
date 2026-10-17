@@ -4,7 +4,8 @@
     python Tools/sparking_state_check.py SparkingData/states/RDSPAF-SingleBattle.sav [...]
 
 Prints the game ID and the Dolphin build that saved it, and for BT3 PAL (RDSPAF) whether the
-"PAL60 Mode + Black Bar Removal" code was running when it was captured. A state captured
+"PAL60 Mode + Black Bar Removal" code and a splitscreen remover were running when it was
+captured. A state captured
 without it keeps every DRAGON NET match at 25 fps (the game sets its video mode up before
 the menus, so the code can't change it after the state loads).
 
@@ -19,9 +20,15 @@ import sys
 STATE_COOKIE = 0xBAADBB7E
 MEM1_SIZE = 0x01800000
 
-# Game ID -> (check name, MEM1 offset, bytes expected when the code is on)
+# Game ID -> [(check name, MEM1 offset, bytes expected when the code is on)]
 CHECKS = {
-    "RDSPAF": ("PAL60 Mode + Black Bar Removal (30 fps)", 0x391AA8, bytes.fromhex("00000014")),
+    "RDSPAF": [
+        ("PAL60 Mode + Black Bar Removal (30 fps)", 0x391AA8, bytes.fromhex("00000014")),
+        # The splitscreen remover (plain-write version) patched in since boot: the game set its
+        # screens up for one fullscreen player (3_capture_battle_states.bat runs P1's).
+        ("Splitscreen Remover (fullscreen) in the game code", 0x01528C,
+         bytes.fromhex("2C1F0000408200443860")),
+    ],
 }
 
 # Game ID -> MEM1 offsets the old insert-ASM splitscreen removers hooked (a branch there into the
@@ -130,22 +137,22 @@ def main() -> int:
             bad += 1
             continue
         print(f"  game {game_id}, saved by {version}")
-        check = CHECKS.get(game_id)
-        if not check:
+        checks = CHECKS.get(game_id)
+        if not checks:
             print("  (no code check for this game)")
             continue
-        name, offset, expected = check
         mem1 = find_mem1(payload, game_id)
         if mem1 < 0 or mem1 + MEM1_SIZE > len(payload):
             print("  couldn't find the game's memory in the state")
             bad += 1
             continue
-        actual = payload[mem1 + offset:mem1 + offset + len(expected)]
-        if actual == expected:
-            print(f"  OK   {name}: on")
-        else:
-            print(f"  BAD  {name}: off when this was captured ({actual.hex()} instead of {expected.hex()})")
-            bad += 1
+        for name, offset, expected in checks:
+            actual = payload[mem1 + offset:mem1 + offset + len(expected)]
+            if actual == expected:
+                print(f"  OK   {name}: on")
+            else:
+                print(f"  BAD  {name}: off when this was captured ({actual.hex()} instead of {expected.hex()})")
+                bad += 1
         hooked = []
         for off in OLD_HOOKS.get(game_id, []):
             (word,) = struct.unpack_from(">I", payload, mem1 + off)
