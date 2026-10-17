@@ -1553,10 +1553,18 @@ def neocode_check(exe, work):
         n = min(len(a), len(b))
         check(f"what the game did comes out the same on both sides, guesses never leak ({n} watch events)",
               n > 50 and a[:n] == b[:n])
+        # The Gecko code area differs between the players by design (each runs its own port's
+        # splitscreen remover): a change there on one side only isn't a desync.
+        for i in range(20):
+            host.send(f"poke 80001900 {0x0BADC0DE + i:08X}")
+            time.sleep(0.1)
+        after = [joiner.wait_for("neocode_check", timeout=120) for _ in range(2)]
+        check(f"a different Gecko code area isn't called a desync (fields {[c['field'] for c in after]})",
+              all(c["match"] for c in after))
         # The host's game goes its own way. (Its rewinds take back a change made after the save they
         # go back to, so keep changing it for a moment: one change gets saved and stays.)
         for i in range(20):
-            host.send(f"poke 80002000 {0x12345678 + i:08X}")
+            host.send(f"poke 80100000 {0x12345678 + i:08X}")
             time.sleep(0.1)
         bad = joiner.wait_for("neocode_check", lambda e: not e["match"], timeout=120)
         check(f"a desync shows up in the checksums (field {bad['field']})", True)

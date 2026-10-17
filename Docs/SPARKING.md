@@ -351,8 +351,11 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
   4 BT3 frames) old.
 - Events the game "does" (results, watches) are held until final (every input before them
   confirmed) and dropped when a rewind takes them back, so both players emit the same sequence.
-- Every 120 fields the players exchange the memory checksum (`neosum`); a mismatch shows
-  "NEOcode: the players' games are out of sync." once per match.
+- Every 120 fields the players exchange the MEM1 checksum (`neosum`); a mismatch shows
+  "NEOcode: the players' games are out of sync." once per match. It's only a notice: the match
+  goes on. The Gecko code area (0x80001800-0x80003000) isn't in the checksum, because each player
+  runs their own port's splitscreen remover there. Dolphin's own desync warning (from the
+  timebase) is off with NEOcode.
 - With NEOcode the automatic pad buffer is lower (`max(1, buffer-6, (buffer+1)/2)`), ranked
   replays are off, spectators stay on delay netplay, and every player needs this build.
 - If saving / rewinding fails, the match goes on as delay netplay ("NEOcode stopped ...").

@@ -279,7 +279,14 @@ void JobSnapshot(Core::System& system)
 
   if (s_field % CHECKSUM_FIELDS == 0)
   {
-    const u64 checksum = Common::GetHash64(memory.GetRAM(), memory.GetRamSizeReal(), 0);
+    // Not the Gecko code area: each player runs their own port's codes (the splitscreen
+    // removers), so it differs between players by design.
+    constexpr u32 codes_begin = Gecko::INSTALLER_BASE_ADDRESS & 0x01FFFFFF;
+    constexpr u32 codes_end = Gecko::INSTALLER_END_ADDRESS & 0x01FFFFFF;
+    const u8* ram = memory.GetRAM();
+    const u32 ram_size = memory.GetRamSizeReal();
+    const u64 checksum = Common::GetHash64(ram, codes_begin, 0) ^
+                         (Common::GetHash64(ram + codes_end, ram_size - codes_end, 0) * 31);
     s_checksums.push_back({s_field, s_records.back().ticks, checksum});
   }
   s_save_total += Ms(t0, Clock::now());
