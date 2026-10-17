@@ -312,6 +312,9 @@ normal load does: the presenter doesn't re-display the last frame (the rewind's 
 shown), and the IOS file system restores `/tmp` (deleting and rewriting it on disk) only if it
 changed since that save: every change (create / delete / rename / write / metadata / format)
 gives the file system a new, never reused id, saved with the state.
+They also skip the bounding box read-back while the game has bounding box off: reading the
+graphics card's values waits for it to finish everything queued (~4 ms per save in a busy BT3
+fight), and they don't change while it's off.
 
 Quitting stops the test: Dolphin taps the Wii's power button so the game can shut down, and that
 tap isn't a recorded input (a rewind would take it back, and the runs would differ).

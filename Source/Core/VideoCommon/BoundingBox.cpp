@@ -8,6 +8,7 @@
 #include "Common/Assert.h"
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
+#include "Core/State.h"
 #include "VideoCommon/PixelShaderManager.h"
 #include "VideoCommon/VideoConfig.h"
 
@@ -112,6 +113,12 @@ void BoundingBox::DoState(PointerWrap& p)
   p.DoArray(m_values);
   p.DoArray(m_dirty);
   p.Do(m_is_valid);
+
+  // Dolphin-Sparking rollback states: with bounding box off (BT3 never turns it on) the graphics
+  // card's values don't change, and reading them back waits for the card to finish everything it
+  // was given (~4 ms in a busy fight, every save). (m_is_active is the saved one on a load too.)
+  if (State::IsRollbackState() && !m_is_active)
+    return;
 
   // We handle saving the backend values specially rather than using Readback() and Flush() so that
   // we don't mess up the current cache state
