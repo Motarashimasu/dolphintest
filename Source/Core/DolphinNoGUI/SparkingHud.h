@@ -40,6 +40,8 @@ void SetHudLinkQuality(int jitter_ms, const std::string& rating);
 // Wired/Wi-Fi status of the players on ports 1 and 2 ("wired", "wireless", "virtual",
 // "unknown"): an icon next to each name. Any thread.
 void SetHudLinks(const std::array<std::string, 2>& links);
+// NEOcode: game frames re-run lately, shown as "R n" after the buffer (-1: hide). Any thread.
+void SetHudNeoR(int frames);
 // KOs counted since this process started (never reset) and whether a round is being fought
 // right now (both sides were back at 100%, nobody KO'd yet). Any thread. Used by the netplay
 // host's automatic pad buffer, which only changes between rounds.
@@ -58,4 +60,9 @@ void HudOnWatch(const std::string& name, int port, const std::string& player, do
                 bool valid);
 // Once per frame (CPU thread), after that frame's HudOnWatch calls.
 void HudTick();
+
+// NEOcode: the round-counting state at a field end, and back (CPU thread). The KO counters the
+// host reads (HudResultCount, HudPortWins) only count final results, so they're not in it.
+std::string SaveHudState();
+void LoadHudState(const std::string& state);
 }  // namespace Sparking

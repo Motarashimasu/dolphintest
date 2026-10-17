@@ -14,6 +14,7 @@
 #include <fmt/format.h>
 #include <imgui.h>
 
+#include "DolphinNoGUI/SparkingBlob.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "DolphinNoGUI/SparkingReplay.h"
 #include "VideoCommon/Present.h"
@@ -45,6 +46,7 @@ int s_pending_frames = 0;
 std::map<std::string, int> s_wins;    // player name -> rounds won (this boot)
 std::atomic<int> s_ping{-1};          // netplay ping in ms (-1: not in netplay)
 std::atomic<int> s_buffer{-1};        // netplay pad buffer (-1: unknown)
+std::atomic<int> s_neo_r{-1};         // NEOcode: frames re-run lately ("R"; -1: not NEOcode)
 std::atomic<int> s_jitter{-1};        // ping jitter in ms (-1: not measured yet)
 std::string s_rating;                 // guarded by s_mutex: good/ok/poor/measuring
 std::array<std::string, 2> s_links;   // guarded by s_mutex: wired/wireless/virtual/unknown, "" = none
@@ -290,8 +292,10 @@ void DrawHud()
     // "42 ms ±3": ping and how much it varies (Wi-Fi / busy connections jump around).
     const std::string ping_text =
         jitter >= 0 ? fmt::format("{} ms \xC2\xB1{}", ping, jitter) : fmt::format("{} ms", ping);
-    const std::string text = buffer >= 0 ? fmt::format("{}   |   Buffer {}", ping_text, buffer) :
-                                           ping_text;
+    std::string text = buffer >= 0 ? fmt::format("{}   |   Buffer {}", ping_text, buffer) :
+                                     ping_text;
+    if (const int r = s_neo_r; r >= 0)
+      text += fmt::format("   |   R {}", r);
     const float size = FitSize(font, text, box.w() * 0.88f, box.h() * 0.62f);
     const ImVec2 dim = TextSize(font, size, text);
     // Colour = connection quality once measured (ping + stability), else ping alone.
@@ -380,6 +384,11 @@ void SetHudLinks(const std::array<std::string, 2>& links)
 {
   std::lock_guard lk(s_mutex);
   s_links = links;
+}
+
+void SetHudNeoR(int frames)
+{
+  s_neo_r = frames;
 }
 
 void SetHudLocalPort(int port)
@@ -489,8 +498,6 @@ void HudTick()
   s_pending_loser = 0;
   s_round_live = false;
   ++s_rounds;
-  ++s_port_wins[winner_port - 1];
-  ++s_result_count;
   const std::string winner = DisplayName(s_sides[winner_port - 1], winner_port);
   const std::string loser = DisplayName(s_sides[loser_port - 1], loser_port);
   ++s_wins[winner];
@@ -506,6 +513,61 @@ void HudTick()
   const int local = s_local_port;
   if (local == 1 || local == 2)
     json.Add("local_result", local == winner_port ? "win" : "lose");
-  Emit("round_result", json);
+  // The counters the netplay host decides sets / buffer changes from only count final results
+  // (with NEOcode a rewind can still take this one back until then).
+  EmitFinal("round_result", json, [winner_port] {
+    ++s_port_wins[winner_port - 1];
+    ++s_result_count;
+  });
+}
+
+std::string SaveHudState()
+{
+  std::lock_guard lk(s_mutex);
+  BlobWriter blob;
+  for (const Side& side : s_sides)
+  {
+    blob.Put(side.name);
+    blob.Put(side.health);
+  }
+  blob.Put(s_round_live);
+  blob.Put(s_pending_loser);
+  blob.Put(s_pending_frames);
+  blob.Put(s_rounds);
+  blob.Put(s_wins.size());
+  for (const auto& [name, wins] : s_wins)
+  {
+    blob.Put(name);
+    blob.Put(wins);
+  }
+  return blob.Take();
+}
+
+void LoadHudState(const std::string& state)
+{
+  std::lock_guard lk(s_mutex);
+  BlobReader blob(state);
+  for (Side& side : s_sides)
+  {
+    blob.Get(side.name);
+    blob.Get(side.health);
+  }
+  blob.Get(s_round_live);
+  blob.Get(s_pending_loser);
+  blob.Get(s_pending_frames);
+  blob.Get(s_rounds);
+  std::size_t count = 0;
+  blob.Get(count);
+  std::map<std::string, int> wins;
+  for (std::size_t i = 0; i < count && blob.Ok(); ++i)
+  {
+    std::string name;
+    int value = 0;
+    blob.Get(name);
+    blob.Get(value);
+    wins[name] = value;
+  }
+  if (blob.Ok())
+    s_wins = std::move(wins);
 }
 }  // namespace Sparking

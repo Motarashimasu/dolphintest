@@ -302,6 +302,29 @@ private:
   void PumpAutoBuffer();                          // host thread
   std::atomic<bool> m_auto_buffer{false};
   std::atomic<int> m_buffer{-1};  // last pad buffer Dolphin reported
+
+  // NEOcode (Core/NeoCode.h), a hidden lobby setting: "netcode neocode|delay" (host), told to
+  // everyone ("netcode ..." control message), used by the players' next match.
+  std::atomic<bool> m_neocode{false};
+  std::atomic<bool> m_rebroadcast_netcode{false};
+  bool m_neocode_running = false;  // this match (host thread)
+  NeoCode::Callbacks MakeNeoCodeCallbacks();
+  // What the game did (events from the watcher / HUD), held until NEOcode says it's final, and
+  // dropped when a rewind takes it back (emulated time stamps).
+  struct HeldEvent
+  {
+    u64 ticks = 0;
+    std::string line;
+    std::function<void()> on_final;
+  };
+  std::mutex m_held_mutex;
+  std::vector<HeldEvent> m_held;  // guarded by m_held_mutex
+  void ReleaseHeld(u64 until_ticks);
+  // Checksums of final states ("neosum <field> <checksum>"): ours and the others', compared.
+  std::mutex m_sums_mutex;
+  std::map<u64, u64> m_own_sums;                                     // guarded by m_sums_mutex
+  std::map<u64, std::map<NetPlay::PlayerId, u64>> m_peer_sums;       // guarded by m_sums_mutex
+  void CompareSums();                                                // with m_sums_mutex held
   int m_seen_results = 0;
   std::optional<std::chrono::steady_clock::time_point> m_auto_due, m_auto_deadline;
   // While a match runs the lobby loop is parked: a ticker hands PumpAutoBuffer to the host

@@ -41,4 +41,7 @@ void SetPortNames(const std::array<std::string, 4>& names);
 void EmitWatchValues();
 // The watches' current values as a JSON object ({"p1_health_pct":100,...}).
 std::string WatchValuesJson();
+// NEOcode: the watcher's state (last values, triggers) at a field end, and back (CPU thread).
+std::string SaveWatchState();
+void LoadWatchState(const std::string& state);
 }  // namespace Sparking

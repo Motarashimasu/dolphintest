@@ -23,6 +23,7 @@
 #include "Core/HW/Memmap.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/SparkingHud.h"
+#include "DolphinNoGUI/SparkingBlob.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "DolphinNoGUI/SparkingReplay.h"
 #include "VideoCommon/VideoEvents.h"
@@ -337,6 +338,8 @@ Json& AddPlayer(Json& json, const std::string& name)
 void OnField()
 {
   ReplayOnField();  // replay playback: progress and the end of the inputs
+  // What follows is what the game "did" this field (NEOcode may hold it back, see SparkingIO.h).
+  GameSideScope game_side;
   std::lock_guard lk(s_mutex);
   if (s_watches.empty())
     return;
@@ -370,6 +373,43 @@ void OnField()
   HudTick();  // once per frame, after all of this frame's values are in
 }
 }  // namespace
+
+std::string SaveWatchState()
+{
+  std::lock_guard lk(s_mutex);
+  BlobWriter blob;
+  blob.Put(s_watches.size());
+  for (const Watch& w : s_watches)
+  {
+    blob.Put(w.last);
+    blob.Put(w.reported);
+  }
+  blob.Put(s_triggers.size());
+  for (const Trigger& t : s_triggers)
+    blob.Put(t.was_true);
+  return blob.Take();
+}
+
+void LoadWatchState(const std::string& state)
+{
+  std::lock_guard lk(s_mutex);
+  BlobReader blob(state);
+  std::size_t watches = 0;
+  blob.Get(watches);
+  if (!blob.Ok() || watches != s_watches.size())
+    return;  // (the watches were reloaded since: nothing to restore)
+  for (Watch& w : s_watches)
+  {
+    blob.Get(w.last);
+    blob.Get(w.reported);
+  }
+  std::size_t triggers = 0;
+  blob.Get(triggers);
+  if (!blob.Ok() || triggers != s_triggers.size())
+    return;
+  for (Trigger& t : s_triggers)
+    blob.Get(t.was_true);
+}
 
 void InitWatcher()
 {

@@ -37,6 +37,7 @@
 #include "Core/Core.h"
 #include "Core/PowerPC/MMU.h"
 #include "Core/DolphinAnalytics.h"
+#include "Core/NetPlayClient.h"
 #include "Core/NetPlayProto.h"
 #include "Core/State.h"
 #include "Core/System.h"
@@ -427,6 +428,20 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
   {
     Emit("texture_path",
          Json().Add("name", cmd.arg).Add("path", HiresTexture::GetMappedPath(cmd.arg)));
+    return;
+  }
+
+  // Automated tests (--test-hooks): a changing controller pattern, and a slower link for NEOcode.
+  if (s_test_hooks && cmd.name == "test_input")
+  {
+    NetPlay::NetPlayClient::SetTestInput(static_cast<u32>(std::strtoul(cmd.arg.c_str(), nullptr, 10)));
+    Emit("test_input", Json().Add("seed", cmd.arg));
+    return;
+  }
+  if (s_test_hooks && cmd.name == "test_lag")
+  {
+    NetPlay::NetPlayClient::SetTestLag(std::atoi(cmd.arg.c_str()));
+    Emit("test_lag", Json().Add("ms", std::atoi(cmd.arg.c_str())));
     return;
   }
 

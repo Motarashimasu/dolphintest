@@ -1762,6 +1762,13 @@ bool NetPlayClient::StartGame(const std::string& path)
 
   m_first_pad_status_received.fill(false);
 
+  // Dolphin-Sparking NEOcode: only a player guesses inputs (a spectator has nobody's to guess
+  // ahead of; it plays the confirmed inputs).
+  m_neocode_active = m_neocode_wanted && NumLocalPads() > 0;
+  m_neocode_held.clear();
+  if (m_neocode_active)
+    NeoCode::Start([this] { NeoCodeDrain(); }, m_neocode_callbacks);
+
   if (m_dialog->IsRecording())
   {
     auto& movie = Core::System::GetInstance().GetMovie();
@@ -1940,8 +1947,110 @@ void NetPlayClient::OnConnectFailed(Common::TraversalConnectFailedReason reason)
 }
 
 // called from ---CPU--- thread
+static std::atomic<u32> s_test_input_seed{0};
+static std::atomic<int> s_test_lag_ms{0};
+
+void NetPlayClient::SetTestInput(u32 seed)
+{
+  s_test_input_seed = seed;
+}
+
+void NetPlayClient::SetTestLag(int ms)
+{
+  s_test_lag_ms = ms;
+}
+
+void NetPlayClient::SetNeoCode(bool enabled, NeoCode::Callbacks callbacks)
+{
+  m_neocode_wanted = enabled;
+  m_neocode_callbacks = std::move(callbacks);
+}
+
+// called from ---CPU--- thread: every input received so far, in order, into NEOcode's log.
+void NetPlayClient::NeoCodeDrain()
+{
+  const int lag = s_test_lag_ms;
+  if (lag <= 0 && m_neocode_held.empty())
+  {
+    for (int pad = 0; pad < 4; ++pad)
+    {
+      GCPadStatus status;
+      while (m_pad_buffer[pad].Pop(status))
+        NeoCode::Confirm(pad, status);
+    }
+    return;
+  }
+  // Test lag: the other players' inputs count as arrived `lag` ms later (ours right away).
+  const auto now = std::chrono::steady_clock::now();
+  for (int pad = 0; pad < 4; ++pad)
+  {
+    const bool local = m_net_settings.pad_map[pad] == m_local_player->pid;
+    GCPadStatus status;
+    while (m_pad_buffer[pad].Pop(status))
+    {
+      if (local)
+        NeoCode::Confirm(pad, status);
+      else
+        m_neocode_held.push_back({now + std::chrono::milliseconds(lag), pad, status});
+    }
+  }
+  while (!m_neocode_held.empty() && m_neocode_held.front().at <= now)
+  {
+    NeoCode::Confirm(m_neocode_held.front().pad, m_neocode_held.front().status);
+    m_neocode_held.pop_front();
+  }
+}
+
+// called from ---CPU--- thread. Like GetNetPads, but the remote inputs that haven't arrived are
+// guessed instead of waited for (Core/NeoCode.h). During a re-run nothing is polled or sent: the
+// inputs come from NEOcode's log.
+bool NetPlayClient::GetNetPadsNeoCode(const int pad_nb, const bool batching,
+                                      GCPadStatus* pad_status)
+{
+  if (!NeoCode::IsResimulating())
+  {
+    if (IsFirstInGamePad(pad_nb) && batching)
+    {
+      sf::Packet packet;
+      packet << MessageID::PadData;
+      bool send_packet = false;
+      const int num_local_pads = NumLocalPads();
+      for (int local_pad = 0; local_pad < num_local_pads; local_pad++)
+        send_packet = PollLocalPad(local_pad, packet) || send_packet;
+      if (send_packet)
+        SendAsync(std::move(packet));
+    }
+    if (!batching)
+    {
+      const int local_pad = InGamePadToLocalPad(pad_nb);
+      if (local_pad < 4)
+      {
+        sf::Packet packet;
+        packet << MessageID::PadData;
+        if (PollLocalPad(local_pad, packet))
+          SendAsync(std::move(packet));
+      }
+    }
+  }
+
+  NeoCodeDrain();
+  while (!NeoCode::GetInput(pad_nb, pad_status))
+  {
+    // Too far ahead of the other player: wait for their inputs, as delay netplay does. (Briefly:
+    // inputs already here may become usable without a new one arriving, with the test lag.)
+    if (!m_is_running.IsSet())
+      return false;
+    m_gc_pad_event.WaitFor(std::chrono::milliseconds(2));
+    NeoCodeDrain();
+  }
+  return true;
+}
+
 bool NetPlayClient::GetNetPads(const int pad_nb, const bool batching, GCPadStatus* pad_status)
 {
+  if (m_neocode_active)
+    return GetNetPadsNeoCode(pad_nb, batching, pad_status);
+
   // The interface for this is extremely silly.
   //
   // Imagine a physical device that links three GameCubes together
@@ -2143,6 +2252,19 @@ bool NetPlayClient::PollLocalPad(const int local_pad, sf::Packet& packet)
     pad_status = Pad::GetStatus(local_pad);
   }
 
+  // Automated tests: a changing pattern, a new value every few polls.
+  if (const u32 seed = s_test_input_seed)
+  {
+    const u32 k = ((m_test_input_count++ / 3) + seed) * 2654435761u;
+    pad_status.button = static_cast<u16>((k >> 7) & (PAD_BUTTON_A | PAD_BUTTON_B | PAD_BUTTON_X |
+                                                     PAD_BUTTON_Y | PAD_BUTTON_LEFT |
+                                                     PAD_BUTTON_RIGHT | PAD_BUTTON_UP |
+                                                     PAD_BUTTON_DOWN));
+    pad_status.stickX = static_cast<u8>(0x60 + ((k >> 16) & 0x3F));
+    pad_status.stickY = static_cast<u8>(0x60 + ((k >> 22) & 0x3F));
+    pad_status.isConnected = true;
+  }
+
   if (m_host_input_authority)
   {
     if (m_local_player->pid != m_current_golfer)
@@ -2268,6 +2390,8 @@ void NetPlayClient::SendPadHostPoll(const PadIndex pad_num)
 void NetPlayClient::InvokeStop()
 {
   m_is_running.Clear();
+  if (m_neocode_active.exchange(false))
+    NeoCode::Stop();
 
   // stop waiting for input
   m_gc_pad_event.Set();
@@ -2463,6 +2587,11 @@ void NetPlayClient::SendGameStatus()
 void NetPlayClient::SendTimeBase()
 {
   std::lock_guard lk(crit_netplay_client);
+
+  // NEOcode re-runs fields (and runs ahead on guesses): frame numbers don't line up between the
+  // players; NEOcode compares its own checksums of final states instead.
+  if (netplay_client->m_neocode_active)
+    return;
 
   if (netplay_client->m_timebase_frame % 60 == 0)
   {

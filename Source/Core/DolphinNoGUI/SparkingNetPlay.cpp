@@ -3,6 +3,7 @@
 
 #include "DolphinNoGUI/SparkingNetPlay.h"
 
+#include "DolphinNoGUI/SparkingBlob.h"
 #include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingGecko.h"
 #include "DolphinNoGUI/SparkingReplay.h"
@@ -15,6 +16,7 @@
 #include <array>
 #include <charconv>
 #include <filesystem>
+#include <limits>
 #include <set>
 #include <string_view>
 
@@ -403,6 +405,8 @@ void NetPlaySession::Pump()
       ++it;
     }
   }
+  if (m_server && m_rebroadcast_netcode.exchange(false))
+    SendControl(m_neocode ? "netcode neocode" : "netcode delay");
   if (m_server)
   {
     PumpAutoBuffer();
@@ -729,6 +733,23 @@ bool NetPlaySession::HandleCommand(const Command& cmd)
       }
     }
   }
+  else if (cmd.name == "netcode")
+  {
+    // Hidden setting (the launcher has no visible switch for it).
+    if (host_only())
+    {
+      if (m_game_running)
+        Emit("error", Json().Add("code", "game_running").Add("command", cmd.name));
+      else if (cmd.arg == "neocode" || cmd.arg == "delay")
+      {
+        m_neocode = cmd.arg == "neocode";
+        m_rebroadcast_netcode = true;
+        Emit("netcode", Json().Add("mode", cmd.arg));
+      }
+      else
+        Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+    }
+  }
   else if (cmd.name == "kick")
   {
     if (host_only())
@@ -875,7 +896,11 @@ std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget
     std::ranges::sort(samples);
     const size_t at = std::min(samples.size() - 1, (samples.size() * 9 + 9) / 10 - 1);
     const u32 high = samples[at];
-    const int buffer = std::clamp(static_cast<int>((high + std::max(jitter, 0) + 11) / 12), 2, 20);
+    int buffer = std::clamp(static_cast<int>((high + std::max(jitter, 0) + 11) / 12), 2, 20);
+    // NEOcode covers the rest: keep about half as a minimum delay (fewer, shorter rewinds), and
+    // never more than its rewind window short of the full delay.
+    if (m_neocode)
+      buffer = std::max({1, buffer - (NeoCode::MAX_ROLLBACK_FIELDS - 2), (buffer + 1) / 2});
     if (!worst || buffer > worst->buffer)
       worst = AutoBufferChoice{buffer, high, std::max(jitter, 0)};
   }
@@ -978,6 +1003,15 @@ void NetPlaySession::OnGameEnded()
   m_game_running = false;
   StopAutoTicker();
   m_got_stop_request = false;
+  if (m_neocode_running)
+  {
+    // No more rewinds: what's still held happened.
+    SetEmitGate({});
+    ReleaseHeld(std::numeric_limits<u64>::max());
+    SetHudNeoR(-1);
+    m_neocode_running = false;
+    Emit("neocode", Json().Add("state", "off"));
+  }
   if (m_koth && m_server)
     OnSetEnded();
   if (m_index && m_index_added)
@@ -1075,7 +1109,7 @@ void NetPlaySession::BootGame(const std::string& filename,
                              .AddRaw("missing", JsonArray(miss)));
   }
   // Ranked replays (--record-replays): this game may be recorded from its first round.
-  if (ReplaysEnabled())
+  if (ReplaysEnabled() && !m_neocode)  // (not with NEOcode yet: it records guessed inputs)
   {
     ReplayMatch match;
     std::shared_ptr<const UICommon::GameFile> game;
@@ -1225,11 +1259,135 @@ void NetPlaySession::OnMsgStartGame()
           game = FindGameFile(m_current_game);
         }
         if (game)
+        {
+          // NEOcode: the players' inputs are guessed ahead (a spectator just plays them).
+          m_client->SetNeoCode(m_neocode && !m_spectate, MakeNeoCodeCallbacks());
+          {
+            std::lock_guard lk(m_sums_mutex);
+            m_own_sums.clear();
+            m_peer_sums.clear();
+          }
           m_client->StartGame(game->GetFilePath());
+          m_neocode_running = m_client->IsNeoCodeActive();
+          if (m_neocode_running)
+          {
+            SetEmitGate([this](std::string line, std::function<void()> on_final) {
+              std::lock_guard lk(m_held_mutex);
+              m_held.push_back({NeoCode::NowTicks(), std::move(line), std::move(on_final)});
+            });
+            Emit("neocode", Json().Add("state", "on"));
+          }
+        }
         else
+        {
           Emit("error", Json().Add("code", "game_not_found"));
+        }
       },
       /*run_during_stop=*/true);
+}
+
+NeoCode::Callbacks NetPlaySession::MakeNeoCodeCallbacks()
+{
+  // All called on the CPU thread.
+  NeoCode::Callbacks cb;
+  cb.save_side = [] {
+    BlobWriter blob;
+    blob.Put(SaveWatchState());
+    blob.Put(SaveHudState());
+    return blob.Take();
+  };
+  cb.load_side = [](const std::string& state) {
+    BlobReader blob(state);
+    std::string watch, hud;
+    blob.Get(watch);
+    blob.Get(hud);
+    if (blob.Ok())
+    {
+      LoadWatchState(watch);
+      LoadHudState(hud);
+    }
+  };
+  cb.final_until = [this](u64 ticks) { ReleaseHeld(ticks); };
+  cb.rewound_to = [this](u64 ticks) {
+    std::lock_guard lk(m_held_mutex);
+    std::erase_if(m_held, [ticks](const HeldEvent& e) { return e.ticks > ticks; });
+  };
+  cb.checksum = [this](u64 field, u64 checksum) {
+    SendControl(fmt::format("neosum {} {:x}", field, checksum));
+    std::lock_guard lk(m_sums_mutex);
+    m_own_sums[field] = checksum;
+    CompareSums();
+  };
+  cb.stats = [](const NeoCode::Stats& stats) {
+    // R: game frames (2 fields) of the biggest re-run since the last stats.
+    const int r = (stats.rollback_fields + 1) / 2;
+    SetHudNeoR(r);
+    Emit("neocode", Json()
+                        .Add("state", stats.guessing ? "on" : "waiting")
+                        .Add("r", r)
+                        .Add("field", static_cast<int64_t>(stats.field))
+                        .Add("rollbacks", static_cast<int64_t>(stats.rollbacks))
+                        .Add("rollback_fields", static_cast<int64_t>(stats.rollback_fields_total))
+                        .Add("stalls", static_cast<int64_t>(stats.stalls))
+                        .Add("polls", static_cast<int64_t>(stats.polls))
+                        .Add("guesses", static_cast<int64_t>(stats.guesses))
+                        .Add("wrong_guesses", static_cast<int64_t>(stats.wrong_guesses))
+                        .AddRaw("save_ms", fmt::format("{:.2f}", stats.save_ms))
+                        .AddRaw("load_ms", fmt::format("{:.2f}", stats.load_ms)));
+  };
+  cb.failed = [](const std::string& reason) {
+    SetHudNeoR(-1);
+    Emit("neocode", Json().Add("state", "failed").Add("reason", reason));
+  };
+  return cb;
+}
+
+void NetPlaySession::ReleaseHeld(u64 until_ticks)
+{
+  std::vector<HeldEvent> ready;
+  {
+    std::lock_guard lk(m_held_mutex);
+    auto it = m_held.begin();
+    while (it != m_held.end() && it->ticks <= until_ticks)
+      ++it;
+    ready.assign(std::make_move_iterator(m_held.begin()), std::make_move_iterator(it));
+    m_held.erase(m_held.begin(), it);
+  }
+  for (HeldEvent& e : ready)
+  {
+    if (!e.line.empty())
+      WriteEventLine(e.line);
+    if (e.on_final)
+      e.on_final();
+  }
+}
+
+void NetPlaySession::CompareSums()
+{
+  // Fields both we and someone else have a final checksum for.
+  for (auto it = m_peer_sums.begin(); it != m_peer_sums.end();)
+  {
+    const auto own = m_own_sums.find(it->first);
+    if (own == m_own_sums.end())
+    {
+      ++it;
+      continue;
+    }
+    for (const auto& [pid, sum] : it->second)
+    {
+      const bool same = sum == own->second;
+      Emit("neocode_check", Json()
+                                .Add("field", static_cast<int64_t>(it->first))
+                                .Add("player", static_cast<int>(pid))
+                                .Add("match", same));
+    }
+    it = m_peer_sums.erase(it);
+  }
+  // Ours only matter while a later one from the others can still come.
+  while (m_own_sums.size() > 64)
+    m_own_sums.erase(m_own_sums.begin());
+  while (m_peer_sums.size() > 64)
+    m_peer_sums.erase(m_peer_sums.begin());
 }
 
 void NetPlaySession::OnMsgStopGame()
@@ -1247,6 +1405,7 @@ void NetPlaySession::OnPlayerConnect(const std::string& player)
   m_rebroadcast_state = true;  // late joiners need the current battle-state selection
   m_rebroadcast_save = true;   // ...and must prove their save matches
   m_rebroadcast_link = true;   // ...and need to know everyone's wired/Wi-Fi status
+  m_rebroadcast_netcode = true;  // ...and the netcode
   Emit("player_joined", Json().Add("name", player));
 }
 
@@ -1511,6 +1670,25 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
     }
     SendControl(fmt::format("ack {} {}", wanted.sha1, status));
     EmitBattleState();
+  }
+  else if (parts[0] == "netcode" && parts.size() == 2 && !m_server)
+  {
+    if (from != 1)
+      return;
+    const bool neocode = parts[1] == "neocode";
+    if (neocode != m_neocode.exchange(neocode))
+      Emit("netcode", Json().Add("mode", neocode ? "neocode" : "delay"));
+    return;
+  }
+  else if (parts[0] == "neosum" && parts.size() == 3)
+  {
+    u64 field = 0, sum = 0;
+    std::from_chars(parts[1].data(), parts[1].data() + parts[1].size(), field);
+    std::from_chars(parts[2].data(), parts[2].data() + parts[2].size(), sum, 16);
+    std::lock_guard lk(m_sums_mutex);
+    m_peer_sums[field][from] = sum;
+    CompareSums();
+    return;
   }
   else if (parts[0] == "role" && parts.size() == 2)
   {

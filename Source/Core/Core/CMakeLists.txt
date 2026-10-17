@@ -502,6 +502,8 @@ add_library(core
   MemTools.h
   Movie.cpp
   Movie.h
+  NeoCode.cpp
+  NeoCode.h
   NetPlayClient.cpp
   NetPlayClient.h
   NetPlayCommon.cpp

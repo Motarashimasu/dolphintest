@@ -5,7 +5,9 @@
 
 #include <SFML/Network/Packet.hpp>
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -19,6 +21,7 @@
 #include "Common/Event.h"
 #include "Common/SPSCQueue.h"
 #include "Common/TraversalClient.h"
+#include "Core/NeoCode.h"
 #include "Core/NetPlayProto.h"
 #include "Core/SyncIdentifier.h"
 #include "InputCommon/GCPadStatus.h"
@@ -146,6 +149,15 @@ public:
   bool WiimoteUpdate(const std::span<WiimoteDataBatchEntry>& entries);
   bool GetNetPads(int pad_nb, bool from_vi, GCPadStatus* pad_status);
 
+  // Dolphin-Sparking NEOcode (see Core/NeoCode.h): for the next game started (players only;
+  // spectators always wait for the inputs). Set before the game starts.
+  void SetNeoCode(bool enabled, NeoCode::Callbacks callbacks);
+  bool IsNeoCodeActive() const { return m_neocode_active; }
+  // Automated tests only: this player's controller sends a changing pattern (seed, 0 = off), and
+  // NEOcode confirms the other players' inputs `ms` later than they arrive (a slower link).
+  static void SetTestInput(u32 seed);
+  static void SetTestLag(int ms);
+
   u64 GetInitialRTCValue() const;
 
   void OnTraversalStateChanged() override;
@@ -224,6 +236,19 @@ protected:
   // speeding up the game to drain the buffer.
   unsigned int m_target_buffer_size = 20;
   bool m_host_input_authority = false;
+  std::atomic<bool> m_neocode_wanted{false};
+  std::atomic<bool> m_neocode_active{false};
+  NeoCode::Callbacks m_neocode_callbacks;
+  bool GetNetPadsNeoCode(int pad_nb, bool batching, GCPadStatus* pad_status);
+  void NeoCodeDrain();
+  struct NeoCodeHeld
+  {
+    std::chrono::steady_clock::time_point at;
+    int pad;
+    GCPadStatus status;
+  };
+  std::deque<NeoCodeHeld> m_neocode_held;  // CPU thread (test lag)
+  u32 m_test_input_count = 0;               // CPU thread
   PlayerId m_current_golfer = 1;
 
   // This bool will stall the client at the start of GetNetPads, used for switching input control

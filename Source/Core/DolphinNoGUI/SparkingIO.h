@@ -61,6 +61,22 @@ bool IsEnabled();
 // Thread-safe. No-op unless enabled.
 void Emit(std::string_view event, const Json& fields = {});
 
+// NEOcode (Core/NeoCode.h): what the game "does" (watch values, rounds, results) may still be
+// taken back by a rewind. Code that reports it runs inside a GameSideScope; while a gate is set,
+// events emitted there go to the gate (as finished lines) instead of out, and `on_final` runs
+// when the gate lets them out (right away without a gate). Thread-safe.
+using EmitGate = std::function<void(std::string line, std::function<void()> on_final)>;
+void SetEmitGate(EmitGate gate);  // empty: off
+void EmitFinal(std::string_view event, const Json& fields, std::function<void()> on_final);
+void WriteEventLine(const std::string& line);  // a line the gate held, now final
+struct GameSideScope
+{
+  GameSideScope();
+  ~GameSideScope();
+  GameSideScope(const GameSideScope&) = delete;
+  GameSideScope& operator=(const GameSideScope&) = delete;
+};
+
 // A parsed command line: "chat hello there" -> {name: "chat", arg: "hello there"}.
 struct Command
 {

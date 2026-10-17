@@ -198,19 +198,78 @@ bool IsEnabled()
   return s_enabled;
 }
 
+namespace
+{
+std::mutex s_gate_mutex;
+EmitGate s_gate;
+thread_local int t_game_side = 0;
+
+std::string EventLine(std::string_view event, const Json& fields)
+{
+  // Put "event" first so frontends can cheaply switch on it.
+  std::string body = fields.Str();
+  return fmt::format("{}{{\"event\":{}{}{}\n", EVENT_PREFIX, Json::Escape(event),
+                     body.size() > 2 ? "," : "", body.substr(1));
+}
+
+// True if the gate took it.
+bool Gate(std::string& line, std::function<void()>& on_final)
+{
+  if (t_game_side == 0)
+    return false;
+  std::lock_guard lk(s_gate_mutex);
+  if (!s_gate)
+    return false;
+  s_gate(std::move(line), std::move(on_final));
+  return true;
+}
+}  // namespace
+
+GameSideScope::GameSideScope()
+{
+  ++t_game_side;
+}
+
+GameSideScope::~GameSideScope()
+{
+  --t_game_side;
+}
+
+void SetEmitGate(EmitGate gate)
+{
+  std::lock_guard lk(s_gate_mutex);
+  s_gate = std::move(gate);
+}
+
+void WriteEventLine(const std::string& line)
+{
+  if (!s_enabled)
+    return;
+  std::lock_guard lk(s_emit_mutex);
+  std::fwrite(line.data(), 1, line.size(), stdout);
+  std::fflush(stdout);
+}
+
 void Emit(std::string_view event, const Json& fields)
 {
   if (!s_enabled)
     return;
+  std::string line = EventLine(event, fields);
+  std::function<void()> none;
+  if (!Gate(line, none))
+    WriteEventLine(line);
+}
 
-  // Put "event" first so frontends can cheaply switch on it.
-  std::string body = fields.Str();
-  std::string line = fmt::format("{}{{\"event\":{}{}{}\n", EVENT_PREFIX, Json::Escape(event),
-                                 body.size() > 2 ? "," : "", body.substr(1));
-
-  std::lock_guard lk(s_emit_mutex);
-  std::fwrite(line.data(), 1, line.size(), stdout);
-  std::fflush(stdout);
+void EmitFinal(std::string_view event, const Json& fields, std::function<void()> on_final)
+{
+  std::string line = s_enabled ? EventLine(event, fields) : std::string();
+  if (!Gate(line, on_final))
+  {
+    if (!line.empty())
+      WriteEventLine(line);
+    if (on_final)
+      on_final();
+  }
 }
 
 void StartLineReader(std::function<void(const Command&)> handler, std::function<void()> on_eof)
