@@ -928,6 +928,11 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store_true")
       .help("Rollback test: every save copies all of MEM1 / MEM2 (by default only the memory pages "
             "the game changed since the last save, found by write-protecting them)");
+  parser.add_option("--rollback-history")
+      .dest("rollback_history")
+      .action("store_true")
+      .help("Rollback test: also snapshot the memory at every recorded field and rewind through "
+            "all of them (as NEOcode does)");
   parser.add_option("--rollback-diagnose")
       .dest("rollback_diagnose")
       .action("store_true")
@@ -1125,6 +1130,7 @@ void InitFromOptions(const optparse::Values& options)
       test.skip_draw = !options.is_set_by_user("rollback_draw");
       test.diagnose = options.is_set_by_user("rollback_diagnose");
       test.full_copy = options.is_set_by_user("rollback_full_copy");
+      test.history = options.is_set_by_user("rollback_history");
       InitRollbackTest(test);
     }
     InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off",

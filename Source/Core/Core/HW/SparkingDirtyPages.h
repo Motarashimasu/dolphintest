@@ -14,6 +14,11 @@
 // them again. Restore: copy the changed pages back from the shadow (= memory at the snapshot)
 // and protect them again.
 //
+// History (NEOcode saves every field and may go back several): with SetHistory(n) a snapshot
+// first keeps the shadow's old contents of the pages it overwrites (an undo record for the
+// previous snapshot), so RestoreTo can go back to any of the last n snapshots by applying them
+// newest first.
+//
 // Mapping changes (DBAT remaps, page table mappings) and shutdown disarm it (everything
 // unprotected, the shadow invalid); the next snapshot starts over with a full copy.
 #pragma once
@@ -62,6 +67,13 @@ public:
   void Snapshot(std::span<const View> views, std::span<const Range> ranges, u64* pages);
   // Puts the memory back as it was at the last snapshot. False if not armed (nothing done).
   bool Restore(u64* pages);
+  // How many earlier snapshots RestoreTo can go back to (0 = only the last; the default).
+  void SetHistory(std::size_t count);
+  // Id of the last snapshot (0 = none since arming). Each snapshot gets the next id.
+  u64 GetSnapshotId() const { return m_snapshot_id; }
+  // Puts the memory back as it was at snapshot `id` (the last one or one still in the history);
+  // later snapshots are forgotten. False (nothing done) if not armed or `id` is gone.
+  bool RestoreTo(u64 id, u64* pages);
   // Stops tracking: every view writable again, the shadow invalid.
   void Disarm();
 
@@ -94,6 +106,16 @@ private:
   std::unique_ptr<std::atomic<u8>[]> m_dirty;  // per page: 1 = written since the snapshot
   std::size_t m_page_count = 0;
   std::vector<u8> m_shadow;  // indexed by segment position
+  // Undo record of snapshot `id`: its contents of the pages that changed before snapshot id + 1.
+  struct Undo
+  {
+    u64 id = 0;
+    std::vector<u32> pages;  // page indices
+    std::vector<u8> data;    // their contents, one page each
+  };
+  std::vector<Undo> m_history;  // oldest first; the last one belongs to snapshot m_snapshot_id - 1
+  std::size_t m_history_size = 0;
+  u64 m_snapshot_id = 0;
   std::atomic<bool> m_armed{false};
   std::atomic<u64> m_faults{0};
 };

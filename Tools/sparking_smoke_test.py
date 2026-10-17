@@ -1440,6 +1440,11 @@ def rollback_gpu_check(exe, work):
     check(f"rewinds keep the compiled code (code thrown away {first['jit_clears']} -> "
           f"{last['jit_clears']} times; a state load used to throw it all away)",
           last["jit_clears"] == first["jit_clears"])
+    st, first, last, alerts = run("rbgx-hist", ["--rollback-history", "--rollback-test", "8"])
+    check(f"rewinds through 7 newer memory snapshots come back exact ({last['cycles']} tests, "
+          f"{last['restore_errors']} wrong pages, {last['mismatches']} mismatches)",
+          last["restore_errors"] == 0 and last["mismatches"] == 0 and int(last["pages_restored"]) > 0
+          and not alerts)
     st, first, last, alerts = run("rbgx-full", ["--rollback-full-copy"])
     check(f"--rollback-full-copy copies everything ({last['state_kb']} KB states, {last['mismatches']} "
           "mismatches)", st.get("memory_tracking") is False and last["state_kb"] > 40000

@@ -37,6 +37,8 @@ struct RollbackTestOptions
   bool skip_draw = true;  // re-runs don't draw (like real rollback; their frames aren't shown)
   // Saves copy all of MEM1 / MEM2 every time (else only the pages the game changed).
   bool full_copy = false;
+  // Snapshot the memory at every recorded field too, and rewind through all of them.
+  bool history = false;
   // Log everything the emulator does in both runs (events, IPC, GPU reads) so a mismatch says
   // where the runs parted. Slows the re-runs down.
   bool diagnose = false;

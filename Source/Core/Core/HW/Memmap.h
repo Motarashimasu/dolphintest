@@ -138,6 +138,11 @@ public:
   // snapshot; false if tracking stopped since (mappings changed).
   bool SparkingSnapshot(u64* pages);
   bool SparkingRestore(u64* pages);
+  // NEOcode: keep the last `count` snapshots restorable; the last snapshot's id (0 = none); back
+  // to snapshot `id` (false: tracking stopped since, or too old).
+  void SparkingSetHistory(size_t count);
+  u64 SparkingSnapshotId() const;
+  bool SparkingRestoreTo(u64 id, u64* pages);
   void SparkingStopTracking();
   bool SparkingIsTracking() const;
   u64 SparkingFaultCount() const;
@@ -307,6 +312,7 @@ private:
 
   std::unique_ptr<SparkingDirtyPages> m_sparking_pages;
   bool m_sparking_skip_ram = false;
+  size_t m_sparking_history = 0;
 
   static HostPageType GetHostPageTypeForPageSize(u32 page_size);
 

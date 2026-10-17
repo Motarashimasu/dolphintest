@@ -148,6 +148,7 @@ void MemoryManager::Init()
   m_arena.GrabSHMSegment(mem_size, "dolphin-emu");
   if (!m_sparking_pages)
     m_sparking_pages = std::make_unique<SparkingDirtyPages>(m_arena, m_page_size);
+  m_sparking_pages->SetHistory(m_sparking_history);
 
   m_physical_page_mappings.fill(nullptr);
 
@@ -648,6 +649,24 @@ bool MemoryManager::SparkingRestore(u64* pages)
 {
   *pages = 0;
   return m_sparking_pages && m_sparking_pages->Restore(pages);
+}
+
+void MemoryManager::SparkingSetHistory(size_t count)
+{
+  m_sparking_history = count;  // (also applied when the tracker is created at boot)
+  if (m_sparking_pages)
+    m_sparking_pages->SetHistory(count);
+}
+
+u64 MemoryManager::SparkingSnapshotId() const
+{
+  return m_sparking_pages ? m_sparking_pages->GetSnapshotId() : 0;
+}
+
+bool MemoryManager::SparkingRestoreTo(u64 id, u64* pages)
+{
+  *pages = 0;
+  return m_sparking_pages && m_sparking_pages->RestoreTo(id, pages);
 }
 
 void MemoryManager::SparkingStopTracking()

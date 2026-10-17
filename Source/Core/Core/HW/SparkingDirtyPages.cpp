@@ -86,7 +86,23 @@ void SparkingDirtyPages::Snapshot(std::span<const View> views, std::span<const R
       std::memcpy(m_shadow.data() + r.shm_position, r.host, r.size);
       *pages += r.size / m_page_size;
     }
+    m_history.clear();
+    m_snapshot_id = 1;
     return;
+  }
+
+  Undo undo;
+  if (m_history_size > 0)
+  {
+    // Reuse the oldest record's buffers when it's about to be dropped anyway.
+    if (m_history.size() >= m_history_size)
+    {
+      undo = std::move(m_history.front());
+      m_history.erase(m_history.begin());
+      undo.pages.clear();
+      undo.data.clear();
+    }
+    undo.id = m_snapshot_id;
   }
 
   for (std::size_t i = 0; i < m_range_count; ++i)
@@ -112,12 +128,79 @@ void SparkingDirtyPages::Snapshot(std::span<const View> views, std::span<const R
       const u32 begin_pos = static_cast<u32>(p * m_page_size);
       const u32 end_pos = static_cast<u32>(end * m_page_size);
       SetProtection(begin_pos, end_pos, false);
+      if (m_history_size > 0)
+      {
+        // The previous snapshot's contents of these pages, before the shadow moves on.
+        for (std::size_t k = p; k < end; ++k)
+          undo.pages.push_back(static_cast<u32>(k));
+        undo.data.insert(undo.data.end(), m_shadow.data() + begin_pos, m_shadow.data() + end_pos);
+      }
       std::memcpy(m_shadow.data() + begin_pos, r.host + (begin_pos - r.shm_position),
                   end_pos - begin_pos);
       *pages += end - p;
       p = end;
     }
   }
+  if (m_history_size > 0)
+    m_history.push_back(std::move(undo));
+  ++m_snapshot_id;
+}
+
+void SparkingDirtyPages::SetHistory(std::size_t count)
+{
+  m_history_size = count;
+  while (m_history.size() > m_history_size)
+    m_history.erase(m_history.begin());
+}
+
+bool SparkingDirtyPages::RestoreTo(u64 id, u64* pages)
+{
+  *pages = 0;
+  if (!IsArmed() || id == 0 || id > m_snapshot_id)
+    return false;
+  if (id < m_snapshot_id && (m_history.empty() || m_history.front().id > id))
+    return false;
+  // First back to the last snapshot, then undo snapshot by snapshot down to `id`.
+  if (!Restore(pages))
+    return false;
+  std::vector<u32> touched;
+  while (!m_history.empty() && m_history.back().id >= id)
+  {
+    const Undo& undo = m_history.back();
+    for (std::size_t i = 0; i < undo.pages.size(); ++i)
+    {
+      const u32 pos = undo.pages[i] * m_page_size;
+      const u8* data = undo.data.data() + i * m_page_size;
+      std::memcpy(m_shadow.data() + pos, data, m_page_size);
+      // The page is protected (unchanged since the last snapshot): write through the plain view.
+      for (std::size_t r = 0; r < m_range_count; ++r)
+      {
+        const Range& range = m_ranges[r];
+        if (pos >= range.shm_position && pos - range.shm_position < range.size)
+        {
+          u8* host = range.host + (pos - range.shm_position);
+          m_arena.ChangeMappingProtection(host, m_page_size, true);
+          std::memcpy(host, data, m_page_size);
+          touched.push_back(undo.pages[i]);
+        }
+      }
+    }
+    m_history.pop_back();
+  }
+  // Everything equals the shadow again: protected in every view.
+  std::ranges::sort(touched);
+  touched.erase(std::unique(touched.begin(), touched.end()), touched.end());
+  for (std::size_t i = 0; i < touched.size();)
+  {
+    std::size_t j = i + 1;
+    while (j < touched.size() && touched[j] == touched[j - 1] + 1)
+      ++j;
+    SetProtection(touched[i] * m_page_size, (touched[j - 1] + 1) * m_page_size, false);
+    i = j;
+  }
+  *pages += touched.size();
+  m_snapshot_id = id;
+  return true;
 }
 
 bool SparkingDirtyPages::Restore(u64* pages)
@@ -164,6 +247,8 @@ void SparkingDirtyPages::Disarm()
   for (std::size_t i = 0; i < m_range_count; ++i)
     SetProtection(m_ranges[i].shm_position, m_ranges[i].shm_position + m_ranges[i].size, true);
   m_armed.store(false, std::memory_order_release);
+  m_history.clear();
+  m_snapshot_id = 0;
 }
 
 bool SparkingDirtyPages::HandleFault(uintptr_t address)

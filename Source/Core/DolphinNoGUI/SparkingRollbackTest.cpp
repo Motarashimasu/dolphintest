@@ -234,6 +234,10 @@ std::atomic<bool> s_stopping{false};
 // Saves keep MEM1 / MEM2 by copying only the pages the game changed (MemoryManager page tracking)
 // instead of all 88 MB; --rollback-full-copy (or tracking that can't work) copies them all.
 bool s_tracked = true;
+// --rollback-history: also snapshot the memory at every recorded field and rewind with
+// RestoreTo(the cycle's save), undoing those snapshots one by one (what NEOcode does).
+bool s_history = false;
+u64 s_base_snapshot = 0;
 Recent s_pages_saved, s_pages_restored;
 u64 s_restore_errors = 0;   // pages that came back different from the copy taken at the save
 u64 s_last_faults = 0, s_last_fault_field = 0;
@@ -593,6 +597,7 @@ void JobSave(Core::System& system)
     {
       OnMarker("Memory (changed pages)");
       s_pages_saved.Add(static_cast<double>(pages));
+      s_base_snapshot = system.GetMemory().SparkingSnapshotId();
     }
     else
     {
@@ -664,7 +669,8 @@ void JobRewind(Core::System& system)
   if (s_tracked)
   {
     u64 pages = 0;
-    ok = system.GetMemory().SparkingRestore(&pages);
+    ok = s_history ? system.GetMemory().SparkingRestoreTo(s_base_snapshot, &pages) :
+                     system.GetMemory().SparkingRestore(&pages);
     OnMarker("Memory (changed pages)");
     s_pages_restored.Add(static_cast<double>(pages));
     if (ok)
@@ -881,6 +887,11 @@ void OnField()
     TraceField(&s_trace_first);
     if (++s_fields == 2 && s_depth > 2)
       CountChanges(Core::System::GetInstance(), false);  // one game frame
+    if (s_history && s_tracked && s_fields < s_depth)
+    {
+      u64 pages = 0;
+      Core::System::GetInstance().GetMemory().SparkingSnapshot(&pages);
+    }
     if (s_fields >= s_depth)
       AtThisField(JobRewind);
     return;
@@ -921,6 +932,9 @@ void InitRollbackTest(const RollbackTestOptions& options)
   s_keep_jit = options.keep_jit;
   s_skip_draw = options.skip_draw;
   s_tracked = !options.full_copy;
+  s_history = options.history;
+  if (s_history)
+    Core::System::GetInstance().GetMemory().SparkingSetHistory(16);
   s_diagnose = options.diagnose;
   s_trace = options.trace;
   s_depth = std::clamp(options.fields, 1, 16);
