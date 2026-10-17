@@ -12,6 +12,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "Common/CommonTypes.h"
@@ -37,5 +38,12 @@ std::vector<std::string> DefaultEnabledGeckoNames(const std::string& game_id, u1
 // and desync.
 std::string HashNetplayGeckoSetup(const std::string& game_id, u16 revision, bool use_defaults,
                                   const std::map<int, std::vector<std::string>>& port_gecko);
+
+// The MEM1 bytes the per-port codes write ({offset, size}, physical): plain writes (00 / 02 /
+// 04 / 06) and insert-ASM hooks (C2 / C3) in the 0x80000000 range. Every player's port codes
+// together, so all players get the same list (NEOcode leaves these out of its sync checksum:
+// each player runs only their own port's code there).
+std::vector<std::pair<u32, u32>> PortCodeWrites(const std::string& game_id, u16 revision,
+                                                const std::map<int, std::vector<std::string>>& port_gecko);
 
 }  // namespace Sparking

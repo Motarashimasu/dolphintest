@@ -1504,19 +1504,24 @@ def neocode_check(exe, work):
         os.makedirs(os.path.join(u, "Config"), exist_ok=True)
         os.makedirs(os.path.join(u, "GameSettings"), exist_ok=True)
         with open(os.path.join(u, "GameSettings", "ID-pads.ini"), "w") as f:
-            f.write("[Sparking.Watch]\np1_in = u32 0x80002010\np2_in = u32 0x80002014\n")
+            # Per-port codes like the splitscreen removers: the same address, a different value
+            # per port. (This program never runs the code handler; the poke below plays that part.)
+            f.write("[Gecko]\n$Port Code P1\n04100100 00000000\n$Port Code P2\n04100100 00000001\n"
+                    "[Sparking.Watch]\np1_in = u32 0x80002010\np2_in = u32 0x80002014\n")
         with open(os.path.join(u, "Config", "Dolphin.ini"), "w") as f:
             f.write("[NetPlay]\nTraversalChoice = direct\nHostPort = 26410\nSyncSaves = False\n"
                     "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
         return u
     host = Instance("neo-host", [exe, *common, "-u", user("host"), "--netplay-host", dol, "--nickname", "Goku",
-                                 "--automap", "gc", "--netplay-direct", "--test-hooks"])
+                                 "--automap", "gc", "--netplay-direct", "--test-hooks",
+                                 "--netplay-gecko", "1=Port Code P1", "--netplay-gecko", "2=Port Code P2"])
     joiner = None
     try:
         host.send("hello")
         host.wait_for("room", lambda e: e["state"] == "ready")
         joiner = Instance("neo-joiner", [exe, *common, "-u", user("joiner"), "--netplay-join", "127.0.0.1:26410",
-                                         "--netplay-game", dol, "--nickname", "Vegeta", "--test-hooks"])
+                                         "--netplay-game", dol, "--nickname", "Vegeta", "--test-hooks",
+                                         "--netplay-gecko", "1=Port Code P1", "--netplay-gecko", "2=Port Code P2"])
         joiner.send("hello")
         host.wait_for("players", lambda e: len(e["players"]) == 2 and all(x["gc_slot"] > 0 for x in e["players"]),
                       timeout=30)
@@ -1555,12 +1560,14 @@ def neocode_check(exe, work):
               n > 50 and a[:n] == b[:n])
         # The Gecko code area differs between the players by design (each runs its own port's
         # splitscreen remover): a change there on one side only isn't a desync.
+        # Same for what the per-port codes write in the game's own memory.
         for i in range(20):
             host.send(f"poke 80001900 {0x0BADC0DE + i:08X}")
+            host.send(f"poke 80100100 {0x0BADF00D + i:08X}")
             time.sleep(0.1)
         after = [joiner.wait_for("neocode_check", timeout=120) for _ in range(2)]
-        check(f"a different Gecko code area isn't called a desync (fields {[c['field'] for c in after]})",
-              all(c["match"] for c in after))
+        check(f"a different Gecko code area / port code target isn't called a desync (fields "
+              f"{[c['field'] for c in after]})", all(c["match"] for c in after))
         # The host's game goes its own way. (Its rewinds take back a change made after the save they
         # go back to, so keep changing it for a moment: one change gets saved and stays.)
         for i in range(20):

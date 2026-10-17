@@ -92,6 +92,65 @@ std::vector<std::string> DefaultEnabledGeckoNames(const std::string& game_id, u1
   return names;
 }
 
+std::vector<std::pair<u32, u32>> PortCodeWrites(const std::string& game_id, u16 revision,
+                                                const std::map<int, std::vector<std::string>>& port_gecko)
+{
+  std::vector<std::pair<u32, u32>> out;
+  const std::vector<Gecko::GeckoCode> all = LoadAllCodes(game_id, revision);
+  for (const auto& [port, names] : port_gecko)
+  {
+    for (const std::string& name : names)
+    {
+      const auto it = std::ranges::find_if(all, [&](const auto& c) { return c.name == name; });
+      if (it == all.end())
+        continue;
+      const auto& lines = it->codes;
+      for (std::size_t i = 0; i < lines.size(); ++i)
+      {
+        const u32 type = lines[i].address >> 24;
+        const u32 offset = lines[i].address & 0x01FFFFFF;
+        const u32 data = lines[i].data;
+        u32 size = 0;
+        std::size_t payload = 0;  // lines after this one that are data, not codes
+        switch (type & 0xFE)
+        {
+        case 0x00:  // 8-bit write (x count)
+          size = (data >> 16) + 1;
+          break;
+        case 0x02:  // 16-bit write (x count)
+          size = 2 * ((data >> 16) + 1);
+          break;
+        case 0x04:  // 32-bit write
+          size = 4;
+          break;
+        case 0x06:  // string write
+          size = data;
+          payload = (data + 7) / 8;
+          break;
+        case 0xC2:  // insert ASM: the hooked instruction becomes a branch
+          size = 4;
+          payload = data;
+          break;
+        case 0xC0:  // execute ASM
+        case 0xF2:
+          payload = data;
+          break;
+        case 0x08:  // serial write
+          payload = 1;
+          break;
+        default:
+          break;
+        }
+        // Only the base-address forms (not pointer-relative ones), in MEM1.
+        if (size != 0 && (type & 0x10) == 0 && offset < 0x01800000)
+          out.emplace_back(offset, size);
+        i += payload;
+      }
+    }
+  }
+  return out;
+}
+
 std::string HashNetplayGeckoSetup(const std::string& game_id, u16 revision, bool use_defaults,
                                   const std::map<int, std::vector<std::string>>& port_gecko)
 {

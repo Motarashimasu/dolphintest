@@ -83,6 +83,7 @@ std::deque<Record> s_records;      // oldest first
 std::vector<Record> s_spare;       // buffers to reuse
 u64 s_final_ticks = 0;
 std::vector<PendingChecksum> s_checksums;
+std::vector<std::pair<u32, u32>> s_checksum_skip;  // sorted, merged {begin, end}
 Stats s_stats;
 double s_save_total = 0, s_load_total = 0;
 int s_saves = 0, s_loads = 0;
@@ -279,14 +280,21 @@ void JobSnapshot(Core::System& system)
 
   if (s_field % CHECKSUM_FIELDS == 0)
   {
-    // Not the Gecko code area: each player runs their own port's codes (the splitscreen
-    // removers), so it differs between players by design.
-    constexpr u32 codes_begin = Gecko::INSTALLER_BASE_ADDRESS & 0x01FFFFFF;
-    constexpr u32 codes_end = Gecko::INSTALLER_END_ADDRESS & 0x01FFFFFF;
+    // Not the Gecko code area, nor what the per-port codes write: each player runs their own
+    // port's codes (the splitscreen removers), so those differ between players by design.
     const u8* ram = memory.GetRAM();
     const u32 ram_size = memory.GetRamSizeReal();
-    const u64 checksum = Common::GetHash64(ram, codes_begin, 0) ^
-                         (Common::GetHash64(ram + codes_end, ram_size - codes_end, 0) * 31);
+    u64 checksum = 0;
+    u32 pos = 0;
+    u64 part = 1;
+    for (const auto& [begin, end] : s_checksum_skip)
+    {
+      if (begin > pos && pos < ram_size)
+        checksum ^= Common::GetHash64(ram + pos, std::min(begin, ram_size) - pos, 0) * (2 * part++ + 1);
+      pos = std::max(pos, end);
+    }
+    if (pos < ram_size)
+      checksum ^= Common::GetHash64(ram + pos, ram_size - pos, 0) * (2 * part + 1);
     s_checksums.push_back({s_field, s_records.back().ticks, checksum});
   }
   s_save_total += Ms(t0, Clock::now());
@@ -436,6 +444,24 @@ void Start(std::function<void()> drain, Callbacks callbacks)
   system.GetMemory().SparkingSetHistory(MAX_RECORDS + 2);
   s_field_hook = system.GetVideoEvents().vi_end_field_event.Register([] { OnField(); });
   s_active = true;
+}
+
+void SetChecksumSkip(std::vector<std::pair<u32, u32>> ranges)
+{
+  ranges.emplace_back(Gecko::INSTALLER_BASE_ADDRESS & 0x01FFFFFF,
+                      (Gecko::INSTALLER_END_ADDRESS - Gecko::INSTALLER_BASE_ADDRESS));
+  std::vector<std::pair<u32, u32>> spans;  // {begin, end}
+  for (const auto& [offset, size] : ranges)
+    spans.emplace_back(offset & ~3u, (offset + size + 3) & ~3u);   // whole words
+  std::ranges::sort(spans);
+  s_checksum_skip.clear();
+  for (const auto& s : spans)
+  {
+    if (!s_checksum_skip.empty() && s.first <= s_checksum_skip.back().second)
+      s_checksum_skip.back().second = std::max(s_checksum_skip.back().second, s.second);
+    else
+      s_checksum_skip.push_back(s);
+  }
 }
 
 void Stop()

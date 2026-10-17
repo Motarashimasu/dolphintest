@@ -355,8 +355,9 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
   confirmed) and dropped when a rewind takes them back, so both players emit the same sequence.
 - Every 120 fields the players exchange the MEM1 checksum (`neosum`); a mismatch shows
   "NEOcode: the players' games are out of sync." once per match. It's only a notice: the match
-  goes on. The Gecko code area (0x80001800-0x80003000) isn't in the checksum, because each player
-  runs their own port's splitscreen remover there. Dolphin's own desync warning (from the
+  goes on. The Gecko code area (0x80001800-0x80003000) isn't in the checksum, nor the memory the
+  per-port codes write (their 00 / 02 / 04 / 06 writes and C2 hooks, every port's): each player
+  runs only their own port's splitscreen remover. Dolphin's own desync warning (from the
   timebase) is off with NEOcode.
 - NEOcode's saves never include the graphics card's texture cache / EFB contents, whatever
   "Save Texture Cache to State" says: reading them back every field would cost more the higher

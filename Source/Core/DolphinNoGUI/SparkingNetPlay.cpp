@@ -36,6 +36,7 @@
 #include "Core/Config/UISettings.h"
 #include "Core/Core.h"
 #include "Core/IOS/FS/FileSystem.h"
+#include "Core/NeoCode.h"
 #include "Core/State.h"
 #include "Core/System.h"
 #include "Core/TitleDatabase.h"
@@ -1260,7 +1261,10 @@ void NetPlaySession::OnMsgStartGame()
         }
         if (game)
         {
-          // NEOcode: the players' inputs are guessed ahead (a spectator just plays them).
+          // NEOcode: the players' inputs are guessed ahead (a spectator just plays them). Its sync
+          // checksum skips what the per-port codes write (different on every player).
+          NeoCode::SetChecksumSkip(
+              PortCodeWrites(game->GetGameID(), game->GetRevision(), m_port_gecko));
           m_client->SetNeoCode(m_neocode && !m_spectate, MakeNeoCodeCallbacks());
           {
             std::lock_guard lk(m_sums_mutex);

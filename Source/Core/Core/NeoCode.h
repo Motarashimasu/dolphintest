@@ -27,6 +27,8 @@
 #include <array>
 #include <functional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "Common/CommonTypes.h"
 #include "InputCommon/GCPadStatus.h"
@@ -72,6 +74,9 @@ struct Callbacks
 // Match start / end (any thread; Start before the game boots). `drain` moves the inputs received
 // so far into the log (calls Confirm for each), CPU thread.
 void Start(std::function<void()> drain, Callbacks callbacks);
+// MEM1 bytes ({physical offset, size}) the sync checksum leaves out besides the Gecko code area:
+// what the per-port codes write (each player runs only their own port's). Before Start.
+void SetChecksumSkip(std::vector<std::pair<u32, u32>> ranges);
 void Stop();
 bool IsActive();
 

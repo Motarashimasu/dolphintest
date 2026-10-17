@@ -6,7 +6,12 @@
 Prints the game ID and the Dolphin build that saved it, and for BT3 PAL (RDSPAF) whether the
 "PAL60 Mode + Black Bar Removal" code was running when it was captured. A state captured
 without it keeps every DRAGON NET match at 25 fps (the game sets its video mode up before
-the menus, so the code can't change it after the state loads). Pure Python, no packages.
+the menus, so the code can't change it after the state loads).
+
+Also: whether an old splitscreen remover (the insert-ASM version, before the plain-write one)
+was running when it was captured. That one patched branches into the game's code that point
+into the Gecko code list; the codes in use now don't overwrite them, so such a state would jump
+into whatever the new code list holds there. Pure Python, no packages.
 """
 import struct
 import sys
@@ -18,6 +23,24 @@ MEM1_SIZE = 0x01800000
 CHECKS = {
     "RDSPAF": ("PAL60 Mode + Black Bar Removal (30 fps)", 0x391AA8, bytes.fromhex("00000014")),
 }
+
+# Game ID -> MEM1 offsets the old insert-ASM splitscreen removers hooked (a branch there into the
+# Gecko code area = captured while one was running).
+OLD_HOOKS = {
+    "RDSPAF": [0x09136C, 0x015264, 0x015274],
+}
+GECKO_AREA = (0x80001800, 0x80003000)
+
+
+def branches_into_codes(word: int, address: int) -> bool:
+    """A PowerPC `b` (opcode 18, relative) from `address` landing in the Gecko code area."""
+    if word >> 26 != 18 or word & 2:   # not b / ba
+        return False
+    disp = word & 0x03FFFFFC
+    if disp & 0x02000000:
+        disp -= 0x04000000
+    target = (address + disp) & 0xFFFFFFFF
+    return GECKO_AREA[0] <= target < GECKO_AREA[1]
 
 
 def lz4_block(src: bytes) -> bytes:
@@ -123,6 +146,17 @@ def main() -> int:
         else:
             print(f"  BAD  {name}: off when this was captured ({actual.hex()} instead of {expected.hex()})")
             bad += 1
+        hooked = []
+        for off in OLD_HOOKS.get(game_id, []):
+            (word,) = struct.unpack_from(">I", payload, mem1 + off)
+            if branches_into_codes(word, 0x80000000 + off):
+                hooked.append(f"0x{0x80000000 + off:08X}")
+        if hooked:
+            print(f"  BAD  old splitscreen remover hooks in the game code ({', '.join(hooked)}):"
+                  " recapture this state offline")
+            bad += 1
+        elif game_id in OLD_HOOKS:
+            print("  OK   no old splitscreen remover hooks")
     return 1 if bad else 0
 
 
