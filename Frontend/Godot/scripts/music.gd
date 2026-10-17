@@ -4,10 +4,12 @@ extends Node
 ##   <SparkingData>/music/<name>.ogg|.mp3      (your own, no re-export needed)
 ##   res://music/<name>.ogg|.mp3|.wav          (shipped with the frontend)
 ## A missing track falls back to its parent (TRACK_PARENT), then "main_menu"; no file at all =
-## silence.
+## silence. Budokai Tenkaichi 2's menus have their own tracks: bt2_game_menu, bt2_netplay,
+## bt2_lobby, bt2_battle_lounge, bt2_ranked (falling back the same way, never to Tenkaichi 3's).
 ## The music fades out while a game runs (Dolphin's window is up) and picks up where it left off
 ## when the game closes.
 
+const Style := preload("res://scripts/ui/style.gd")
 const FALLBACK := "main_menu"
 ## Tracks that are a variant of another: without their own file they play the other one.
 const TRACK_PARENT := {"battle_lounge": "lobby", "ranked": "lobby"}
@@ -43,8 +45,9 @@ func play(track: String) -> void:
 		track = FALLBACK
 	_track = track
 	var stream := _find(track)
-	if stream == null and TRACK_PARENT.has(track):
-		stream = _find(String(TRACK_PARENT[track]))
+	var parent := Style.track_parent(track, TRACK_PARENT)   # (also a game's own: bt2_ranked -> bt2_lobby)
+	if stream == null and parent != "":
+		stream = _find(parent)
 	if stream == null and track != FALLBACK:
 		stream = _find(FALLBACK)
 	if stream == _current:

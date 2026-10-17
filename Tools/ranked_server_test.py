@@ -193,7 +193,7 @@ def admin_checks(server, check, tokens):
           me("vegeta")["ratings"]["single"] == {"rating": 1234, "wins": 7, "losses": 3})
 
     # Void the Team Battle match Goku won against krillin (+16 / -16): both back to 1000, 0-0.
-    tm = re.findall(r"name=match value=(\d+)>", page("?p=matches&state=done"))
+    tm = re.findall(r"<tr><td>#(\d+)</td><td>[^<]*</td><td>team</td>", page("?p=matches&state=done"))
     team_before = (me("goku")["ratings"]["team"], me("krillin")["ratings"]["team"])
     life_before = me("goku")["lifetime"]
     act(a="void", match=tm[0])
@@ -360,6 +360,43 @@ def main():
         allt = board("all", "global")
         check(f"all-time record across modes {allt}", allt[0] == ("Goku", None, 3, 1))
         check(f"all-time in EU {board('all', 'EU')}", [n for n, *_ in board("all", "EU")] == ["Goku", "krillin"])
+        # Budokai Tenkaichi 2: its own ladder (b2single / b2team), lobbies per disc version.
+        _, o = call(server, "lobby.php", V, action="open", mode="b2single", region="NA",
+                    join="ABCDEF", link="wired", version="RDBE70")
+        b2l = o["lobby"]["id"]
+        check(f"BT2 lobby opened with its version {o['lobby'].get('version')}", o["lobby"].get("version") == "RDBE70")
+        _, ls = call(server, "lobby.php", G, action="list")
+        check("older launchers' list: Tenkaichi 3 lobbies only", all(x["id"] != b2l for x in ls["lobbies"]))
+        _, ls = call(server, "lobby.php", G, action="list", game="bt2", version="RDBE70")
+        check("BT2 list on that version finds it", [x["id"] for x in ls["lobbies"]] == [b2l])
+        _, ls = call(server, "lobby.php", G, action="list", game="bt2", version="RDBPAF")
+        check("another version doesn't", ls["lobbies"] == [])
+        _, ls = call(server, "lobby.php", G, action="list", game="bt3", version="RDSPAF")
+        check(f"a lobby from before versions counts as BT3 PAL ({len(ls['lobbies'])})",
+              any(x["version"] == "RDSPAF" for x in ls["lobbies"]))
+        _, ls = call(server, "lobby.php", G, action="list", game="bt3", version="RDSE70")
+        check("... and not as BT3 NTSC-U", all(x["version"] == "RDSE70" for x in ls["lobbies"]))
+        call(server, "lobby.php", G, action="join", lobby=b2l)
+        call(server, "match.php", V, action="start", lobby=b2l)
+        call(server, "match.php", V, action="report", lobby=b2l, result="win")
+        call(server, "match.php", G, action="report", lobby=b2l, result="loss")
+        check(f"BT2 board {board('b2single', 'global')}",
+              board("b2single", "global") == [("Vegeta", 1016, 1, 0), ("Goku", 984, 0, 1)])
+        check("Tenkaichi 3's board unchanged", [n for n, *_ in board("single", "global")] == ["Goku", "Vegeta"])
+        _, me2 = call(server, "me.php", V, game="bt2")
+        check(f"BT2 profile: its ratings under plain names {me2['ratings']['single']}",
+              me2["ratings"]["single"]["rating"] == 1016 and me2["lifetime"] == {"wins": 1, "losses": 0})
+        _, me3 = call(server, "me.php", V)
+        check("Tenkaichi 3 profile: its own", me3["ratings"]["single"]["rating"] != 1016 or me3["lifetime"]["wins"] != 1)
+        _, b2all = call(server, "leaderboard.php?mode=all&region=global&game=bt2")
+        check(f"BT2 all-time record {b2all['rows']}", [(r["name"], r["wins"]) for r in b2all["rows"]] == [("Vegeta", 1), ("Goku", 0)])
+        check(f"Tenkaichi 3 all-time record without BT2 {board('all', 'global')}", board("all", "global")[0] == ("Goku", None, 3, 1))
+        _, nt = call(server, "notices.php", lang="en")
+        check("yellow news is Tenkaichi 3's only", "BT2" not in nt["notices"]["yellow"])
+        call(server, "lobby.php", V, action="close", lobby=b2l)
+        code, badv = call(server, "lobby.php", G, action="list", version="RDS")
+        check("bad version refused", badv.get("error") == "bad_version")
+
         _, bad = call(server, "leaderboard.php?mode=ranked")
         check("bad mode refused", bad.get("error") == "bad_mode")
         with urllib.request.urlopen(server.url + "index.php?mode=team&region=EU", timeout=10) as r:

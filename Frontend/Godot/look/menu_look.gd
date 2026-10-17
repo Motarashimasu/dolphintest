@@ -34,6 +34,12 @@ extends Resource
 ## Ranked Match lobbies. Empty = the lobby picture.
 @export var background_ranked: Texture2D
 @export var background_terminology: Texture2D
+## Budokai Tenkaichi 2's menus (none = the default picture; Battle Lounge / ranked = BT2's lobby).
+@export var background_bt2_game_menu: Texture2D
+@export var background_bt2_netplay: Texture2D
+@export var background_bt2_lobby: Texture2D
+@export var background_bt2_battle_lounge: Texture2D
+@export var background_bt2_ranked: Texture2D
 
 @export_group("Title")
 ## The letters: a gradient from title_color (top) to title_color_bottom (the baseline).

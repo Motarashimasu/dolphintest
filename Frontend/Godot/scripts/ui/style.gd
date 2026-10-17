@@ -147,13 +147,27 @@ static func item_color(label: String, fallback: Color) -> Color:
 const BACKGROUND_PARENT := {"battle_lounge": "lobby", "ranked": "lobby"}   # same as Music.TRACK_PARENT
 
 
+## A game's own tracks start with its prefix ("bt2_lobby"); its variants fall back within that
+## game (bt2_battle_lounge -> bt2_lobby), never to another game's picture.
 static func background(track: String) -> Texture2D:
 	_ensure()
 	var t = look.get("background_" + track) if track != "" else null
 	# A screen variant without its own picture uses its parent's (Battle Lounge -> lobby).
-	if t == null and BACKGROUND_PARENT.has(track):
-		t = look.get("background_" + String(BACKGROUND_PARENT[track]))
+	var parent := track_parent(track, BACKGROUND_PARENT)
+	if t == null and parent != "":
+		t = look.get("background_" + parent)
 	return t if t else look.background_default
+
+
+## The track a variant falls back to ("bt2_ranked" -> "bt2_lobby"), or "".
+static func track_parent(track: String, parents: Dictionary) -> String:
+	var prefix := ""
+	var base := track
+	var cut := track.find("_")
+	if track.begins_with("bt") and cut > 0:
+		prefix = track.left(cut + 1)
+		base = track.substr(cut + 1)
+	return prefix + String(parents[base]) if parents.has(base) else ""
 
 
 ## Fonts: the look's fonts, else res://fonts/menu.* / button.* / body.*, else the system font

@@ -101,7 +101,7 @@ func set_shown(on: bool) -> void:
 	_shown = on
 	if on:
 		refresh()
-		if Ranked.profile.is_empty():
+		if not Ranked.has_profile():
 			Ranked.refresh()   # fills the numbers in when it answers (Ranked.changed)
 	if _tween and _tween.is_valid():
 		_tween.kill()
@@ -123,8 +123,8 @@ func refresh() -> void:
 		return
 	for i in 2:
 		var mode := "single" if i == 0 else "team"
-		var r := Ranked.rating(mode) if not Ranked.profile.is_empty() \
-				else int(Settings.get_value("ranked", "last_" + mode))
+		var r := Ranked.rating(mode) if Ranked.has_profile() \
+				else Ranked.last_rating(mode)
 		_values[i].text = str(r) if r > 0 else "----"
 	if _shown and not Ranked.logged_in():
 		set_shown(false)

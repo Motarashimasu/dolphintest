@@ -49,6 +49,21 @@
   "Season 1",
   "Enter",
   "Esc",
-  "NEOcode"
+  "NEOcode",
+  "NTSC-U",
+  "PAL",
+  "NTSC-J",
+  "Budokai Tenkaichi 2",
+  "Tenkaichi 2",
+  "DRAGON NET (NTSC-U)",
+  "DRAGON NET (PAL)",
+  "DRAGON NET (NTSC-J)",
+  "Sparking! NEO",
+  "Sparking! METEOR",
+  "a.iso",
+  "b.wbfs",
+  "d.ciso",
+  "NTSC-U · d.ciso",
+  "PAL · game.dol"
  ]
 }

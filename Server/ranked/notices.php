@@ -16,11 +16,12 @@ const MODE_NAMES = [
 ];
 const NEWS_HOURS = 24;
 
-// Players newly in a mode's global Top 5 since the last check -> yellow news.
+// Players newly in a mode's global Top 5 since the last check -> yellow news. The yellow bar is
+// Tenkaichi 3's (the launcher shows it in Tenkaichi 3's menus): its modes only.
 function top5_news(): array
 {
     $news = json_decode(meta_get('top5_news', '[]'), true) ?: [];
-    foreach (MODES as $mode) {
+    foreach (GAME_MODES['bt3'] as $mode) {
         $ids = [];
         $names = [];
         foreach (leaderboard($mode, 'global', 5) as $r) {

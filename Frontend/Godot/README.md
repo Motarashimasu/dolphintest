@@ -1,6 +1,9 @@
 # DRAGON BALL Sparking! Collection — Godot frontend (test build)
 
-A test frontend for one game, **Budokai Tenkaichi 3 PAL (RDSPAF)**. It drives the
+A test frontend for **Budokai Tenkaichi 3** and **Budokai Tenkaichi 2** (Wii), each in any of
+its versions: NTSC-U (RDSE70 / RDBE70), PAL (RDSPAF / RDBPAF) and NTSC-J (RDSJAF / RDBJAF).
+Tenkaichi 3 is the one being tested; Tenkaichi 2's menus are in place for its battle states and
+codes (NEOcode stays Tenkaichi 3's for now). It drives the
 Dolphin-Sparking build (`DolphinNoGUI.exe`) through its `[SPARKING]` stdin/stdout protocol
 (`Docs/SPARKING.md`).
 
@@ -12,7 +15,15 @@ Dolphin-Sparking build (`DolphinNoGUI.exe`) through its `[SPARKING]` stdin/stdou
 3. In Godot, use **Import** and pick `Frontend/Godot/project.godot`, then press **Run** (F5).
    - A newer Godot asks to convert the project once; say yes.
 4. The first time only, the launcher asks for the menus' language (English, Español, Italiano),
-   then **Welcome** asks for your BT3 game file, DRAGON NET name and region.
+   then **Welcome** asks for one game file of each game (any version; Tenkaichi 2 can wait),
+   your DRAGON NET name and region.
+
+**Game copies.** Options > Game Copies > a game lists its three versions, each with its own disc
+image, and which one Play Offline uses. A picked file's version is read from the disc (ISO,
+WBFS, RVZ / WIA, CISO; a GCZ asks which version it is) and filed under it, whatever row it was
+picked from. DRAGON NET asks which version to play first when there's more than one copy of the
+game (only the same version can play together); with one copy it goes straight in. Settings
+from before game copies: the one game file becomes the Tenkaichi 3 copy of its version.
 
 Dolphin-Sparking and SparkingData are found automatically: next to the launcher, or up to 4
 folders above it. In the development layout that's
@@ -37,14 +48,15 @@ DRAGON BALL Sparking! Collection\
 3. Copy `SparkingData` into `SparkingRelease`. Leave out `frontend.cfg` and anything else
    personal.
 
-Players then only pick their game file once. Dolphin can't run from inside the Godot `.exe`
+Players then only pick their game files once. Dolphin can't run from inside the Godot `.exe`
 itself (it's a separate program with its own files), so it ships beside it in the same folder.
 
 ## Menus
 
 ```
 Main Menu   Budokai Tenkaichi 3 > Play Offline
-                                  DRAGON NET > Lobby Browser
+                                  DRAGON NET > (Which version? when you have more than one)
+                                               Lobby Browser
                                             Player Match > Host  (lobby options > Lobby)
                                                            Find  (Single / Team / Any > Lobby)
                                             Ranked Match (work in progress)
@@ -53,8 +65,10 @@ Main Menu   Budokai Tenkaichi 3 > Play Offline
                                                   Button Prompts (GameCube / PlayStation / Xbox)
                                                   Codes (offline)
                                   Tenkaichi Terminology > Movement / Offense / ... / Tech
+            Budokai Tenkaichi 2 > the same, without Tenkaichi Terminology (own music,
+                                  pictures and ranked ladder)
             Video Settings  (renderer, resolution, window size / borderless)
-            Options         (aspect, music volume, health %, match HUD, FPS, profile)
+            Options         (Game Copies, aspect, music volume, health %, match HUD, FPS, profile)
             Exit
 ```
 
@@ -169,7 +183,8 @@ tutorial open it on A.
 - **Colors, fonts, pictures:** open `look/menu_look.tres` and change it in the Inspector. That
   covers the title, the menu wheel (the selected bar and row bar pictures and sizes, text colors and size,
   letter icons, arrows), per-item colors, the description bar, panels and rows, toasts,
-  fonts, and a background picture per menu (main_menu, game_menu, netplay, lobby,
+  fonts, and a background picture per menu (main_menu, game_menu, netplay, lobby, and
+  Budokai Tenkaichi 2's own bt2_game_menu, bt2_netplay, bt2_lobby, ...;
   battle_lounge and ranked (both fall back to lobby's), terminology, or one default).
   The selected item sits on `look/bar_selected.png` (yellow), the others on `look/bar_row.png`
   (blue); swap them in the Menu wheel group (selected_bar / row_bar, with their sizes).
@@ -237,6 +252,7 @@ best; it's scaled to cover the window.
 | `battle_lounge` | the Battle Lounge lobby (no file: the `lobby` track plays) |
 | `ranked` | Ranked Match lobbies (no file: the `lobby` track plays) |
 | `terminology` | Tenkaichi Terminology |
+| `bt2_game_menu`, `bt2_netplay`, `bt2_lobby`, `bt2_battle_lounge`, `bt2_ranked` | the same screens in Budokai Tenkaichi 2's menus (no file: `bt2_battle_lounge` / `bt2_ranked` play `bt2_lobby`, the rest the main menu's; never Tenkaichi 3's) |
 
 - Put files named after them in `music/` (`main_menu.ogg`, ...; ogg, mp3 or wav), or in
   `SparkingData\music` (ogg or mp3; these override the ones in `music/` without re-exporting).

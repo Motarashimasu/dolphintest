@@ -223,7 +223,7 @@ try {
             $body .= '</div><h2>This season\'s stats</h2>';
             foreach (MODES as $mode) {
                 $r = rating_row($id, $mode);
-                $label = $mode === 'single' ? 'Single Battle FT2' : 'Team Battle';
+                $label = mode_label($mode);
                 $body .= "<form method=post class='box row'>$csrf<input type=hidden name=player value=$id><input type=hidden name=mode value=$mode>"
                     . "<b style='width:160px'>$label</b> Rating <input type=number name=rating value={$r['rating']} min=0 max=5000>"
                     . " Wins <input type=number name=wins value={$r['wins']} min=0> Losses <input type=number name=losses value={$r['losses']} min=0>"
@@ -280,7 +280,7 @@ try {
                         foreach ($list as $r) {
                             $t .= "<tr><td>{$r['rank']}</td><td>{$h($r['name'])}</td><td class=n>{$r['rating']}</td><td class=n>{$r['wins']}-{$r['losses']}</td></tr>";
                         }
-                        $body .= '<h2>' . $h($ss['name']) . ' · ' . ($mode === 'single' ? 'Single Battle FT2' : 'Team Battle') . '</h2>'
+                        $body .= '<h2>' . $h($ss['name']) . ' · ' . mode_label($mode) . '</h2>'
                             . '<table><tr><th>#</th><th>Player</th><th class=n>Rating</th><th class=n>W-L</th></tr>'
                             . ($t ?: '<tr><td colspan=4 class=muted>Nobody played.</td></tr>') . '</table>';
                     }

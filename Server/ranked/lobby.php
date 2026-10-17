@@ -1,10 +1,13 @@
 <?php
 // Ranked lobbies: listed here (the launcher's Ranked Lobby Browser), 2 players each, no
 // spectators.
-//   open {mode, region, join, link}   host: list my lobby (join = room code or ip:port)
+//   open {mode, region, join, link, version}
+//                                     host: list my lobby (join = room code or ip:port, version =
+//                                     the disc ID it plays: RDSPAF...)
 //   heartbeat {lobby}                 host: every ~15 s, keeps it listed; returns status
 //   close {lobby}                     host: take it down
-//   list {mode?}                      open lobbies (with the host's rating)
+//   list {mode?, game?, version?}     open lobbies (with the host's rating): of that game (bt3
+//                                     if not given), on that disc version if given
 //   join {lobby}                      guest: take the seat (then join the room in Dolphin)
 //   status {lobby}                    host or guest: who's in, the running / last match
 //   leave {lobby}                     guest: give the seat back
@@ -33,6 +36,7 @@ function lobby_status(array $l, int $me): array
     $mode = $l['mode'];
     return ['ok' => true, 'lobby' => [
         'id' => (int)$l['id'], 'mode' => $mode, 'region' => $l['region'], 'join' => $l['join_target'],
+        'version' => $l['version'] !== '' ? $l['version'] : 'RDSPAF',
         'link' => $l['link'], 'you_host' => (int)$l['host_id'] === $me,
         'host' => player_brief((int)$l['host_id'], $mode),
         'guest' => guest_present($l) ? player_brief((int)$l['guest_id'], $mode) : null,
@@ -54,11 +58,12 @@ guard(function () {
                 fail('bad_join');
             }
             $link = preg_replace('/[^a-z]/', '', strtolower((string)arg('link', 'unknown'))) ?: 'unknown';
+            $version = valid_version(arg('version'));
             // One open lobby per host.
             $db->prepare('UPDATE lobbies SET closed = 1 WHERE host_id = ? AND closed = 0')->execute([$me]);
-            $db->prepare('INSERT INTO lobbies (host_id, mode, region, join_target, link, created, heartbeat)
-                          VALUES (?, ?, ?, ?, ?, ?, ?)')
-                ->execute([$me, $mode, $region, $join, substr($link, 0, 16), now(), now()]);
+            $db->prepare('INSERT INTO lobbies (host_id, mode, region, join_target, link, version, created, heartbeat)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+                ->execute([$me, $mode, $region, $join, substr($link, 0, 16), $version, now(), now()]);
             $id = (int)$db->lastInsertId();
             rating_row($me, $mode);
             out(lobby_status(lobby_row($id), $me));
@@ -85,6 +90,18 @@ guard(function () {
             if ($mode !== null && $mode !== '' && $mode !== 'any') {
                 $sql .= ' AND l.mode = ?';
                 $params[] = valid_mode($mode);
+            } else {
+                // Any mode of the game (older launchers: Tenkaichi 3's).
+                $modes = GAME_MODES[valid_game(arg('game'))];
+                $sql .= ' AND l.mode IN (' . implode(',', array_fill(0, count($modes), '?')) . ')';
+                array_push($params, ...$modes);
+            }
+            $version = arg('version');
+            if ($version !== null && $version !== '') {
+                // ('' = a lobby from before versions: BT3 PAL)
+                $sql .= " AND (l.version = ? OR (l.version = '' AND ? = 'RDSPAF'))";
+                $v = valid_version($version);
+                array_push($params, $v, $v);
             }
             $st = $db->prepare($sql . ' ORDER BY l.created DESC LIMIT 100');
             $st->execute($params);
@@ -97,6 +114,7 @@ guard(function () {
                 $full = guest_present($l);
                 $rows[] = ['id' => (int)$l['id'], 'mode' => $l['mode'], 'region' => $l['region'],
                            'link' => $l['link'], 'host' => $host, 'full' => $full,
+                           'version' => $l['version'] !== '' ? $l['version'] : 'RDSPAF',
                            'in_match' => $l['match_id'] !== null, 'yours' => (int)$l['host_id'] === $me,
                            'players' => $full ? 2 : 1];
             }

@@ -265,7 +265,9 @@ kept deterministic (as in netplay) while it runs. Events: `rollback_test`, `roll
 (`field`, `mem1` ranges, `mem1_bytes`, `aram_bytes`, `input_mismatch`) and `rollback_test_stats`
 (`cycles`, `mismatches`, `save_ms`, `load_ms`, `rerun_ms_per_field` (+ `_max`), `state_kb`,
 `max_rollback_fields`: fields this PC could re-run inside one 16.7 ms field after a save and a
-load). The launcher's DRAGON NET > Rollback Test runs it and writes `<data>/rollback_test/*.jsonl`.
+load). The launcher's Rollback Test screen runs it and writes `<data>/rollback_test/*.jsonl` (hidden
+from the DRAGON NET menu now; `scripts/screens/rollback_test.gd` is still there for testing
+builds).
 
 Re-runs aren't drawn, as real rollback won't draw them (nobody sees those frames): right after
 the rewind's state load the GPU starts skipping vertex loading, draws and EFB copies that stay
@@ -515,7 +517,11 @@ launcher: Discord OAuth login (one Discord account = one profile), the ranked lo
 win / loss; agreeing reports count, a lone report counts after 2 minutes, disagreeing reports void
 it; a forfeit is a loss), Elo per mode (K=32, start 1000), per-region records and the
 leaderboard (JSON + web page). `Tools/ranked_server_test.py` runs it on SQLite with a fake
-Discord.
+Discord. Each game has its own ladder: Budokai Tenkaichi 3's modes are `single` / `team`,
+Budokai Tenkaichi 2's `b2single` / `b2team` (the launcher maps them; requests carry
+`game` = bt3 | bt2, older launchers = bt3). A lobby records the disc version it plays
+(`version`, e.g. RDSE70; lobbies from before that count as RDSPAF) and the list only shows the
+asking player's version; a game's versions share one rating.
 
 ### King of the Hill
 

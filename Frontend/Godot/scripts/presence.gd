@@ -17,13 +17,16 @@ extends Node
 
 const Style := preload("res://scripts/ui/style.gd")
 
-signal joined_from_discord(target: String, koth: bool)
+signal joined_from_discord(target: String, koth: bool, disc_id: String)
 
 const CONFIG := "res://data/discord.json"
 const UPDATE_EVERY := 1.0
 const RETRY_EVERY := 15.0
 const JOIN_PREFIX := "spk1:"
 const KOTH_JOIN_PREFIX := "spk1k:"   # a Battle Lounge lobby: joining waits out a running set
+## Now with the lobby's disc ID: "spk2:RDSE70|<target>" (spk1 = an older launcher: BT3 PAL).
+const JOIN_PREFIX_2 := "spk2:"
+const KOTH_JOIN_PREFIX_2 := "spk2k:"
 
 var connected := false      # the Discord app accepted us
 var discord_user := ""      # "name" once connected
@@ -91,10 +94,17 @@ func _on_event(data: Dictionary) -> void:
 			connected = false
 		"join":
 			var secret := String(data.get("secret", ""))
+			for pair in [[KOTH_JOIN_PREFIX_2, true], [JOIN_PREFIX_2, false]]:
+				if secret.begins_with(pair[0]):
+					var rest := secret.substr(String(pair[0]).length())
+					var bar := rest.find("|")
+					if bar > 0:
+						joined_from_discord.emit(rest.substr(bar + 1), pair[1], rest.left(bar))
+					return
 			if secret.begins_with(KOTH_JOIN_PREFIX):
-				joined_from_discord.emit(secret.substr(KOTH_JOIN_PREFIX.length()), true)
+				joined_from_discord.emit(secret.substr(KOTH_JOIN_PREFIX.length()), true, "")
 			elif secret.begins_with(JOIN_PREFIX):
-				joined_from_discord.emit(secret.substr(JOIN_PREFIX.length()), false)
+				joined_from_discord.emit(secret.substr(JOIN_PREFIX.length()), false, "")
 		"join_request":
 			# Only public lobbies offer "Ask to Join", so let them in.
 			Dolphin.helper_send(_helper, "respond %s yes" % String(data.get("user_id", "")))
@@ -180,7 +190,7 @@ func current() -> Dictionary:
 			if ktarget != "":
 				p["party_id"] = "spk-" + ktarget.sha256_text().left(16)
 				if lobby._role == "host" and bool(lobby._public.get("listed", false)):
-					p["join_secret"] = KOTH_JOIN_PREFIX + ktarget
+					p["join_secret"] = KOTH_JOIN_PREFIX_2 + Settings.GAME["id"] + "|" + ktarget
 		else:
 			match String(lobby._phase):
 				"playing":
@@ -212,10 +222,10 @@ func current() -> Dictionary:
 					if target != "":
 						p["party_id"] = "spk-" + target.sha256_text().left(16)
 						if lobby._role == "host" and bool(lobby._public.get("listed", false)):
-							p["join_secret"] = JOIN_PREFIX + target
+							p["join_secret"] = JOIN_PREFIX_2 + Settings.GAME["id"] + "|" + target
 	elif Dolphin.in_game:
 		key = "offline"
-		p["details"] = "Budokai Tenkaichi 3"
+		p["details"] = Settings.GAMES[Settings.game]["title"]
 		p["state"] = tr("Playing offline")
 	else:
 		p["details"] = tr("In the menus")

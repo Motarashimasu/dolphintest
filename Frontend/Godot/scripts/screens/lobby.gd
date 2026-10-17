@@ -53,6 +53,7 @@ var _chat: PackedStringArray = []
 var _battle := {}
 var _logged_buffer := -1
 var _auto_started := false    # Buffer Training starts itself once the state is ready
+var _auto_retries := 0          # its start refused while Dolphin was still checking: retried
 var koth := false             # Battle Lounge lobby (set by the menus, or by a "koth" event)
 var _koth := {}               # last "koth" event: state, line, wins, streak, ...
 var _koth_waiting := false    # joiner: a set is on, Dolphin retries until it ends
@@ -642,8 +643,13 @@ func on_input(event: InputEvent) -> bool:
 	return _actions.handle_input(event)
 
 
+## NEOcode is Tenkaichi 3's only for now.
+func _neocode_allowed() -> bool:
+	return bool(Settings.GAMES[Settings.game]["neocode"])
+
+
 func _toggle_neocode() -> void:
-	if _role != "host" or is_training():
+	if _role != "host" or is_training() or not _neocode_allowed():
 		return
 	if _phase == "playing":
 		_system("NEOcode can't be switched during a match.", "#e8663d")
@@ -797,7 +803,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 			if _role == "host":
 				_buffer = int(Settings.get_value("netplay", "buffer"))
 				_send_buffer_mode()
-				if Settings.get_value("netplay", "neocode") and not is_training():
+				if Settings.get_value("netplay", "neocode") and not is_training() and _neocode_allowed():
 					Dolphin.send("netcode neocode")
 			if is_training():
 				_system("Buffer Training: change the pad buffer here or from the menu (hold Select) while you play.")
@@ -919,6 +925,15 @@ func _on_event(name: String, data: Dictionary) -> void:
 			var code := String(data.get("code", "error"))
 			# Battle Lounge: refused because a set is on. Dolphin retries; nothing to report.
 			if code == "game_running" or (_koth_waiting and code == "connect_failed"):
+				return
+			# Buffer Training's own start, a moment before Dolphin finished checking the save /
+			# battle state (solo: nobody else's to mismatch): try again shortly, quietly.
+			if is_training() and _auto_started and _phase == "lobby" and _auto_retries < 20 \
+					and code in ["save_data_mismatch", "battle_state_not_ready"]:
+				_auto_retries += 1
+				get_tree().create_timer(0.5).timeout.connect(func():
+					if is_inside_tree() and _phase == "lobby":
+						Dolphin.send("start"))
 				return
 			var msg: String = ERRORS.get(code, code.replace("_", " "))
 			if data.has("reason"):

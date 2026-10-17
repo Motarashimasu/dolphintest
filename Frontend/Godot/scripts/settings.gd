@@ -1,6 +1,9 @@
 extends Node
 ## Saved settings and the Dolphin command lines built from them.
-## This test build supports one game: BT3 PAL (RDSPAF).
+## Games: Budokai Tenkaichi 3 and Budokai Tenkaichi 2 (Wii), each in up to three versions
+## (NTSC-U, PAL, NTSC-J), every version its own disc image ("game copies", Options). The menus
+## work on one game at a time (use_game): Play Offline runs that game's offline copy, DRAGON NET
+## the version picked on the way in.
 ##
 ## Dolphin-Sparking and the SparkingData folder are found automatically, next to the launcher:
 ##   <folder>/DRAGON BALL Sparking! Collection.exe   (this frontend, exported)
@@ -14,14 +17,53 @@ const CONFIG_FILE := "frontend.cfg"
 const OLD_CONFIG := "user://sparking.cfg"   # before settings moved into SparkingData
 const DOLPHIN_NAMES := ["DolphinNoGUI.exe", "dolphin-emu-nogui"]
 
-## The one game of this build. Per-game data the launcher needs.
-const GAME := {
-	"id": "RDSPAF",
-	"title": "Budokai Tenkaichi 3",
-	"full_title": "Dragon Ball Z: Budokai Tenkaichi 3 (PAL)",
-	# Netplay: each player runs only their own port's splitscreen remover (+ the ini defaults).
-	"port_codes": {1: "Player 1 Splitscreen Remover", 2: "Player 2 Splitscreen Remover"},
+## The games, and per game what the launcher needs. Versions: disc IDs.
+const VERSIONS := ["NTSC-U", "PAL", "NTSC-J"]
+const GAMES := {
+	"bt3": {
+		"title": "Budokai Tenkaichi 3",
+		"short": "Tenkaichi 3",
+		"jp": "Sparking! METEOR",
+		"full_title": "Dragon Ball Z: Budokai Tenkaichi 3",
+		"glyph": "3", "color": "#f2b531",
+		"versions": {"NTSC-U": "RDSE70", "PAL": "RDSPAF", "NTSC-J": "RDSJAF"},
+		# Netplay: each player runs only their own port's splitscreen remover (+ the ini defaults).
+		"port_codes": {1: "Player 1 Splitscreen Remover", 2: "Player 2 Splitscreen Remover"},
+		"neocode": true,        # the hidden NEOcode netcode (BT3 only for now)
+		"terminology": true,    # Tenkaichi Terminology (data/terminology.json is BT3's)
+		"ranked_prefix": "",    # ranked server modes: single / team
+		"tracks": "",           # music / pictures: game_menu, netplay, lobby, ...
+	},
+	"bt2": {
+		"title": "Budokai Tenkaichi 2",
+		"short": "Tenkaichi 2",
+		"jp": "Sparking! NEO",
+		"full_title": "Dragon Ball Z: Budokai Tenkaichi 2",
+		"glyph": "2", "color": "#3fa9f5",
+		"versions": {"NTSC-U": "RDBE70", "PAL": "RDBPAF", "NTSC-J": "RDBJAF"},
+		"port_codes": {1: "Player 1 Splitscreen Remover", 2: "Player 2 Splitscreen Remover"},
+		"neocode": false,
+		"terminology": false,
+		"ranked_prefix": "b2",  # its own ranked ladder: b2single / b2team
+		"tracks": "bt2_",       # its own music / pictures: bt2_game_menu, bt2_netplay, ...
+	},
 }
+const GAME_ORDER := ["bt3", "bt2"]
+
+## The game the menus are on and the version in use ("" = its offline copy). See use_game().
+var game := "bt3"
+var version := ""
+
+## The current game and version, as one dictionary (the game's entry + id, version, path).
+var GAME: Dictionary:
+	get:
+		var g: Dictionary = GAMES[game].duplicate()
+		var v := current_version()
+		g["key"] = game
+		g["version"] = v
+		g["id"] = g["versions"].get(v, "")
+		g["path"] = copy_path(game, v)
+		return g
 
 const RENDERERS := ["Vulkan", "OGL"]                        # Dolphin -v names
 const RENDERER_NAMES := ["Vulkan", "OpenGL"]
@@ -39,7 +81,7 @@ var _cfg := ConfigFile.new()
 var defaults := {
 	"paths": {
 		"dolphin": "",              # "" = found automatically (see above); tests can force one
-		"game": "",
+		"game": "",                 # (before game copies: the one BT3 PAL file; moved to [games])
 		"data": "",                 # "" = found automatically
 		"profile": "user",          # folder inside data: user (or user2 for LAN tests on one PC)
 		"extra_args": "",           # advanced/testing, e.g. "-p headless -v Null"
@@ -63,8 +105,12 @@ var defaults := {
 	# DRAGON NET Ranked: the ranked server (Server/ranked) and this install's Discord session.
 	"ranked": {"server": "https://tecshideout.ct.ws/sparking/", "token": "", "name": "",
 		"mode": "single", "board_mode": "single", "board_region": "global",
-		"last_single": 0, "last_team": 0},   # last known ratings, for the menu's rating plate
+		"last_single": 0, "last_team": 0,     # last known ratings, for the menu's rating plate
+		"b2last_single": 0, "b2last_team": 0},   # (Budokai Tenkaichi 2's)
 	"controller": {"preset": "auto"},    # auto, keep, or a preset name (scripts/controllers.gd)
+	# Game copies: "<game>_<version>" = disc image path, "<game>_offline" = the version Play
+	# Offline uses, "<game>_netplay" = the version last picked for DRAGON NET.
+	"games": {},
 	"terminology": {"source": "https://docs.google.com/document/d/1QYI1z6ukEn-8PBvgysOUYB4-6EpmVy0HhpQmGjAmarU/mobilebasic"},
 }
 
@@ -92,6 +138,7 @@ func _ready() -> void:
 		if not FileAccess.file_exists(_path) and FileAccess.file_exists(OLD_CONFIG):
 			DirAccess.copy_absolute(ProjectSettings.globalize_path(OLD_CONFIG), _path)
 	_cfg.load(_path)  # missing file = defaults
+	_migrate_game_path()
 
 
 ## The folder the launcher runs from (the project folder when run from the editor).
@@ -130,19 +177,132 @@ func use_file(path: String) -> void:
 	_path = path
 	_cfg = ConfigFile.new()
 	_cfg.load(_path)
+	_migrate_game_path()
 
 
 func get_value(section: String, key: String) -> Variant:
+	if section == "games":
+		return _cfg.get_value(section, key, "")
 	return _cfg.get_value(section, key, defaults[section][key])
 
 
 func set_value(section: String, key: String, value: Variant) -> void:
 	_cfg.set_value(section, key, value)
 	_cfg.save(_path)
+	if section == "paths" and key == "game":
+		_migrate_game_path()   # (old settings / tests: the one game path)
 
 
 func data_path(sub: String) -> String:
 	return data_dir().path_join(sub)
+
+
+# --- Games and their copies ----------------------------------------------------------------
+
+## The menus are now on `key` (and `ver`; "" = the game's offline copy).
+func use_game(key: String, ver := "") -> void:
+	game = key if GAMES.has(key) else "bt3"
+	version = ver
+
+
+## The version in use: the one picked, else the offline one, else any the player has.
+func current_version() -> String:
+	if version != "":
+		return version
+	return offline_version(game)
+
+
+func copy_path(key: String, ver: String) -> String:
+	return String(get_value("games", "%s_%s" % [key, ver])) if ver != "" else ""
+
+
+func has_copy(key: String, ver: String) -> bool:
+	var p := copy_path(key, ver)
+	return p != "" and FileAccess.file_exists(p)
+
+
+## Versions of `key` with a copy on this PC, in VERSIONS order.
+func owned_versions(key: String) -> Array:
+	return VERSIONS.filter(func(v): return has_copy(key, v))
+
+
+func set_copy(key: String, ver: String, path: String) -> void:
+	set_value("games", "%s_%s" % [key, ver], path.replace("\\", "/"))
+	# The first copy of a game is what Play Offline uses.
+	if not has_copy(key, String(get_value("games", key + "_offline"))):
+		set_value("games", key + "_offline", ver)
+
+
+## The version Play Offline runs (Options > Game Copies): the one chosen, else the first owned.
+func offline_version(key: String) -> String:
+	var v := String(get_value("games", key + "_offline"))
+	if has_copy(key, v):
+		return v
+	var owned := owned_versions(key)
+	return owned[0] if not owned.is_empty() else (v if v != "" else "PAL")
+
+
+func set_offline_version(key: String, ver: String) -> void:
+	set_value("games", key + "_offline", ver)
+
+
+## The game and version of a disc ID ("bt3", "PAL"), or [] if it's none of these games'.
+func game_of_id(id: String) -> Array:
+	for key in GAME_ORDER:
+		for v in VERSIONS:
+			if String(GAMES[key]["versions"][v]) == id.left(6):
+				return [key, v]
+	return []
+
+
+## The disc ID inside a disc image (ISO / GCM, WBFS, RVZ / WIA, CISO), else one written in the
+## file name like "(RDSPAF)", else "" (GCZ and the like: the player says which version it is).
+static func read_disc_id(path: String) -> String:
+	var f := FileAccess.open(path, FileAccess.READ)
+	var id := ""
+	if f != null:
+		var magic := f.get_buffer(4)
+		var at := 0
+		if magic == "WBFS".to_ascii_buffer():
+			f.seek(8)
+			at = 1 << f.get_8()                 # the disc's header copy: one "HD sector" in
+		elif magic == "WIA\u0001".to_ascii_buffer() or magic == "RVZ\u0001".to_ascii_buffer():
+			at = 0x58                           # header 2's copy of the disc header
+		elif magic == "CISO".to_ascii_buffer():
+			at = 0x8000                         # the first block (always present)
+		f.seek(at)
+		var raw := f.get_buffer(6)
+		f.close()
+		if raw.size() == 6:
+			var text := raw.get_string_from_ascii()
+			if text.length() == 6 and RegEx.create_from_string("^[A-Z0-9]{6}$").search(text):
+				id = text
+	if id == "":
+		var m := RegEx.create_from_string("[\\[(]([A-Z0-9]{6})[\\])]").search(path.get_file())
+		if m:
+			id = m.get_string(1)
+	return id
+
+
+## Before game copies there was one path (BT3 PAL): file it under its version.
+func _migrate_game_path() -> void:
+	var old := String(_cfg.get_value("paths", "game", ""))
+	if old == "":
+		return
+	var where := game_of_id(read_disc_id(old))
+	if where.is_empty() or where[0] != "bt3":
+		where = ["bt3", "PAL"]
+	if String(_cfg.get_value("games", "%s_%s" % where, "")) == "":
+		_cfg.set_value("games", "%s_%s" % where, old)
+	if String(_cfg.get_value("games", "bt3_offline", "")) == "":
+		_cfg.set_value("games", "bt3_offline", where[1])
+	_cfg.set_value("paths", "game", "")
+	_cfg.save(_path)
+
+
+## The disc image the current game / version runs.
+func game_path() -> String:
+	return GAME["path"]
 
 
 ## Everything needed to launch is in place.
@@ -150,9 +310,9 @@ func is_configured() -> bool:
 	return missing_paths().is_empty()
 
 
-## The first-run setup is needed: never done, or the game file has gone.
+## The first-run setup is needed: never done, or no copy of any game is left.
 func needs_setup() -> bool:
-	return not get_value("paths", "setup_done") or not FileAccess.file_exists(get_value("paths", "game"))
+	return not get_value("paths", "setup_done") or GAME_ORDER.all(func(k): return owned_versions(k).is_empty())
 
 
 ## Can the launcher and Dolphin write into SparkingData? Not when it's under C:\Program Files (or
@@ -179,7 +339,7 @@ func missing_paths() -> PackedStringArray:
 	var out := PackedStringArray()
 	if dolphin_path() == "" or not FileAccess.file_exists(dolphin_path()):
 		out.append("Dolphin-Sparking")
-	if not FileAccess.file_exists(get_value("paths", "game")):
+	if not FileAccess.file_exists(game_path()):
 		out.append("game file")
 	if data_dir() == "" or not DirAccess.dir_exists_absolute(data_dir()):
 		out.append("SparkingData folder")
@@ -225,13 +385,17 @@ func solo_args() -> PackedStringArray:
 			a.append("--no-gecko")
 		for code in codes:
 			a.append_array(["--gecko", code])
-	a.append_array(["-e", get_value("paths", "game")])
+	a.append_array(["-e", game_path()])
 	return a
 
 
 ## Watch a recorded ranked match (replays.gd): from the start of its first round to its end,
 ## with the Gecko codes the recording player had on.
-func replay_args(dtm_path: String, codes: Array) -> PackedStringArray:
+func replay_args(dtm_path: String, codes: Array, disc_id := "") -> PackedStringArray:
+	# The replay's own game and version (recorded in its info), else the current one.
+	var where := game_of_id(disc_id)
+	if not where.is_empty() and has_copy(where[0], where[1]):
+		use_game(where[0], where[1])
 	var a := common_args()
 	a.append_array(["--hud", "off", "--sparking", "--local-players", "2"])
 	a.append_array(["--nand", data_path("saves/replay"), "--state-dir", data_path("states")])
@@ -239,7 +403,7 @@ func replay_args(dtm_path: String, codes: Array) -> PackedStringArray:
 		a.append("--no-gecko")
 	for code in codes:
 		a.append_array(["--gecko", String(code)])
-	a.append_array(["--replay", dtm_path, "-e", get_value("paths", "game")])
+	a.append_array(["--replay", dtm_path, "-e", game_path()])
 	return a
 
 
@@ -268,8 +432,9 @@ func _netplay_base(nickname := "") -> PackedStringArray:
 	a.append_array(["--hud", "on"])   # score bar + ping always on in netplay matches
 	a.append_array(["--nand", data_path("saves/netplay"), "--state-dir", data_path("states")])
 	a.append_array(["--nickname", nickname if nickname != "" else String(get_value("player", "nickname"))])
-	for port in GAME["port_codes"]:
-		a.append_array(["--netplay-gecko", "%d=%s" % [port, GAME["port_codes"][port]]])
+	var codes: Dictionary = GAMES[game]["port_codes"]
+	for port in codes:
+		a.append_array(["--netplay-gecko", "%d=%s" % [port, codes[port]]])
 	return a
 
 
@@ -285,7 +450,7 @@ func host_args(mode: String, public: bool, traversal: bool, koth := false) -> Pa
 		# A direct (IP) lobby is listed with the address others should connect to.
 		if not traversal and String(get_value("netplay", "public_address")) != "":
 			a.append_array(["--public-address", get_value("netplay", "public_address")])
-	a.append_array(["--netplay-host", get_value("paths", "game")])
+	a.append_array(["--netplay-host", game_path()])
 	return a
 
 
@@ -297,14 +462,14 @@ func ranked_host_args(mode: String, traversal: bool) -> PackedStringArray:
 	a.append_array(["--record-replays", data_path("replays")])
 	if not traversal:
 		a.append("--netplay-direct")
-	a.append_array(["--netplay-host", get_value("paths", "game")])
+	a.append_array(["--netplay-host", game_path()])
 	return a
 
 
 func ranked_join_args(target: String) -> PackedStringArray:
 	var a := _netplay_base(ranked_nickname())
 	a.append_array(["--record-replays", data_path("replays")])   # decided matches are saved
-	a.append_array(["--netplay-game", get_value("paths", "game"), "--netplay-join", target])
+	a.append_array(["--netplay-game", game_path(), "--netplay-join", target])
 	return a
 
 
@@ -320,7 +485,7 @@ func training_args() -> PackedStringArray:
 
 func join_args(target: String, koth := false) -> PackedStringArray:
 	var a := _netplay_base()
-	a.append_array(["--netplay-game", get_value("paths", "game"), "--netplay-join", target])
+	a.append_array(["--netplay-game", game_path(), "--netplay-join", target])
 	if koth:
 		a.append("--koth")   # joining during a set waits for it to end
 	return a
@@ -338,7 +503,7 @@ func find_args(mode: String, koth := false) -> PackedStringArray:
 	a.append_array(["--netplay-find", mode, "--region", get_value("player", "region")])
 	if koth:
 		a.append("--koth")
-	a.append_array(["--netplay-game", get_value("paths", "game")])
+	a.append_array(["--netplay-game", game_path()])
 	return a
 
 

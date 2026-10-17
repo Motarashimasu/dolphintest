@@ -11,7 +11,7 @@ const Style := preload("res://scripts/ui/style.gd")
 
 const MODE_CAP := {"single": 2, "team": 1}   # wins that take a ranked match
 
-var profile := {}            # me.php: player, ratings {single, team}, lifetime
+var profile := {}            # me.php: player, ratings {single, team}, lifetime (of profile.game)
 var logging_in := false
 ## How a login link is opened. Tests swap it for a scripted "browser".
 var open_url: Callable = func(url: String): OS.shell_open(url)
@@ -42,7 +42,36 @@ static func mode_title(mode: String) -> String:
 	return Style.mode_name(mode)
 
 
+## Each game has its own ladder on the server (Budokai Tenkaichi 2: b2single / b2team) and a
+## lobby plays one disc version. The screens speak plain modes (single, team) for the game the
+## menus are on; this turns them into the server's and back.
+static func _to_server(endpoint: String, body: Dictionary) -> Dictionary:
+	var b := body.duplicate()
+	var prefix := String(Settings.GAMES[Settings.game]["ranked_prefix"])
+	b["game"] = Settings.game
+	if String(b.get("mode", "")) in ["single", "team"]:
+		b["mode"] = prefix + String(b["mode"])
+	if endpoint == "lobby.php" and String(b.get("action", "")) in ["open", "list"]:
+		b["version"] = Settings.GAME["id"]
+	return b
+
+
+static func _from_server(v: Variant) -> Variant:
+	if v is Dictionary:
+		var d: Dictionary = v
+		for k in d.keys():
+			d[k] = _from_server(d[k])
+		var m = d.get("mode")
+		if m is String and (m as String).begins_with("b2"):
+			d["mode"] = (m as String).substr(2)
+	elif v is Array:
+		for i in (v as Array).size():
+			v[i] = _from_server(v[i])
+	return v
+
+
 func api(endpoint: String, body := {}) -> Dictionary:
+	body = _to_server(endpoint, body)
 	var req := HTTPRequest.new()
 	req.timeout = 20.0
 	add_child(req)
@@ -62,7 +91,7 @@ func api(endpoint: String, body := {}) -> Dictionary:
 		return {"ok": false, "error": "bad_response", "http": int(res[1])}
 	if int(res[1]) == 401 and token() != "":
 		_forget()   # the session ended on the server (logged out elsewhere, reset)
-	return data
+	return _from_server(data)
 
 
 ## Opens Discord's authorize page and waits (up to ~10 min) for the player to approve.
@@ -115,7 +144,7 @@ func refresh() -> Dictionary:
 		profile = me
 		Settings.set_value("ranked", "name", String(me["player"]["name"]))
 		for mode in ["single", "team"]:
-			Settings.set_value("ranked", "last_" + mode, rating(mode))
+			Settings.set_value("ranked", _last_key(mode), rating(mode))
 		changed.emit()
 	return me
 
@@ -128,14 +157,29 @@ func logout() -> void:
 
 func _forget() -> void:
 	Settings.set_value("ranked", "token", "")
-	Settings.set_value("ranked", "last_single", 0)
-	Settings.set_value("ranked", "last_team", 0)
+	for key in Settings.GAMES:
+		for mode in ["single", "team"]:
+			Settings.set_value("ranked", String(Settings.GAMES[key]["ranked_prefix"]) + "last_" + mode, 0)
 	profile = {}
 	changed.emit()
 
 
 func rating(mode: String) -> int:
 	return int(profile.get("ratings", {}).get(mode, {}).get("rating", 1000))
+
+
+## The profile is the current game's (refresh() after switching games).
+func has_profile() -> bool:
+	return not profile.is_empty() and String(profile.get("game", "bt3")) == Settings.game
+
+
+## The rating plate's last known rating of `mode`, per game (b2last_single...).
+func last_rating(mode: String) -> int:
+	return int(Settings.get_value("ranked", _last_key(mode)))
+
+
+static func _last_key(mode: String) -> String:
+	return String(Settings.GAMES[Settings.game]["ranked_prefix"]) + "last_" + mode
 
 
 ## Readable text for a server error code.

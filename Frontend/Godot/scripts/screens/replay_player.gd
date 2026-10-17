@@ -37,7 +37,14 @@ func screen_desc() -> String:
 func on_enter() -> void:
 	super()
 	Dolphin.event.connect(_on_event)
-	if not Dolphin.launch(Settings.replay_args(String(info.get("path", "")), info.get("gecko", []))):
+	var disc_id := String(info.get("game_id", ""))
+	var where := Settings.game_of_id(disc_id)
+	if not where.is_empty() and not Settings.has_copy(where[0], where[1]):
+		app.toast(tr("This replay is on %s %s: add that copy in Options > Game Copies.") % [
+			Settings.GAMES[where[0]]["title"], where[1]], 5.0)
+		app.pop.call_deferred()
+		return
+	if not Dolphin.launch(Settings.replay_args(String(info.get("path", "")), info.get("gecko", []), disc_id)):
 		app.toast("Couldn't start Dolphin-Sparking (is the Dolphin folder next to the launcher?).")
 		app.pop.call_deferred()
 

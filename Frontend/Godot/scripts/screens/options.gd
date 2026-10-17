@@ -14,6 +14,8 @@ func screen_title() -> String:
 
 func build_rows() -> Array:
 	return [
+		{"type": "action", "key": "copies", "label": "Game Copies", "value": _copies_summary(),
+			"desc": "Where each game's disc images are: NTSC-U, PAL and NTSC-J,\nand which one Play Offline uses."},
 		{"type": "choice", "key": "aspect", "label": "Aspect ratio", "values": ["16:9", "4:3"],
 			"value": Settings.get_value("options", "aspect"),
 			"desc": "The picture's shape when the game starts.\nF3 switches it during a game."},
@@ -42,6 +44,35 @@ func build_rows() -> Array:
 			"desc": "Primary and secondary user profiles for online play.\nOnly change to user2 for LAN testing."},
 		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the main menu."},
 	]
+
+
+func _copies_summary() -> String:
+	var parts := PackedStringArray()
+	for key in Settings.GAME_ORDER:
+		var n := Settings.owned_versions(key).size()
+		if n > 0:
+			parts.append("%s ×%d" % [Settings.GAMES[key]["glyph"], n])
+	return "  ".join(parts) if not parts.is_empty() else tr("None")
+
+
+func on_press(key: String) -> void:
+	if key == "copies":
+		var items: Array = []
+		for k in Settings.GAME_ORDER:
+			var g: Dictionary = Settings.GAMES[k]
+			items.append({"label": g["title"], "glyph": g["glyph"], "color": g["color"],
+				"desc": func():
+					var owned := Settings.owned_versions(k)
+					return tr("%s copies: %s.\nPlay Offline uses %s.") % [g["short"],
+						", ".join(owned) if not owned.is_empty() else tr("none yet"),
+						Settings.offline_version(k) if not owned.is_empty() else "-"],
+				"action": func(): app.push(load("res://scripts/screens/game_copies.gd").new().setup(k))})
+		items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true, "desc": "Back to Options."})
+		var m: Control = app.menu("Game Copies", items, "main_menu")
+		m.notices = false
+		app.push(m)
+		return
+	super(key)
 
 
 func on_value(key: String, value: Variant) -> void:

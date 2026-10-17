@@ -2,7 +2,8 @@
 // The leaderboard as a web page (same data as leaderboard.php).
 require __DIR__ . '/lib.php';
 
-$modes = ['single' => 'Single Battle (FT2)', 'team' => 'Team Battle', 'all' => 'All-time record'];
+$modes = ['single' => 'Single Battle (FT2)', 'team' => 'Team Battle', 'all' => 'All-time record',
+          'b2single' => 'BT2 Single Battle (FT2)', 'b2team' => 'BT2 Team Battle', 'b2all' => 'BT2 All-time record'];
 $region_names = ['global' => 'Global', 'NA' => 'North America', 'SA' => 'South America',
                  'EU' => 'Europe', 'AF' => 'Africa', 'EA' => 'East Asia', 'CN' => 'China',
                  'OC' => 'Oceania'];
@@ -12,7 +13,7 @@ $region = strtoupper($_GET['region'] ?? 'global');
 $region = $region === 'GLOBAL' || !isset($region_names[$region]) ? 'global' : $region;
 try {
     settle_due();
-    $rows = leaderboard($mode, $region, 100);
+    $rows = $mode === 'b2all' ? leaderboard('all', $region, 100, 'bt2') : leaderboard($mode, $region, 100);
     $season = season_info()['name'];
     $error = '';
 } catch (Throwable $e) {
@@ -42,7 +43,7 @@ tr:nth-child(even) td{background:rgba(0,0,0,.15)}td.n{text-align:right;font-vari
 .empty,.err{color:var(--muted);padding:24px;text-align:center}.err{color:#e8663d}
 </style></head><body><main>
 <h1>DRAGON NET Ranked</h1>
-<?php if ($season !== '' && $mode !== 'all'): ?><p style="color:var(--gold);margin:-8px 0 14px"><?= $h($season) ?></p><?php endif ?>
+<?php if ($season !== '' && !str_ends_with($mode, 'all')): ?><p style="color:var(--gold);margin:-8px 0 14px"><?= $h($season) ?></p><?php endif ?>
 <form method="get">
   <select name="mode" aria-label="Mode">
     <?php foreach ($modes as $k => $v): ?><option value="<?= $h($k) ?>"<?= $k === $mode ? ' selected' : '' ?>><?= $h($v) ?></option><?php endforeach ?>
@@ -55,10 +56,10 @@ tr:nth-child(even) td{background:rgba(0,0,0,.15)}td.n{text-align:right;font-vari
 <?php if ($error): ?><p class="err"><?= $h($error) ?></p><?php elseif (!$rows): ?>
 <p class="empty">No ranked matches here yet.</p>
 <?php else: ?>
-<table><thead><tr><th class="rank">#</th><th>Player</th><?php if ($mode !== 'all'): ?><th class="n">Rating</th><?php endif ?><th class="n">Wins</th><th class="n">Losses</th></tr></thead><tbody>
+<table><thead><tr><th class="rank">#</th><th>Player</th><?php if (!str_ends_with($mode, 'all')): ?><th class="n">Rating</th><?php endif ?><th class="n">Wins</th><th class="n">Losses</th></tr></thead><tbody>
 <?php foreach ($rows as $r): ?>
 <tr class="<?= $r['rank'] <= 3 ? 'top' : '' ?>"><td class="rank"><?= $r['rank'] ?></td><td><?= $h($r['name']) ?></td>
-<?php if ($mode !== 'all'): ?><td class="n"><?= $r['rating'] ?></td><?php endif ?><td class="n"><?= $r['wins'] ?></td><td class="n"><?= $r['losses'] ?></td></tr>
+<?php if (!str_ends_with($mode, 'all')): ?><td class="n"><?= $r['rating'] ?></td><?php endif ?><td class="n"><?= $r['wins'] ?></td><td class="n"><?= $r['losses'] ?></td></tr>
 <?php endforeach ?>
 </tbody></table>
 <?php endif ?>

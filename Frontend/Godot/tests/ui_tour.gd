@@ -148,6 +148,114 @@ func top() -> Control:
 	return app.top()
 
 
+## Budokai Tenkaichi 2's tab, game copies per version, the version picked for DRAGON NET.
+func games_and_versions() -> void:
+	# Versions are read from the disc images (ISO, WBFS, RVZ / WIA, CISO), else the file name.
+	var dir := Settings.data_path("tour_discs")
+	DirAccess.make_dir_recursive_absolute(dir)
+	var make := func(name: String, magic: PackedByteArray, at: int, id: String) -> String:
+		var bytes := PackedByteArray()
+		bytes.resize(maxi(at + 6, 0x8010))
+		for i in magic.size():
+			bytes[i] = magic[i]
+		if magic == "WBFS".to_ascii_buffer():
+			bytes[8] = 9   # 512-byte sectors: the disc header copy at 0x200
+		for i in 6:
+			bytes[at + i] = id.unicode_at(i)
+		var f := FileAccess.open(dir.path_join(name), FileAccess.WRITE)
+		f.store_buffer(bytes)
+		f.close()
+		return dir.path_join(name)
+	var iso: String = make.call("a.iso", PackedByteArray(), 0, "RDSE70")
+	var wbfs: String = make.call("b.wbfs", "WBFS".to_ascii_buffer(), 0x200, "RDBPAF")
+	var rvz: String = make.call("c.rvz", "RVZ\u0001".to_ascii_buffer(), 0x58, "RDSJAF")
+	var ciso: String = make.call("d.ciso", "CISO".to_ascii_buffer(), 0x8000, "RDBE70")
+	var named: String = make.call("Budokai Tenkaichi 2 (RDBJAF).gcz", "\u00b1\u000b\u00c0\u0001".to_ascii_buffer(), 0x100, "zzzzzz")
+	check("disc IDs read: ISO, WBFS, RVZ, CISO, file name", [Settings.read_disc_id(iso), Settings.read_disc_id(wbfs),
+			Settings.read_disc_id(rvz), Settings.read_disc_id(ciso), Settings.read_disc_id(named)]
+			== ["RDSE70", "RDBPAF", "RDSJAF", "RDBE70", "RDBJAF"])
+	check("disc IDs name the game and version", Settings.game_of_id("RDBPAF") == ["bt2", "PAL"]
+			and Settings.game_of_id("RDSE70") == ["bt3", "NTSC-U"] and Settings.game_of_id("GZLE01") == [])
+	check("the old single game path became the BT3 PAL copy", Settings.has_copy("bt3", "PAL")
+			and Settings.owned_versions("bt3") == ["PAL"] and Settings.offline_version("bt3") == "PAL")
+
+	# Budokai Tenkaichi 2: its own game menu (no Terminology), its own music track names.
+	await choose("Budokai Tenkaichi 2")
+	check("BT2 game menu", app._title.text == "Tenkaichi 2" and app.game_on_stack() == "bt2"
+			and Settings.game == "bt2")
+	check("BT2 menu: same items, no Terminology", top().carousel.items.map(func(it): return it["label"])
+			== ["Play Offline", "DRAGON NET", "Controller Setup", "Modifications", "Back"])
+	check("BT2 menus: their own music (none here: the main menu's)", app.music_for_stack() == "bt2_game_menu"
+			and Music.current_track() == "bt2_game_menu")
+	check("BT2's picture variants fall back within BT2", Style.track_parent("bt2_ranked", Style.BACKGROUND_PARENT) == "bt2_lobby")
+	check("no BT2 copy yet: Play Offline says to add one", "Add your copy first" in app._desc.text)
+	await shot("bt2_game_menu")
+	# No BT2 copy yet: DRAGON NET says so and opens its Game Copies page.
+	await choose("DRAGON NET")
+	check("no BT2 copy: its Game Copies page", app._title.text == "Budokai Tenkaichi 2" and "list" in top()
+			and top().list.row("NTSC-U").get("value") == "Not set")
+	await shot("game_copies_bt2_empty")
+	# A copy picked for the wrong row lands under the version its disc says.
+	var gc: Control = top()
+	gc.store(gc, wbfs, "bt2", "NTSC-U", func(): gc.list.set_rows(gc.build_rows()))
+	await frames(5)
+	check("picked for NTSC-U, it's PAL: saved as the PAL copy", Settings.copy_path("bt2", "PAL") == wbfs
+			and Settings.copy_path("bt2", "NTSC-U") == "" and Settings.offline_version("bt2") == "PAL")
+	gc.store(gc, ciso, "bt2", "NTSC-U", func(): gc.list.set_rows(gc.build_rows()))
+	await frames(5)
+	check("BT2 NTSC-U and PAL copies", Settings.owned_versions("bt2") == ["NTSC-U", "PAL"])
+	await shot("game_copies_bt2")
+	await back()
+	# Two copies: DRAGON NET asks which version first.
+	await choose("DRAGON NET")
+	check("version picker before DRAGON NET", app._title.text == "Which version?"
+			and top().carousel.items.size() == 3)
+	await shot("bt2_version_picker")
+	await choose("PAL")
+	check("DRAGON NET on BT2 PAL", app._title.text == "DRAGON NET (PAL)" and Settings.GAME["id"] == "RDBPAF"
+			and Settings.host_args("single", false, false)[-1] == wbfs)
+	check("BT2's netplay music track", app.music_for_stack() == "bt2_netplay")
+	await shot("bt2_netplay_menu")
+	# Ranked talks to BT2's own ladder, on this version.
+	var srv: Dictionary = Ranked._to_server("lobby.php", {"action": "open", "mode": "single"})
+	check("ranked: BT2 ladder and version", srv["mode"] == "b2single" and srv["game"] == "bt2" and srv["version"] == "RDBPAF")
+	check("ranked: the server's BT2 modes read back as plain ones",
+			Ranked._from_server({"lobbies": [{"mode": "b2team"}]})["lobbies"][0]["mode"] == "team")
+	# NEOcode is Tenkaichi 3's only for now.
+	var fake_lobby: Control = load("res://scripts/screens/lobby.gd").new()
+	check("no NEOcode in BT2 lobbies", not fake_lobby._neocode_allowed())
+	fake_lobby.free()
+	await back()   # DRAGON NET -> game menu (the picker was replaced)
+	check("back at the BT2 game menu", app._title.text == "Tenkaichi 2")
+	await back()
+
+	# Options > Game Copies: every game, every version.
+	await choose("Options")
+	await pick("copies", top().list)
+	check("Game Copies lists the games", app._title.text == "Game Copies" and top().carousel.items.size() == 3)
+	await shot("game_copies_games")
+	await choose("Budokai Tenkaichi 3")
+	var g3: Control = top()
+	check("BT3 copies page", app._title.text == "Budokai Tenkaichi 3" and g3.list.row("PAL").get("value") != "Not set")
+	g3.store(g3, iso, "bt3", "", func(): g3.list.set_rows(g3.build_rows()))
+	await frames(5)
+	check("a BT3 NTSC-U copy added", Settings.owned_versions("bt3") == ["NTSC-U", "PAL"]
+			and Settings.offline_version("bt3") == "PAL")
+	await pick("offline", g3.list)   # Accept on a choice = next value: PAL -> NTSC-U
+	check("Play Offline now uses NTSC-U", Settings.offline_version("bt3") == "NTSC-U")
+	await shot("game_copies_bt3")
+	await pick("offline", g3.list)   # back to PAL
+	await pick("NTSC-U", g3.list)    # a set copy: change or remove
+	await shot("game_copy_change")
+	await choose("Remove")
+	check("NTSC-U copy removed", Settings.owned_versions("bt3") == ["PAL"])
+	await back()
+	await back()
+	await back()
+	check("back at the main menu", app._title.text == "Main Menu")
+	Settings.use_game("bt3")
+
+
 ## On a carousel screen: press Down until `label` is selected (wheel wraps), then Accept.
 func choose(label: String) -> void:
 	var c: Control = top().carousel
@@ -269,7 +377,7 @@ func _tour() -> void:
 	nt._due_ms = 0
 	await frames(20)
 	check("notification bar: no yellow (Tenkaichi 3 ranked news) on the main menu", nt.current == "")
-	app.push(app._game_menu())   # (pushed directly: no game-file prompt this early)
+	app.push(app._game_menu("bt3"))   # (pushed directly: no game-file prompt this early)
 	await wait_for("notification bar: yellow in the Tenkaichi 3 menu", func(): return nt.current == "yellow", 3.0)
 	await get_tree().create_timer(1.0).timeout
 	await shot("notification_yellow")
@@ -292,9 +400,14 @@ func _tour() -> void:
 	check("main menu music playing", Music.current_track() == "main_menu" and Music.is_audible())
 	await shot("main_menu")
 	await press("ui_down")
-	check("Down moves the wheel", top().carousel.current().get("label") == "Video Settings")
-	check("description follows the selection", app._desc.text == "Change your video settings here.")
+	check("Down moves the wheel to Budokai Tenkaichi 2", top().carousel.current().get("label") == "Budokai Tenkaichi 2")
+	check("description follows the selection", "Sparking! NEO" in app._desc.text)
+	await shot("main_menu_bt2")
+	await press("ui_down")
+	check("then Video Settings", top().carousel.current().get("label") == "Video Settings"
+			and app._desc.text == "Change your video settings here.")
 	await shot("main_menu_video")
+	await press("ui_up")
 	await press("ui_up")
 
 	# Controller: the left stick moves the wheel once, and keeps moving while held.
@@ -681,22 +794,9 @@ func _tour() -> void:
 	await wait_for("left training", func(): return app.top() != training, 15)
 	await wait_for("Dolphin exited (training)", func(): return not Dolphin.is_running(), 10)
 
-	# --- Rollback Test: offline, Dolphin keeps rewinding and re-running a few frames --------
-	await choose("Rollback Test")
-	var rt: Control = top()
-	check("Rollback Test screen", app._title.text == "Rollback Test")
-	await pick("start", rt.list)
-	await wait_for("rollback test running", func(): return rt._state == "running", 30)
-	await wait_for("rollback tests done (5+)", func(): return int(rt._stats.get("cycles", 0)) >= 5, 90)
-	check("every rewind matched (the test program is deterministic)", rt._mismatches == 0)
-	check("save / load / re-run times measured", float(rt._stats.get("save_ms", 0)) > 0
-			and float(rt._stats.get("load_ms", 0)) > 0 and float(rt._stats.get("rerun_ms_per_field", 0)) > 0)
-	check("results written to the results file", FileAccess.file_exists(rt._log))
-	await shot("rollback_test")
-	await pick("stop", rt.list)
-	await wait_for("rollback test stopped", func(): return rt._state == "ready", 30)
-	await wait_for("Dolphin exited (rollback test)", func(): return not Dolphin.is_running(), 10)
-	await back()
+	# The Rollback Test is hidden now (the screen is still there for testing builds).
+	check("no Rollback Test in the DRAGON NET menu",
+			not top().carousel.items.any(func(it): return "Rollback" in String(it.get("label", ""))))
 
 	# --- Offline -------------------------------------------------------------------------
 	await back()   # netplay -> game menu
@@ -880,8 +980,11 @@ func _tour() -> void:
 	check("Options has Profile, no Files & Folders", top().list.row("profile").get("label") == "Profile"
 			and top().list.row("files").is_empty())
 	await back()
+	await games_and_versions()
 	app.open("setup")
 	await shot("first_run_setup")
+	check("setup asks for one copy of each game", top().list.row("game_bt3").get("value", "").begins_with("PAL")
+			and top().list.row("game_bt2").get("label") == "Budokai Tenkaichi 2")
 
 	# Splash (skipped at startup for the tour): shows, and any button skips it.
 	app._show_splash()
@@ -908,7 +1011,7 @@ func _tour() -> void:
 
 	# Menu transitions: dark fade between menus, white into a DRAGON NET lobby.
 	app.transitions = true
-	app.push(app._game_menu())
+	app.push(app._game_menu("bt3"))
 	await frames(1)
 	check("changing menus fades in from black", app._fade.visible and app._fade.color.r < 0.1 and app._fade.color.a > 0.5)
 	app._fade_tween.pause()   # freeze it halfway for the screenshot
@@ -943,7 +1046,7 @@ func _tour() -> void:
 		await frames(5)
 		await shot("main_menu_" + code)
 		check("main menu in " + code, app._title.get_text() == "Main Menu" and app._title.label_settings != null)
-		app.push(app._game_menu())
+		app.push(app._game_menu("bt3"))
 		await frames(5)
 		await shot("game_menu_" + code)
 		app.open("options")

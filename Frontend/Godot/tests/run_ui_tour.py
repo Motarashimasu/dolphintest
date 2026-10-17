@@ -347,7 +347,7 @@ def main():
         ("menus", lambda a: a.get("details") == "In the menus" and a.get("assets", {}).get("large_image") == "sparklaunchpadbackround"
             and a.get("assets", {}).get("small_image") == "dbzsparkhdbackup" and a.get("timestamps", {}).get("start")),
         ("hosted public lobby with Ask to Join", lambda a: a.get("details") == "Single Battle lobby"
-            and str(a.get("secrets", {}).get("join", "")).startswith("spk1:") and a.get("party", {}).get("size")),
+            and str(a.get("secrets", {}).get("join", "")).startswith("spk2:RDSPAF|") and a.get("party", {}).get("size")),
         ("netplay match vs the other player", lambda a: a.get("details") == "DRAGON NET: Single Battle" and a.get("state") == "vs Vegeta"),
         ("buffer training", lambda a: a.get("details") == "DRAGON NET: Buffer Training"
             and str(a.get("state", "")).startswith("Practicing") and not a.get("secrets") and not a.get("party")),

@@ -215,12 +215,27 @@ func _refresh_hints() -> void:
 		_hints.add_child(_hint(h[0], h[1], h[2]))
 
 
-## The music of the top screen, or of the nearest screen below that names one.
+## The music of the top screen, or of the nearest screen below that names one. Inside a game's
+## menus other than Tenkaichi 3's, its own tracks and pictures: "bt2_netplay" for "netplay"
+## (see Settings.GAMES[...]["tracks"]); the main menu's are shared.
 func music_for_stack() -> String:
+	var m := ""
 	for i in range(_stack.size() - 1, -1, -1):
-		var m: String = _stack[i].screen_music()
+		m = _stack[i].screen_music()
 		if m != "":
-			return m
+			break
+	if m == "" or m == "main_menu":
+		return m
+	var key := game_on_stack()
+	return String(Settings.GAMES[key]["tracks"]) + m if key != "" else m
+
+
+## The game whose menus are open ("bt3", "bt2"), or "" (main menu, options...).
+func game_on_stack() -> String:
+	for sc in _stack:
+		var g := String(sc.get("game"))
+		if Settings.GAMES.has(g):
+			return g
 	return ""
 
 
@@ -276,22 +291,39 @@ func require_setup() -> bool:
 		return false
 	if Settings.is_configured():
 		return true
-	toast(tr("Missing: %s") % ", ".join(Settings.missing_paths()))
+	var missing := Settings.missing_paths()
+	if missing.size() == 1 and missing[0] == "game file":
+		# This game / version has no copy (or it moved): its Game Copies page.
+		var g: Dictionary = Settings.GAME
+		toast(tr("Your %s %s copy isn't set or has moved.") % [g["title"], g["version"]], 4.0)
+		push(load(SCREENS % "game_copies").new().setup(g["key"]))
+		return false
+	toast(tr("Missing: %s") % ", ".join(missing))
 	open("setup")   # only the missing parts can be fixed there
 	return false
 
 
 # --- Menus -------------------------------------------------------------------------------
 
-func _menu(title: String, items: Array, music := "") -> Control:
-	return CarouselScreen.new().setup(title, items, 0, music)
+func _menu(title: String, items: Array, music := "", start := 0) -> Control:
+	return CarouselScreen.new().setup(title, items, start, music)
+
+
+## A carousel menu (other screens' small pickers).
+func menu(title: String, items: Array, music := "", start := 0) -> Control:
+	return _menu(title, items, music, start)
 
 
 func _main_menu() -> Control:
-	return _menu("Main Menu", [
-		{"label": Settings.GAME["title"], "glyph": "3", "color": "#f2b531",
-			"desc": tr("%s.\nPlay offline or online, set up controllers and codes.") % Settings.GAME["full_title"],
-			"action": func(): push(_game_menu())},
+	var items: Array = []
+	for key in Settings.GAME_ORDER:
+		var g: Dictionary = Settings.GAMES[key]
+		items.append({"label": g["title"], "glyph": g["glyph"], "color": g["color"],
+			"desc": tr("%s (%s).\nPlay offline or online, set up controllers and codes.") % [g["full_title"], g["jp"]],
+			"action": func():
+				Settings.use_game(key)
+				push(_game_menu(key))})
+	return _menu("Main Menu", items + [
 		{"label": "Video Settings", "glyph": "V", "color": "#9b6be6",
 			"desc": "Change your video settings here.",
 			"action": func(): open("video_settings")},
@@ -303,28 +335,68 @@ func _main_menu() -> Control:
 	], "main_menu")
 
 
-func _game_menu() -> Control:
-	var menu := _menu("Tenkaichi 3", [
+## A game's menu. Everything under it works on that game (Settings.use_game): Play Offline runs
+## its offline copy, DRAGON NET first asks which version to play.
+func _game_menu(key: String) -> Control:
+	var g: Dictionary = Settings.GAMES[key]
+	var items: Array = [
 		{"label": "Play Offline", "glyph": "P", "color": "#f2b531",
-			"desc": "Play on your own, with your own save data.\nSingle Battle, Team Battle, story mode: everything the game has.",
-			"action": open_checked.bind("play_offline")},
+			"desc": func():
+				if Settings.owned_versions(key).is_empty():
+					return tr("Play on your own, with your own save data.\nAdd your copy first: Options > Game Copies.")
+				return tr("Play on your own, with your own save data (%s copy).\nSingle Battle, Team Battle, story mode: everything the game has.") % Settings.offline_version(key),
+			"action": func():
+				Settings.use_game(key)
+				open_checked("play_offline")},
 		{"label": "DRAGON NET", "glyph": "D", "color": "#3fa9f5",
 			"desc": "Fight other players online. Browse public lobbies,\nhost a match, or let matchmaking find you one.",
-			"action": func(): push(_netplay_menu())},
+			"action": func(): open_netplay(key)},
 		{"label": "Controller Setup", "glyph": "C", "color": "#4cc38a",
 			"desc": "Set up your controller for this game.",
-			"action": func(): open("controller_setup")},
+			"action": func():
+				Settings.use_game(key)
+				open("controller_setup")},
 		{"label": "Modifications", "glyph": "M", "color": "#e8663d",
 			"desc": "Graphics (Enhanced / Legacy), button prompts\n(GameCube / PlayStation / Xbox) and codes.",
-			"action": func(): push(_modifications_menu())},
-		{"label": "Tenkaichi Terminology", "glyph": "T", "color": "#ffd23f",
+			"action": func():
+				Settings.use_game(key)
+				push(_modifications_menu())},
+	]
+	if g["terminology"]:
+		items.append({"label": "Tenkaichi Terminology", "glyph": "T", "color": "#ffd23f",
 			"desc": "What every mechanic and tech is called, what it does, and a demo of each.\nCreated by Majin Xu & Creatful_Chaos of 'BT3 North America'.",
-			"action": func(): push(_terminology_menu())},
-		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
-			"desc": "Back to the main menu."},
-	], "game_menu")
-	menu.game = Settings.GAME["id"]   # Tenkaichi 3's menus: the yellow (ranked) notices
+			"action": func(): push(_terminology_menu())})
+	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
+		"desc": "Back to the main menu."})
+	var menu := _menu(g["short"], items, "game_menu")
+	menu.game = key   # its menus' music and pictures, and (Tenkaichi 3) the yellow ranked notices
 	return menu
+
+
+## DRAGON NET of a game: first the version to play, when there's more than one copy of it.
+func open_netplay(key: String) -> void:
+	var owned := Settings.owned_versions(key)
+	if owned.is_empty():
+		toast(tr("Add a %s copy first (Options > Game Copies).") % Settings.GAMES[key]["title"], 4.0)
+		push(load(SCREENS % "game_copies").new().setup(key))
+		return
+	if owned.size() == 1:
+		Settings.use_game(key, owned[0])
+		push(_netplay_menu())
+		return
+	var g: Dictionary = Settings.GAMES[key]
+	var items: Array = []
+	for v in owned:
+		items.append({"label": v, "glyph": String(v).left(1), "color": g["color"],
+			"desc": tr("Play DRAGON NET on your %s copy (%s).\nOnly players on the same version can play together.") % [v, g["versions"][v]],
+			"action": func():
+				Settings.use_game(key, v)
+				Settings.set_value("games", key + "_netplay", v)
+				replace(_netplay_menu())})
+	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
+		"desc": "Back to the game menu."})
+	var last := String(Settings.get_value("games", key + "_netplay"))
+	push(_menu("Which version?", items, "netplay", maxi(owned.find(last), 0)))
 
 
 var _terminology: Dictionary = {}
@@ -371,7 +443,10 @@ func _modifications_menu() -> Control:
 
 
 func _netplay_menu() -> Control:
-	return _menu("DRAGON NET", [
+	var title := "DRAGON NET"
+	if Settings.owned_versions(Settings.game).size() > 1:
+		title = "DRAGON NET (%s)" % Settings.current_version()
+	return _menu(title, [
 		{"label": "Lobby Browser", "glyph": "L", "color": "#3fa9f5",
 			"desc": "Public lobbies of players on this same version:\nmode, host, region and connection. Pick one to join.",
 			"action": open_checked.bind("lobby_browser")},
@@ -384,9 +459,6 @@ func _netplay_menu() -> Control:
 		{"label": "Buffer Training", "glyph": "T", "color": "#3fbf6b",
 			"desc": "Play in Training Mode, with the option to practice with pad buffering to emulate an online environment, so you can be prepared for anything! near or far!",
 			"action": open_buffer_training},
-		{"label": "Rollback Test", "glyph": "R", "color": "#7f8cff",
-			"desc": "Test tool for future rollback netplay: play offline while Dolphin keeps\nrewinding a few frames, and see if this game and PC can handle it.",
-			"action": func(): open("rollback_test")},
 		{"label": "Ranked Match", "glyph": "R", "color": "#c94bd6", "bumper": true,
 			"desc": "Rated 1-on-1 matches with a leaderboard. Single Battle is first to 2 wins\n(FT2), Team Battle is one match. Needs a Discord login.",
 			"action": func(): push(_ranked_menu())},
@@ -580,12 +652,22 @@ func _on_dolphin_event(name: String, data: Dictionary) -> void:
 				toast("Dolphin: " + text.left(160), 6.0)
 
 
-## "Ask to Join" accepted in Discord: open that lobby (unless something is already running).
-func _on_discord_join(target: String, koth := false) -> void:
+## "Ask to Join" accepted in Discord: open that lobby (unless something is already running), on
+## the lobby's game and version (`disc_id`; "" = an older launcher's lobby: Tenkaichi 3 PAL).
+func _on_discord_join(target: String, koth := false, disc_id := "") -> void:
 	show_window()
 	if Dolphin.is_running():
 		toast("Leave the current lobby or game first, then join from Discord again.", 4.0)
 		return
+	var where := Settings.game_of_id(disc_id if disc_id != "" else "RDSPAF")
+	if where.is_empty():
+		toast(tr("That lobby is on a game this launcher doesn't have (%s).") % disc_id, 5.0)
+		return
+	if not Settings.has_copy(where[0], where[1]):
+		toast(tr("That lobby plays %s %s: add that copy in Options > Game Copies.") % [
+			Settings.GAMES[where[0]]["title"], where[1]], 5.0)
+		return
+	Settings.use_game(where[0], where[1])
 	var lobby: Control = load(SCREENS % "lobby").new()
 	lobby.koth = koth
 	push(lobby.setup("join", Settings.join_args(target, koth), "any"))
@@ -625,15 +707,12 @@ func notices_allowed() -> bool:
 	return not Dolphin.is_running()
 
 
-## The yellow bar is Tenkaichi 3 ranked news: only while a Tenkaichi 3 menu is open (any of
-## Tenkaichi 3's releases on the stack). Red and blue show in every game's menus.
-const YELLOW_NOTICE_GAMES := ["RDSPAF", "RDSE70", "RDSJAF"]
-
-
+## The yellow bar is Tenkaichi 3 ranked news: only while a Tenkaichi 3 menu is open. Red and blue
+## show in every game's menus.
 func notice_color_allowed(color: String) -> bool:
 	if color != "yellow":
 		return true
-	return _stack.any(func(sc): return sc.get("game") in YELLOW_NOTICE_GAMES)
+	return game_on_stack() == "bt3"
 
 
 ## Held Select in game: shrink this window to a small always-on-top panel over the game.

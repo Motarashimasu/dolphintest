@@ -59,7 +59,12 @@ changes within 2 minutes.
 Rules
 -----
 - One Discord account = one ranked profile. Ratings: Elo (K=32), 1000 to start, separate for
-  Single Battle (first to 2 wins) and Team Battle (one match).
+  Single Battle (first to 2 wins) and Team Battle (one match), and per game: Budokai
+  Tenkaichi 2 has its own ladder (modes b2single / b2team on the server, "BT2 ..." on the web
+  page). A game's versions (NTSC-U / PAL / NTSC-J) share a rating, but a ranked lobby only lists
+  for players on the same version.
+- Updating from an older version: just upload the files; the database adds what's new on the
+  first request (lobbies get a "version" column).
 - A match counts when both players' launchers report the same result. One report alone counts
   after 2 minutes (the other player left or crashed). Reports that disagree void the match.
   Leaving or stopping a running match counts as a loss.

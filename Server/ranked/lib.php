@@ -6,14 +6,20 @@
 // starts a match, and both players' launchers report the result. A match counts when both
 // reports agree; a lone report counts after a grace period (the other player left / crashed);
 // reports that disagree void the match. Leaving a running match counts as a loss.
-// Ratings: Elo, separate for Single Battle and Team Battle, starting at 1000.
+// Ratings: Elo, separate for Single Battle and Team Battle, starting at 1000. Each game has its
+// own ladder: Budokai Tenkaichi 3's modes are single / team, Budokai Tenkaichi 2's b2single /
+// b2team. A lobby also records the disc version it plays (RDSPAF...): only the same version can
+// join it, while ratings are shared by a game's versions.
 // Seasons: ratings, records and region records belong to the current season (admin.php starts
 // a new one: final standings are archived, everyone goes back to 1000 and 0-0). The career table
 // (the all-time record) never resets. Banned players can't play ranked and aren't listed.
 declare(strict_types=1);
 
-const SCHEMA_VERSION = '2';
-const MODES = ['single', 'team'];
+const SCHEMA_VERSION = '3';
+const MODES = ['single', 'team', 'b2single', 'b2team'];
+const GAME_MODES = ['bt3' => ['single', 'team'], 'bt2' => ['b2single', 'b2team']];
+const MODE_LABELS = ['single' => 'Single Battle FT2', 'team' => 'Team Battle',
+                     'b2single' => 'BT2 Single Battle FT2', 'b2team' => 'BT2 Team Battle'];
 const REGIONS = ['EA', 'CN', 'EU', 'NA', 'SA', 'OC', 'AF'];
 const START_RATING = 1000;
 const ELO_K = 32;
@@ -114,7 +120,9 @@ function migrate(PDO $db): void
     // older versions? ALTER fails harmlessly then.
     foreach (['players ADD COLUMN banned INTEGER NOT NULL DEFAULT 0',
               'players ADD COLUMN ban_reason VARCHAR(255) NULL',
-              'matches ADD COLUMN season INTEGER NOT NULL DEFAULT 1'] as $alter) {
+              'matches ADD COLUMN season INTEGER NOT NULL DEFAULT 1',
+              // Version 3: the disc version a lobby plays ('' = before versions: BT3 PAL).
+              "lobbies ADD COLUMN version VARCHAR(8) NOT NULL DEFAULT ''"] as $alter) {
         try {
             $db->exec("ALTER TABLE $alter");
         } catch (Throwable $e) {
@@ -251,6 +259,27 @@ function valid_mode(?string $mode): string
         fail('bad_mode');
     }
     return $mode;
+}
+
+/** A disc ID (6 letters / digits), or '' when not given. */
+function valid_version(?string $version): string
+{
+    $version = strtoupper(trim((string)$version));
+    if ($version !== '' && !preg_match('/^[A-Z0-9]{6}$/', $version)) {
+        fail('bad_version');
+    }
+    return $version;
+}
+
+/** The game a request is about: bt3 (also when not given: older launchers) or bt2. */
+function valid_game(?string $game): string
+{
+    return isset(GAME_MODES[$game ?? '']) ? $game : 'bt3';
+}
+
+function mode_label(string $mode): string
+{
+    return MODE_LABELS[$mode] ?? $mode;
 }
 
 function valid_region(?string $region): string
@@ -497,7 +526,8 @@ function get_match(?int $id): ?array
 // --- Leaderboard ------------------------------------------------------------------------------
 
 /**
- * $mode: single | team | all (all = lifetime record across modes). $region: global or a region.
+ * $mode: one of MODES, or all (the lifetime record across $game's modes). $region: global or a
+ * region.
  * Mode boards rank by rating; the lifetime board by wins.
  */
 // A Discord avatar picture (64 px) for the launcher's leaderboard cards; null = none set.
@@ -510,19 +540,21 @@ function avatar_url($discord_id, $avatar): ?string
     return "https://cdn.discordapp.com/avatars/$discord_id/$avatar.png?size=64";
 }
 
-function leaderboard(string $mode, string $region, int $limit = 100): array
+function leaderboard(string $mode, string $region, int $limit = 100, string $game = 'bt3'): array
 {
     $db = db();
     $limit = max(1, min(200, $limit));
     $global = $region === 'global';
     if ($mode === 'all') {
-        // The all-time record: every season, every mode (career never resets).
+        // The all-time record: every season, every mode of the game (career never resets).
+        $modes = GAME_MODES[valid_game($game)];
+        $in = implode(',', array_fill(0, count($modes), '?'));
         $where = $global ? '' : 'AND r.region = ?';
         $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, SUM(r.wins) AS wins, SUM(r.losses) AS losses
-            FROM career r JOIN players p ON p.id = r.player_id WHERE p.banned = 0 $where
+            FROM career r JOIN players p ON p.id = r.player_id WHERE p.banned = 0 AND r.mode IN ($in) $where
             GROUP BY p.id, p.name, p.discord_id, p.avatar HAVING SUM(r.wins) + SUM(r.losses) > 0
             ORDER BY wins DESC, losses ASC, p.name ASC LIMIT $limit");
-        $st->execute($global ? [] : [$region]);
+        $st->execute($global ? $modes : array_merge($modes, [$region]));
     } elseif ($global) {
         $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, r.rating, r.wins, r.losses
             FROM ratings r JOIN players p ON p.id = r.player_id
