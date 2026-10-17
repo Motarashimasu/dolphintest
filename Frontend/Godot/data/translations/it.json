@@ -637,5 +637,10 @@
  "Back to Options.": "Torna alle Opzioni.",
  "This replay is on %s %s: add that copy in Options > Game Copies.": "Questo replay è di %s %s: aggiungi quella copia in Opzioni > Copie del gioco.",
  "Your %s disc image (any version).\nMore versions later: Options > Game Copies.": "La tua immagine disco di %s (qualsiasi versione).\nAltre versioni in seguito: Opzioni > Copie del gioco.",
- "Play on your own, with your own save data.\nAdd your copy first: Options > Game Copies.": "Gioca da solo, con i tuoi salvataggi.\nPrima aggiungi la tua copia: Opzioni > Copie del gioco."
+ "Play on your own, with your own save data.\nAdd your copy first: Options > Game Copies.": "Gioca da solo, con i tuoi salvataggi.\nPrima aggiungi la tua copia: Opzioni > Copie del gioco.",
+ "Codes for offline play, per version of the game.\nDRAGON NET always uses the same fixed set for everyone.": "Codici per giocare offline, per versione del gioco.\nDRAGON NET usa sempre lo stesso set fisso per tutti.",
+ "Version": "Versione",
+ "no copy": "nessuna copia",
+ "%s %s (%s). Game defaults: the codes this build turns on\nfor this version. Custom: exactly the codes ticked below.": "%s %s (%s). Predefiniti del gioco: i codici che questa build attiva\nper questa versione. Personalizzato: esattamente i codici selezionati sotto.",
+ "No codes for this version yet": "Ancora nessun codice per questa versione"
 }

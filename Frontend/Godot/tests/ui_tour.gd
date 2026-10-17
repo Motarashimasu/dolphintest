@@ -856,11 +856,31 @@ func _tour() -> void:
 	await back()
 	await choose("Codes")
 	var mods: Control = top()
-	await wait_for("gecko codes loaded", func(): return not mods._loading, 20)
-	check("gecko codes listed", mods._codes.size() > 0)
+	check("Codes open on the offline version's tab", mods._version == "PAL")
+	await wait_for("gecko codes loaded", func(): return mods._codes.has("RDSPAF"), 20)
+	check("gecko codes listed", mods._codes["RDSPAF"].size() > 0)
 	await pick("custom", mods.list)
-	check("custom code selection on", Settings.get_value("gecko", "custom") == true)
+	check("custom code selection on (BT3 PAL's)", Settings.gecko_custom("RDSPAF") == true)
 	await shot("modifications")
+	# Another version: its own codes (none in this build yet) and its own choice.
+	var shoulder := InputEventJoypadButton.new()
+	shoulder.button_index = JOY_BUTTON_RIGHT_SHOULDER
+	shoulder.pressed = true
+	Input.parse_input_event(shoulder)
+	await frames(3)
+	check("RB: the NTSC-J tab", mods._version == "NTSC-J")
+	await wait_for("NTSC-J codes looked up", func(): return mods._codes.has("RDSJAF"), 20)
+	check("NTSC-J: no codes yet, its own selection", not mods.list.row("none").is_empty()
+			and Settings.gecko_custom("RDSJAF") == false)
+	await shot("modifications_ntsc_j")
+	var key_q := InputEventKey.new()
+	key_q.keycode = KEY_Q
+	key_q.pressed = true
+	Input.parse_input_event(key_q)
+	await frames(3)
+	check("Q: back to PAL, still custom", mods._version == "PAL" and mods.list.row("custom").get("value") == true)
+	var solo_codes := Settings.solo_args()
+	check("offline launch uses PAL's custom codes", "--gecko" in solo_codes or "--no-gecko" in solo_codes)
 	await back()
 	await back()   # Modifications -> game menu
 	# --- Controller presets: scroll with Right, applied to GCPadNew.ini [GCPad1] ----------

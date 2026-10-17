@@ -101,7 +101,9 @@ var defaults := {
 		"buffer": 4, "public_address": "",
 		"buffer_auto": false,    # host: pad buffer picked from the pings (match start + after each KO)
 		"neocode": false},       # host: NEOcode (hidden: PgUp + PgDn together in the lobby)
-	"gecko": {"custom": false, "enabled": []},
+	# Offline codes per disc ID (every version has its own codes): "<ID>_custom" = only the ticked
+	# ones, "<ID>_enabled" = those. (Before versions: "custom" / "enabled", now RDSPAF's.)
+	"gecko": {},
 	# DRAGON NET Ranked: the ranked server (Server/ranked) and this install's Discord session.
 	"ranked": {"server": "https://tecshideout.ct.ws/sparking/", "token": "", "name": "",
 		"mode": "single", "board_mode": "single", "board_region": "global",
@@ -183,6 +185,8 @@ func use_file(path: String) -> void:
 func get_value(section: String, key: String) -> Variant:
 	if section == "games":
 		return _cfg.get_value(section, key, "")
+	if section == "gecko":
+		return _cfg.get_value(section, key, [] if key.ends_with("_enabled") else false)
 	return _cfg.get_value(section, key, defaults[section][key])
 
 
@@ -284,8 +288,32 @@ static func read_disc_id(path: String) -> String:
 	return id
 
 
-## Before game copies there was one path (BT3 PAL): file it under its version.
+## Offline codes of a version (disc ID): "custom" = exactly `enabled`, else the game's defaults.
+func gecko_custom(id: String) -> bool:
+	return bool(get_value("gecko", id + "_custom"))
+
+
+func gecko_enabled(id: String) -> Array:
+	return Array(get_value("gecko", id + "_enabled"))
+
+
+func set_gecko(id: String, custom: bool, enabled: Array) -> void:
+	_cfg.set_value("gecko", id + "_custom", custom)
+	_cfg.set_value("gecko", id + "_enabled", enabled)
+	_cfg.save(_path)
+
+
+## Before game copies there was one path (BT3 PAL): file it under its version. The one code
+## selection of that time was BT3 PAL's too.
 func _migrate_game_path() -> void:
+	if _cfg.has_section_key("gecko", "custom") or _cfg.has_section_key("gecko", "enabled"):
+		if not _cfg.has_section_key("gecko", "RDSPAF_custom"):
+			_cfg.set_value("gecko", "RDSPAF_custom", _cfg.get_value("gecko", "custom", false))
+			_cfg.set_value("gecko", "RDSPAF_enabled", _cfg.get_value("gecko", "enabled", []))
+		for k in ["custom", "enabled"]:
+			if _cfg.has_section_key("gecko", k):
+				_cfg.erase_section_key("gecko", k)
+		_cfg.save(_path)
 	var old := String(_cfg.get_value("paths", "game", ""))
 	if old == "":
 		return
@@ -379,8 +407,8 @@ func solo_args() -> PackedStringArray:
 	# Score bar offline only if the player wants it.
 	a.append_array(["--hud", "on" if get_value("options", "hud") else "off"])
 	a.append_array(["--sparking", "--nand", data_path("saves/solo"), "--state-dir", data_path("states")])
-	if get_value("gecko", "custom"):
-		var codes: Array = get_value("gecko", "enabled")
+	if gecko_custom(GAME["id"]):
+		var codes: Array = gecko_enabled(GAME["id"])
 		if codes.is_empty():
 			a.append("--no-gecko")
 		for code in codes:
@@ -522,9 +550,10 @@ func input_test_args() -> PackedStringArray:
 	return a
 
 
-func list_gecko_args() -> PackedStringArray:
+## The codes of a disc ID (default: the current version's).
+func list_gecko_args(id := "") -> PackedStringArray:
 	return PackedStringArray(["-u", data_path(get_value("paths", "profile")), "--list-gecko",
-		GAME["id"]])
+		id if id != "" else String(GAME["id"])])
 
 
 ## How a texture option is shown: the "Vanilla" button folder is the GameCube prompts.

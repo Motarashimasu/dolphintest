@@ -165,6 +165,11 @@ game. It's used offline and in netplay.
 - F12 shows the controllers Godot sees and each press it received (and whether it was ignored).
 - An optional `[Sparking]` section with `Match = word, word` tells Auto when to pick a preset.
 
+**Codes** (Modifications > Codes) has a tab per version (NTSC-U / PAL / NTSC-J; LB / RB or
+Q / E switch): each version has its own codes, from its own `Sys\GameSettings\<disc ID>.ini`
+(RDSPAF.ini, RDBJAF.ini, ...), and its own Game defaults / Custom choice. Play Offline uses the
+tab of the version it runs. A version with no ini yet shows "No codes for this version yet".
+
 Gecko codes always come from the build's own `Sys\GameSettings\RDSPAF.ini`. Nothing is taken
 from regular Dolphin except `GCPadNew.ini` (once, by `1_setup.bat`).
 
