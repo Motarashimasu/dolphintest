@@ -723,6 +723,7 @@ def main():
         rollback_ios_check(exe, work)
         rollback_fs_check(exe, work)
         rollback_gpu_check(exe, work)
+        neocode_check(exe, work)
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
@@ -1453,6 +1454,120 @@ def rollback_gpu_check(exe, work):
     check(f"--rollback-draw draws the re-runs ({last['draws_skipped']} skipped, {last['mismatches']} "
           "mismatches)", st.get("skip_draw") is False and last["draws_skipped"] == 0
           and last["mismatches"] == 0 and not alerts)
+
+
+def neocode_check(exe, work):
+    """NEOcode (hidden netcode): host + joiner on a Wii program that keeps folding both
+    controllers' SI input into memory, with changing test inputs and 150 ms of fake lag: inputs get
+    guessed, wrong guesses rewind and re-run, the final-state checksums both players exchange all
+    match, the watch events (held until final) come out identical on both sides, and a change
+    from outside the game shows up as a checksum mismatch."""
+    print("netplay: NEOcode")
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "gecko"))
+    from asm import Prog, li, lis, ori, addi, lwz, stw, mtctr
+
+    def mullw(d, a, b):
+        return (31 << 26) | (d << 21) | (a << 16) | (b << 11) | (235 << 1)
+
+    def add(d, a, b):
+        return (31 << 26) | (d << 21) | (a << 16) | (b << 11) | (266 << 1)
+
+    def xor(a, s_, b):
+        return (31 << 26) | (s_ << 21) | (a << 16) | (b << 11) | (316 << 1)
+    p = Prog()
+    p(lis(1, 0x8000)); p(ori(1, 1, 0x4000)); p(lis(9, 0xCC00)); p(ori(9, 9, 0x6400))
+    p(lis(7, 0x8000)); p(li(12, 33))
+    p.label("loop")
+    p(lwz(3, 0x2000, 7))   # acc = acc * 33 + in0_hi ^ in0_lo + in1_hi ^ in1_lo
+    p(lwz(4, 0x04, 9)); p(lwz(5, 0x08, 9)); p(lwz(6, 0x10, 9)); p(lwz(8, 0x14, 9))
+    p(mullw(3, 3, 12)); p(add(3, 3, 4)); p(xor(3, 3, 5)); p(add(3, 3, 6)); p(xor(3, 3, 8))
+    p(stw(3, 0x2000, 7))
+    p(lwz(3, 0x2004, 7)); p(addi(3, 3, 1)); p(stw(3, 0x2004, 7))
+    p(stw(4, 0x2010, 7)); p(stw(6, 0x2014, 7))   # each port's latest input (watched)
+    p(lis(11, 0x0001)); p(mtctr(11)); p.label("d"); p.bc("dnz", "d")
+    p.b("loop")
+    p(0x7C13FBA6)   # mtspr HID4 (never run): a Wii program
+    code = b"".join(struct.pack(">I", w) for w in p.words())
+    code = code.ljust((len(code) + 31) // 32 * 32, b"\0")
+    header = bytearray(0x100)
+    for o, v in ((0x00, 0x100), (0x48, 0x80003100), (0x90, len(code)), (0xE0, 0x80003100)):
+        struct.pack_into(">I", header, o, v)
+    d = os.path.join(work, "neocode")
+    os.makedirs(d, exist_ok=True)
+    dol = os.path.join(d, "pads.dol")
+    with open(dol, "wb") as f:
+        f.write(bytes(header) + code)
+    common = ["-p", "headless", "-v", "Null"]
+
+    def user(name):
+        u = os.path.join(d, name)
+        os.makedirs(os.path.join(u, "Config"), exist_ok=True)
+        os.makedirs(os.path.join(u, "GameSettings"), exist_ok=True)
+        with open(os.path.join(u, "GameSettings", "ID-pads.ini"), "w") as f:
+            f.write("[Sparking.Watch]\np1_in = u32 0x80002010\np2_in = u32 0x80002014\n")
+        with open(os.path.join(u, "Config", "Dolphin.ini"), "w") as f:
+            f.write("[NetPlay]\nTraversalChoice = direct\nHostPort = 26410\nSyncSaves = False\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        return u
+    host = Instance("neo-host", [exe, *common, "-u", user("host"), "--netplay-host", dol, "--nickname", "Goku",
+                                 "--automap", "gc", "--netplay-direct", "--test-hooks"])
+    joiner = None
+    try:
+        host.send("hello")
+        host.wait_for("room", lambda e: e["state"] == "ready")
+        joiner = Instance("neo-joiner", [exe, *common, "-u", user("joiner"), "--netplay-join", "127.0.0.1:26410",
+                                         "--netplay-game", dol, "--nickname", "Vegeta", "--test-hooks"])
+        joiner.send("hello")
+        host.wait_for("players", lambda e: len(e["players"]) == 2 and all(x["gc_slot"] > 0 for x in e["players"]),
+                      timeout=30)
+        joiner.send("netcode neocode")
+        check("only the host can switch the netcode", joiner.wait_for("error")["code"] == "host_only")
+        host.send("buffer 0")
+        host.send("netcode neocode")
+        check("the host switches to NEOcode", host.wait_for("netcode")["mode"] == "neocode")
+        check("the joiner is told", joiner.seen("netcode", timeout=10)["mode"] == "neocode")
+        host.send("start force")
+        for inst in (host, joiner):
+            inst.seen("game_started", timeout=40)
+            check(f"{inst.name}: NEOcode on for the match", inst.seen("neocode", timeout=10)["state"] == "on")
+        host.send("netcode delay")
+        check("the netcode can't change during a match", host.wait_for("error")["code"] == "game_running")
+        for inst, seed in ((host, 1), (joiner, 2)):
+            inst.send(f"test_input {seed}")
+            inst.send("test_lag 150")
+        for inst in (host, joiner):
+            inst.wait_for("neocode_check", timeout=120)
+            inst.wait_for("neocode_check", timeout=120)
+            inst.wait_for("neocode_check", timeout=120)
+        seqs = {}
+        for inst in (host, joiner):
+            stats = [e for e in inst.history if e["event"] == "neocode" and "rollbacks" in e][-1]
+            checks = [e for e in inst.history if e["event"] == "neocode_check"]
+            check(f"{inst.name}: wrong guesses are rewound and re-run ({stats['wrong_guesses']} wrong of "
+                  f"{stats['guesses']} guesses, {stats['rollbacks']} rewinds, R {stats['r']})",
+                  stats["wrong_guesses"] > 0 and stats["rollbacks"] > 0)
+            check(f"{inst.name}: the final states match the other player's ({len(checks)} checksums at fields "
+                  f"{[c['field'] for c in checks]})", len(checks) >= 3 and all(c["match"] for c in checks))
+            seqs[inst.name] = [(e["name"], e["value"]) for e in inst.history if e["event"] == "watch"]
+        a, b = seqs["neo-host"], seqs["neo-joiner"]
+        n = min(len(a), len(b))
+        check(f"what the game did comes out the same on both sides, guesses never leak ({n} watch events)",
+              n > 50 and a[:n] == b[:n])
+        # The host's game goes its own way. (Its rewinds take back a change made after the save they
+        # go back to, so keep changing it for a moment: one change gets saved and stays.)
+        for i in range(20):
+            host.send(f"poke 80002000 {0x12345678 + i:08X}")
+            time.sleep(0.1)
+        bad = joiner.wait_for("neocode_check", lambda e: not e["match"], timeout=120)
+        check(f"a desync shows up in the checksums (field {bad['field']})", True)
+        for inst in (host, joiner):
+            inst.send("quit")
+        for inst in (host, joiner):
+            inst.proc.wait(timeout=30)
+    finally:
+        for inst in (host, joiner):
+            if inst and inst.proc.poll() is None:
+                inst.proc.kill()
 
 
 def gecko_state_check(exe, dol, work, game_id):
