@@ -37,6 +37,7 @@
 #include "Common/WorkQueueThread.h"
 
 #include "Core/AchievementManager.h"
+#include "Core/Config/GraphicsSettings.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
@@ -274,27 +275,39 @@ static std::size_t SaveToBuffer(Core::System& system, Common::UniqueBuffer<u8>& 
 }
 
 static bool s_rollback_state = false;
+static bool s_no_gpu_caches = false;
 
 bool IsRollbackState()
 {
   return s_rollback_state;
 }
 
-std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer, bool skip_ram)
+bool SavesGpuCaches()
+{
+  return !s_no_gpu_caches && Config::Get(Config::GFX_SAVE_TEXTURE_CACHE_TO_STATE);
+}
+
+std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer, bool skip_ram,
+                         bool gpu_caches)
 {
   system.GetMemory().SetSparkingSkipRamInState(skip_ram);
   s_rollback_state = skip_ram;
+  s_no_gpu_caches = !gpu_caches;
   const std::size_t size = SaveToBuffer(system, buffer);
+  s_no_gpu_caches = false;
   s_rollback_state = false;
   system.GetMemory().SetSparkingSkipRamInState(false);
   return size;
 }
 
-bool LoadFromMemory(Core::System& system, std::span<u8> buffer, bool skip_ram)
+bool LoadFromMemory(Core::System& system, std::span<u8> buffer, bool skip_ram,
+                    bool gpu_caches)
 {
   system.GetMemory().SetSparkingSkipRamInState(skip_ram);
   s_rollback_state = skip_ram;
+  s_no_gpu_caches = !gpu_caches;
   const bool ok = LoadFromBuffer(system, buffer);
+  s_no_gpu_caches = false;
   s_rollback_state = false;
   system.GetMemory().SetSparkingSkipRamInState(false);
   return ok;

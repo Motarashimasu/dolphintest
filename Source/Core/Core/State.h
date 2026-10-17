@@ -113,12 +113,18 @@ bool LastLoadSucceeded();
 // (0 = failed); the buffer grows as needed.
 // `skip_ram`: without MEM1 / MEM2 (the rollback test keeps those with
 // MemoryManager::SparkingSnapshot); a state saved that way must be loaded that way.
+// `gpu_caches` false: never the texture cache / EFB contents, whatever "Save Texture Cache to
+// State" says (NEOcode saves every field: reading them back from the graphics card each time costs
+// more the higher the resolution). Loading such a state starts the texture cache over.
 std::size_t SaveToMemory(Core::System& system, Common::UniqueBuffer<u8>& buffer,
-                         bool skip_ram = false);
-bool LoadFromMemory(Core::System& system, std::span<u8> buffer, bool skip_ram = false);
+                         bool skip_ram = false, bool gpu_caches = true);
+bool LoadFromMemory(Core::System& system, std::span<u8> buffer, bool skip_ram = false,
+                    bool gpu_caches = true);
 // Inside SaveToMemory / LoadFromMemory with skip_ram: a rollback state, kept in memory only, so
 // parts can use a faster format (the IOS file system skips an unchanged /tmp).
 bool IsRollbackState();
+// "Save Texture Cache to State", unless the state being saved is one without the GPU caches.
+bool SavesGpuCaches();
 
 void LoadLastSaved(Core::System& system, int i = 1);
 void SaveFirstSaved(Core::System& system);

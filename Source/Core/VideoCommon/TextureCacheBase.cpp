@@ -32,6 +32,7 @@
 #include "Core/FifoPlayer/FifoPlayer.h"
 #include "Core/FifoPlayer/FifoRecorder.h"
 #include "Core/HW/Memmap.h"
+#include "Core/State.h"
 #include "Core/System.h"
 
 #include "VideoCommon/AbstractFramebuffer.h"
@@ -605,7 +606,7 @@ void TextureCacheBase::DoSaveState(PointerWrap& p)
   std::vector<std::pair<u32, u32>> textures_by_address_list;
   std::vector<std::pair<u64, u32>> textures_by_hash_list;
   std::vector<std::pair<u32, u32>> bound_textures_list;
-  if (Config::Get(Config::GFX_SAVE_TEXTURE_CACHE_TO_STATE))
+  if (State::SavesGpuCaches())
   {
     for (const auto& it : m_textures_by_address)
     {

@@ -242,7 +242,7 @@ void JobSnapshot(Core::System& system)
     record = std::move(s_spare.back());
     s_spare.pop_back();
   }
-  record.state_size = State::SaveToMemory(system, record.state, true);
+  record.state_size = State::SaveToMemory(system, record.state, true, false);
   u64 pages = 0;
   auto& memory = system.GetMemory();
   if (record.state_size == 0 || !memory.SparkingSnapshot(&pages))
@@ -335,7 +335,7 @@ void JobRollback(Core::System& system)
   if (ok)
   {
     ok = State::LoadFromMemory(
-        system, std::span<u8>(const_cast<u8*>(target->state.data()), target->state_size), true);
+        system, std::span<u8>(const_cast<u8*>(target->state.data()), target->state_size), true, false);
   }
   jit.SetKeepCacheOnLoad(false);
   Gecko::SetReinstallOnLoad(true);

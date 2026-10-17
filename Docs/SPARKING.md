@@ -356,6 +356,10 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
   goes on. The Gecko code area (0x80001800-0x80003000) isn't in the checksum, because each player
   runs their own port's splitscreen remover there. Dolphin's own desync warning (from the
   timebase) is off with NEOcode.
+- NEOcode's saves never include the graphics card's texture cache / EFB contents, whatever
+  "Save Texture Cache to State" says: reading them back every field would cost more the higher
+  the resolution and anti-aliasing. A rewind starts the texture cache over (a screen effect may
+  look off for one frame); the game itself isn't affected.
 - With NEOcode the automatic pad buffer is lower (`max(1, buffer-6, (buffer+1)/2)`), ranked
   replays are off, spectators stay on delay netplay, and every player needs this build.
 - If saving / rewinding fails, the match goes on as delay netplay ("NEOcode stopped ...").

@@ -10,6 +10,7 @@
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
 #include "Core/Config/GraphicsSettings.h"
+#include "Core/State.h"
 #include "Core/System.h"
 #include "VideoCommon/AbstractFramebuffer.h"
 #include "VideoCommon/AbstractGfx.h"
@@ -1102,7 +1103,7 @@ void FramebufferManager::DoState(PointerWrap& p)
   FlushEFBPokes();
   p.Do(m_prev_efb_format);
 
-  bool save_efb_state = Config::Get(Config::GFX_SAVE_TEXTURE_CACHE_TO_STATE);
+  bool save_efb_state = State::SavesGpuCaches();
   p.Do(save_efb_state);
   if (!save_efb_state)
     return;
