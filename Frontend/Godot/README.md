@@ -170,7 +170,7 @@ Q / E switch): each version has its own codes, from its own `Sys\GameSettings\<d
 (RDSPAF.ini, RDBJAF.ini, ...), and its own Game defaults / Custom choice. Play Offline uses the
 tab of the version it runs. A version with no ini yet shows "No codes for this version yet".
 
-Gecko codes always come from the build's own `Sys\GameSettings\RDSPAF.ini`. Nothing is taken
+Gecko codes always come from the build's own `Sys\GameSettings` inis. Nothing is taken
 from regular Dolphin except `GCPadNew.ini` (once, by `1_setup.bat`).
 
 **Tenkaichi Terminology.** Pick a category, then scroll through its terms; they can't be
