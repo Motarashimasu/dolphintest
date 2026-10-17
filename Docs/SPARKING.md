@@ -55,7 +55,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
-| `--aspect 16:9\|4:3` | `16:9` | Starting aspect ratio. **F3** in the game window (or the `aspect` command) flips it. See *Display*. |
+| `--aspect 16:9\|21:9\|4:3` | `16:9` | Starting aspect ratio. **F3** in the game window (or the `aspect` command) flips between 4:3 and the wide one. See *Display*. |
 | `--resolution <n>` | `3` | Internal resolution as a multiple of native: `3` = 1080p, `2` = 720p, `4` = 1440p, `6` = 4K. |
 | `--window <W>x<H>\|borderless` | `1280x720` | Size of the game window, or `borderless`: a frameless window covering the whole monitor (Windows; X11 uses its fullscreen). Rendering stays at `--resolution` regardless. |
 | `--netplay-saves host-readonly\|keep` | `host-readonly` | Netplay: every player plays on the **host's** save, which is never written back. |
@@ -117,7 +117,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `state_saved` / `state_loaded` | `slot` | Solo only |
 | `gecko_codes` | `game_id`, `codes[]` | `--list-gecko` result |
 | `gecko_active` | `port` (0 = solo), `codes[]`, `missing[]` | Codes activated for this boot |
-| `aspect` | `mode` (`16:9`/`4:3`) | At every boot and after every toggle |
+| `aspect` | `mode` (`16:9`/`21:9`/`4:3`) | At every boot and after every toggle |
 | `peek` | `address`, `value` (hex) | Answer to `peek` |
 | `window` | `open`, `x`, `y`, `width`, `height`, `focused`, `minimized`, `handle` | Game window changed (Windows). `x/y/width/height` = the picture area in screen pixels; `open:false` when the window closes. See *Overlay*. |
 | `osd` | `kind` (`message`, `netplay_ping`, `netplay_buffer`), `text`, `ms`, `color` (`#RRGGBB`) | A Dolphin on-screen message, for the overlay to show its own way |
@@ -193,7 +193,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `pause` / `resume` | solo | |
 | `save_state <1-10>` / `load_state <1-10>` | solo | Slot save states |
 | `save_state_file <file.sst>` / `load_state_file <file.sst>` | solo | Capture / test a battle state in `--state-dir` |
-| `aspect 16:9\|4:3\|toggle` | any, in game (netplay too) | Same as F3. Each player chooses their own. |
+| `aspect 16:9\|21:9\|4:3\|toggle` | any, in game (netplay too) | `toggle` = F3 (4:3 <-> the wide one last chosen). Each player chooses their own. |
 | `watch_values` | any | Send every memory-watch value now |
 | `stats <ms>` | any | Start (`stats 500`) or stop (`stats 0`) the periodic `stats` event |
 | `textures <Group>=<Option>` | any, in game (netplay too) | Switch a texture variant live; `<Group>=` clears it (no option loaded) |
@@ -430,10 +430,14 @@ come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
 
 ## Display
 
-Sparking mode renders at 1080p (`--resolution 3`) with Dolphin's output forced to 16:9.
-**F3** in the game window (Windows), or the `aspect` command, switches the output between
-16:9 and 4:3. Only Dolphin's output stretch changes: the game's own widescreen Gecko code (e.g.
-BT3's "16:9 aspect ratio") stays on whichever is chosen. The choice carries over to the next
+Sparking mode renders at 1080p (`--resolution 3`) with Dolphin's output stretched to the
+window (16:9): the picture fills the window or monitor whatever its shape. 21:9 is the same plus
+Dolphin's widescreen hack, so on a 21:9 screen the 3D view gets wider instead of only stretched
+(2D parts like the HUD are stretched); in a 16:9 window it looks like 16:9. 4:3 is forced 4:3.
+**F3** in the game window (Windows), or the `aspect` command, switches between 4:3 and the wide
+one chosen. Only Dolphin's output / the GPU's projection change, nothing the emulated game sees:
+the game's own widescreen Gecko code (e.g. BT3's "16:9 aspect ratio") stays on whichever is
+chosen. The choice carries over to the next
 match in the same netplay session, and each netplay player has their own.
 
 ## Texture variants (graphics pack, button layouts, ...)

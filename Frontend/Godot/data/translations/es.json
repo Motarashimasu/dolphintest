@@ -642,5 +642,7 @@
  "Version": "Versión",
  "no copy": "sin copia",
  "%s %s (%s). Game defaults: the codes this build turns on\nfor this version. Custom: exactly the codes ticked below.": "%s %s (%s). Predeterminados del juego: los códigos que activa esta compilación\npara esta versión. Personalizado: exactamente los códigos marcados abajo.",
- "No codes for this version yet": "Aún no hay códigos para esta versión"
+ "No codes for this version yet": "Aún no hay códigos para esta versión",
+ "16:9 and 21:9 fill your screen (21:9 widens the view on ultrawide screens;\nthe HUD is stretched). F3 switches to 4:3 and back during a game.": "16:9 y 21:9 llenan tu pantalla (21:9 amplía la vista en pantallas ultrapanorámicas;\nel HUD se estira). F3 cambia a 4:3 y de vuelta durante la partida.",
+ "Switch between widescreen and 4:3 (F3).": "Cambia entre panorámico y 4:3 (F3)."
 }

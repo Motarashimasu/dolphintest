@@ -69,7 +69,8 @@ const RENDERERS := ["Vulkan", "OGL"]                        # Dolphin -v names
 const RENDERER_NAMES := ["Vulkan", "OpenGL"]
 const RESOLUTIONS := [2, 3, 4, 6]                            # internal resolution multiplier
 const RESOLUTION_NAMES := ["720p (2x)", "1080p (3x)", "1440p (4x)", "4K (6x)"]
-const WINDOW_SIZES := ["1280x720", "1600x900", "1920x1080", "2560x1440"]
+const WINDOW_SIZES := ["1280x720", "1600x900", "1920x1080", "2560x1440",
+	"2560x1080", "3440x1440"]   # (the last two: 21:9)
 ## Texture variant groups of the texture pack (folders @Graphics/<option>, @Buttons/<option>).
 const GRAPHICS := ["Enhanced", "Legacy"]
 const BUTTONS := ["Vanilla", "PlayStation", "Xbox"]

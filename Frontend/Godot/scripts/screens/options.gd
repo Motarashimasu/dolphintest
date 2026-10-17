@@ -16,9 +16,9 @@ func build_rows() -> Array:
 	return [
 		{"type": "action", "key": "copies", "label": "Game Copies", "value": _copies_summary(),
 			"desc": "Where each game's disc images are: NTSC-U, PAL and NTSC-J,\nand which one Play Offline uses."},
-		{"type": "choice", "key": "aspect", "label": "Aspect ratio", "values": ["16:9", "4:3"],
+		{"type": "choice", "key": "aspect", "label": "Aspect ratio", "values": ["16:9", "21:9", "4:3"],
 			"value": Settings.get_value("options", "aspect"),
-			"desc": "The picture's shape when the game starts.\nF3 switches it during a game."},
+			"desc": "16:9 and 21:9 fill your screen (21:9 widens the view on ultrawide screens;\nthe HUD is stretched). F3 switches to 4:3 and back during a game."},
 		{"type": "number", "key": "music_volume", "label": "Music volume", "min": 0, "max": 10, "step": 1,
 			"value": Settings.get_value("options", "music_volume"),
 			"desc": "Menu music (0 = off). It fades out while you play\nand comes back when the game closes."},

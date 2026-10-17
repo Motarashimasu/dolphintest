@@ -28,35 +28,63 @@ namespace Sparking
 {
 namespace
 {
-std::atomic<bool> s_wide{true};
+std::atomic<Aspect> s_aspect{Aspect::Wide};
+std::atomic<Aspect> s_last_wide{Aspect::Wide};  // what F3 goes back to from 4:3
 
-void Apply(bool wide)
+void Apply(Aspect aspect)
 {
   Config::SetCurrent(Config::GFX_ASPECT_RATIO,
-                     wide ? AspectMode::ForceWide : AspectMode::ForceStandard);
-  Emit("aspect", Json().Add("mode", wide ? "16:9" : "4:3"));
+                     aspect == Aspect::Standard ? AspectMode::ForceStandard : AspectMode::Stretch);
+  Config::SetCurrent(Config::GFX_WIDESCREEN_HACK, aspect == Aspect::Ultrawide);
+  Emit("aspect", Json().Add("mode", AspectName(aspect)));
 }
 }  // namespace
 
-void SetDefaultWidescreen(bool wide)
+std::optional<Aspect> AspectFromString(std::string_view text)
 {
-  s_wide = wide;
+  if (text == "4:3" || text == "standard")
+    return Aspect::Standard;
+  if (text == "16:9" || text == "wide")
+    return Aspect::Wide;
+  if (text == "21:9" || text == "ultrawide")
+    return Aspect::Ultrawide;
+  return std::nullopt;
+}
+
+const char* AspectName(Aspect aspect)
+{
+  switch (aspect)
+  {
+  case Aspect::Standard:
+    return "4:3";
+  case Aspect::Ultrawide:
+    return "21:9";
+  default:
+    return "16:9";
+  }
+}
+
+void SetDefaultAspect(Aspect aspect)
+{
+  s_aspect = aspect;
+  if (aspect != Aspect::Standard)
+    s_last_wide = aspect;
 }
 
 void ApplyAspectForBoot()
 {
-  Apply(s_wide);
+  Apply(s_aspect);
 }
 
-void SetWidescreen(bool wide)
+void SetAspect(Aspect aspect)
 {
-  s_wide = wide;
-  Apply(wide);
+  SetDefaultAspect(aspect);
+  Apply(aspect);
 }
 
-void ToggleWidescreen()
+void ToggleAspect()
 {
-  SetWidescreen(!s_wide);
+  SetAspect(s_aspect == Aspect::Standard ? s_last_wide.load() : Aspect::Standard);
 }
 
 void StartHotkeys(std::vector<Hotkey> hotkeys)

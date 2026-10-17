@@ -1,24 +1,41 @@
 // Copyright 2026 Dolphin-Sparking Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Output aspect ratio: 16:9 by default, F3 toggles 4:3. Only Dolphin's output stretch changes;
-// the game's own widescreen Gecko code (if enabled) keeps running either way.
+// Output aspect ratio: 16:9 by default, also 21:9 or 4:3; F3 toggles between 4:3 and the wide
+// one chosen. Wide = Dolphin's "Stretch to Window" (the picture fills the window / monitor,
+// whatever its shape); 21:9 also turns on Dolphin's widescreen hack, so on a 21:9 screen the 3D
+// view gets wider instead of only stretched (2D parts, the HUD, are stretched). 4:3 = forced 4:3.
+// Presentation only (the GPU's projection), nothing the emulated game sees: each player picks
+// their own in netplay. The game's own widescreen Gecko code (if enabled) keeps running.
 
 #pragma once
 
 #include <functional>
+#include <optional>
+#include <string_view>
 #include <vector>
 
 namespace Sparking
 {
-void SetDefaultWidescreen(bool wide);
+enum class Aspect
+{
+  Standard,   // 4:3
+  Wide,       // 16:9 (stretch to window)
+  Ultrawide,  // 21:9 (stretch to window + widescreen hack)
+};
+// "4:3" / "16:9" / "21:9" (also "standard", "wide", "ultrawide"); nullopt if none of them.
+std::optional<Aspect> AspectFromString(std::string_view text);
+const char* AspectName(Aspect aspect);
+
+void SetDefaultAspect(Aspect aspect);
 
 // Host thread, right before a boot: applies the current choice and emits an "aspect" event.
 void ApplyAspectForBoot();
 
 // Host thread. Emits an "aspect" event.
-void SetWidescreen(bool wide);
-void ToggleWidescreen();
+void SetAspect(Aspect aspect);
+// 4:3 <-> the wide one last chosen (16:9 unless 21:9 was).
+void ToggleAspect();
 
 enum class HotkeyKey
 {

@@ -213,7 +213,7 @@ def main():
         ga, count = solo_gecko(["--no-gecko"])
         check("solo --no-gecko: all codes off", count == 0 and ga["codes"] == [])
 
-        print("aspect ratio (16:9 default, F5 / aspect command -> 4:3 output only)")
+        print("aspect ratio (16:9 default, also 21:9; F3 / aspect command <-> 4:3, output only)")
         d = os.path.join(user_dir("aspect"), "GameSettings")
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, f"{game_id}.ini"), "w") as f:
@@ -233,7 +233,7 @@ def main():
                 time.sleep(0.3)
             return value
 
-        for extra, mode in (([], "16:9"), (["--aspect", "4:3"], "4:3")):
+        for extra, mode in (([], "16:9"), (["--aspect", "4:3"], "4:3"), (["--aspect", "21:9"], "21:9")):
             asp = Instance("aspect", [exe, *common, "--sparking", "-u", user_dir("aspect"),
                                       "--nand", nands["solo"], *extra, "-e", dol])
             asp.send("hello")
@@ -244,11 +244,15 @@ def main():
             v = peek(asp, "CAFEBABE")
             check(f"{mode}: widescreen code really patches the game ({v})", v == "CAFEBABE")
             asp.send("aspect")
-            other = "4:3" if mode == "16:9" else "16:9"
+            other = "4:3" if mode != "4:3" else "16:9"
             asp.wait_for("aspect", lambda e: e["mode"] == other)
             time.sleep(1)
             v = peek(asp, "CAFEBABE")
             check(f"toggle -> {other}: widescreen code still on ({v})", v == "CAFEBABE")
+            if mode != "4:3":
+                asp.send("aspect")
+                check(f"toggle again: back to {mode}, the wide one chosen",
+                      asp.wait_for("aspect")["mode"] == mode)
             asp.send("aspect 5:4")
             check("bad aspect argument rejected", asp.wait_for("error")["code"] == "bad_argument")
             asp.send("quit")

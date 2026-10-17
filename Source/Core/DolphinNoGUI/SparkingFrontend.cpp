@@ -306,7 +306,7 @@ void StartSparkingHotkeys()
   StartHotkeys({
       {HotkeyKey::F1, [] { CycleTextureVariant("Graphics"); }},
       {HotkeyKey::F2, [] { CycleTextureVariant("Buttons"); }},
-      {HotkeyKey::F3, [] { ToggleWidescreen(); }},
+      {HotkeyKey::F3, [] { ToggleAspect(); }},
   });
 }
 
@@ -330,12 +330,10 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
   // Presentation only, so allowed in netplay too (each player picks their own).
   if (cmd.name == "aspect")
   {
-    if (cmd.arg == "16:9" || cmd.arg == "wide")
-      SetWidescreen(true);
-    else if (cmd.arg == "4:3" || cmd.arg == "standard")
-      SetWidescreen(false);
+    if (const auto aspect = AspectFromString(cmd.arg))
+      SetAspect(*aspect);
     else if (cmd.arg.empty() || cmd.arg == "toggle")
-      ToggleWidescreen();
+      ToggleAspect();
     else
       Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
     return;
@@ -640,16 +638,20 @@ static void ApplySessionOverrides(const optparse::Values& options, bool netplay)
                std::string(options.is_set_by_user("netplay_direct") ? "direct" : "traversal"));
   }
 
-  // Display: 1080p internal resolution (3x native) and 16:9 output; F3 / "aspect" flip to 4:3.
+  // Display: 1080p internal resolution (3x native) and 16:9 output (stretched to the window);
+  // F3 / "aspect" flip to 4:3 and back.
   {
     const int scale = std::clamp(std::atoi(static_cast<const char*>(options.get("resolution"))), 1, 8);
     layer->Set(Config::GFX_EFB_SCALE, scale);
     // Smooth Motion: in-between frames for the game's 30 fps scenes (frame interpolation).
     layer->Set(Config::GFX_SPARKING_SMOOTH_MOTION,
                std::string_view(static_cast<const char*>(options.get("smooth_motion"))) == "on");
-    const bool wide = std::string_view(static_cast<const char*>(options.get("aspect"))) != "4:3";
-    layer->Set(Config::GFX_ASPECT_RATIO, wide ? AspectMode::ForceWide : AspectMode::ForceStandard);
-    SetDefaultWidescreen(wide);
+    const Aspect aspect =
+        AspectFromString(static_cast<const char*>(options.get("aspect"))).value_or(Aspect::Wide);
+    layer->Set(Config::GFX_ASPECT_RATIO,
+               aspect == Aspect::Standard ? AspectMode::ForceStandard : AspectMode::Stretch);
+    layer->Set(Config::GFX_WIDESCREEN_HACK, aspect == Aspect::Ultrawide);
+    SetDefaultAspect(aspect);
     const std::string window = static_cast<const char*>(options.get("window"));
     int w = 0, h = 0;
     // "borderless" = a borderless window covering the whole monitor (Windows render window).
@@ -904,9 +906,10 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
   parser.add_option("--aspect")
       .dest("aspect")
       .action("store")
-      .choices({"16:9", "4:3"})
+      .choices({"16:9", "21:9", "4:3"})
       .set_default("16:9")
-      .help("Sparking mode starting aspect ratio (F3 toggles in game): 16:9 (default) or 4:3");
+      .help("Sparking mode starting aspect ratio (F3 toggles 4:3 in game): 16:9 (default) or 21:9 "
+            "(both stretched to the window; 21:9 with the widescreen hack), or 4:3");
   parser.add_option("--resolution")
       .dest("resolution")
       .action("store")

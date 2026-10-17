@@ -57,7 +57,7 @@ func _rows(in_game_menu: bool) -> Array:
 		{"type": "action", "key": "buttons", "label": "Button prompts", "value": Settings.option_name("buttons", Settings.get_value("options", "buttons")),
 			"disabled": not running, "desc": "Switch the button prompts: GameCube, PlayStation, Xbox (F2)."},
 		{"type": "action", "key": "aspect", "label": "Aspect ratio", "value": _aspect,
-			"disabled": not running, "desc": "Switch between 16:9 and 4:3 (F3)."},
+			"disabled": not running, "desc": "Switch between widescreen and 4:3 (F3)."},
 		{"type": "action", "key": "stop", "label": "Stop Game", "color": "#e8663d",
 			"desc": "Close the game and go back to the menu."},
 	])
