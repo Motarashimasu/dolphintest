@@ -176,6 +176,21 @@ func games_and_versions() -> void:
 			== ["RDSE70", "RDBPAF", "RDSJAF", "RDBE70", "RDBJAF"])
 	check("disc IDs name the game and version", Settings.game_of_id("RDBPAF") == ["bt2", "PAL"]
 			and Settings.game_of_id("RDSE70") == ["bt3", "NTSC-U"] and Settings.game_of_id("GZLE01") == [])
+	# DRAGON NET saves: a folder per version; the old single folder becomes BT3 PAL's.
+	check("netplay save folder per version", Settings.netplay_save_dir("RDBJAF").ends_with("saves/netplay/RDBJAF")
+			and DirAccess.dir_exists_absolute(Settings.netplay_save_dir("RDBJAF")))
+	var host_nand := Settings.host_args("single", false, false)
+	check("netplay boots the version's save folder", host_nand[host_nand.find("--nand") + 1].ends_with("saves/netplay/RDSPAF"))
+	var real_data: String = Settings.get_value("paths", "data")
+	var old_data := Settings.data_path("tour_old_layout")
+	DirAccess.make_dir_recursive_absolute(old_data.path_join("saves/netplay/title/00010000/52445350/data"))
+	FileAccess.open(old_data.path_join("saves/netplay/title/00010000/52445350/data/DBZT3"), FileAccess.WRITE).store_string("save")
+	Settings.set_value("paths", "data", old_data)
+	check("old netplay save moved into saves/netplay/RDSPAF", FileAccess.file_exists(
+			old_data.path_join("saves/netplay/RDSPAF/title/00010000/52445350/data/DBZT3"))
+			and not DirAccess.dir_exists_absolute(old_data.path_join("saves/netplay/title"))
+			and DirAccess.dir_exists_absolute(old_data.path_join("saves/netplay/RDBJAF")))
+	Settings.set_value("paths", "data", real_data)
 	check("the old single game path became the BT3 PAL copy", Settings.has_copy("bt3", "PAL")
 			and Settings.owned_versions("bt3") == ["PAL"] and Settings.offline_version("bt3") == "PAL")
 

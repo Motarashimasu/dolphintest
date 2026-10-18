@@ -142,6 +142,7 @@ func _ready() -> void:
 			DirAccess.copy_absolute(ProjectSettings.globalize_path(OLD_CONFIG), _path)
 	_cfg.load(_path)  # missing file = defaults
 	_migrate_game_path()
+	prepare_netplay_saves()
 
 
 ## The folder the launcher runs from (the project folder when run from the editor).
@@ -196,6 +197,8 @@ func set_value(section: String, key: String, value: Variant) -> void:
 	_cfg.save(_path)
 	if section == "paths" and key == "game":
 		_migrate_game_path()   # (old settings / tests: the one game path)
+	if section == "paths" and key == "data":
+		prepare_netplay_saves()
 
 
 func data_path(sub: String) -> String:
@@ -329,6 +332,42 @@ func _migrate_game_path() -> void:
 	_cfg.save(_path)
 
 
+## DRAGON NET's own save folders, one per version (a Wii NAND each): the unlocked save every
+## player of that version must have, never written back. saves/netplay/<disc ID>.
+func netplay_save_dir(id := "") -> String:
+	return data_path("saves/netplay").path_join(id if id != "" else String(GAME["id"]))
+
+
+## Before per-version folders, saves/netplay was one NAND holding the BT3 PAL save: it becomes
+## saves/netplay/RDSPAF. Every version's folder is made (empty) so it's clear where saves go.
+func prepare_netplay_saves() -> void:
+	if data_dir() == "" or not DirAccess.dir_exists_absolute(data_dir()):
+		return
+	var root := data_path("saves/netplay")
+	if DirAccess.dir_exists_absolute(root.path_join("title")) and \
+			not DirAccess.dir_exists_absolute(root.path_join("RDSPAF")):
+		var tmp := data_path("saves/netplay_old_layout")
+		if DirAccess.rename_absolute(root, tmp) == OK:
+			DirAccess.make_dir_recursive_absolute(root)
+			DirAccess.rename_absolute(tmp, root.path_join("RDSPAF"))
+	for key in GAME_ORDER:
+		for v in VERSIONS:
+			DirAccess.make_dir_recursive_absolute(root.path_join(String(GAMES[key]["versions"][v])))
+	var readme := root.path_join("README.txt")
+	if not FileAccess.file_exists(readme):
+		var f := FileAccess.open(readme, FileAccess.WRITE)
+		if f:
+			f.store_string("DRAGON NET save folders: one per game version (disc ID), each a Wii NAND.\r\n"
+				+ "Every player of a version needs the exact same unlocked save in its folder,\r\n"
+				+ "or the lobby blocks the match. Online play never writes to these.\r\n\r\n"
+				+ "  RDSPAF  Budokai Tenkaichi 3 PAL      RDBPAF  Budokai Tenkaichi 2 PAL\r\n"
+				+ "  RDSE70  Budokai Tenkaichi 3 NTSC-U   RDBE70  Budokai Tenkaichi 2 NTSC-U\r\n"
+				+ "  RDSJAF  Budokai Tenkaichi 3 NTSC-J   RDBJAF  Budokai Tenkaichi 2 NTSC-J\r\n\r\n"
+				+ "The save goes in <ID>\\title\\00010000\\<hex of the first 4 letters>\\data\r\n"
+				+ "(2_install_netplay_save.bat does it for you).\r\n")
+			f.close()
+
+
 ## The disc image the current game / version runs.
 func game_path() -> String:
 	return GAME["path"]
@@ -459,7 +498,7 @@ func rollback_test_args(fields: int, log: String, gpu_state := false, draw := fa
 func _netplay_base(nickname := "") -> PackedStringArray:
 	var a := common_args()
 	a.append_array(["--hud", "on"])   # score bar + ping always on in netplay matches
-	a.append_array(["--nand", data_path("saves/netplay"), "--state-dir", data_path("states")])
+	a.append_array(["--nand", netplay_save_dir(), "--state-dir", data_path("states")])
 	a.append_array(["--nickname", nickname if nickname != "" else String(get_value("player", "nickname"))])
 	var codes: Dictionary = GAMES[game]["port_codes"]
 	for port in codes:

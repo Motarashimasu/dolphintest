@@ -376,9 +376,15 @@ Wii games keep their saves in Dolphin's emulated Wii NAND, so separate saves = s
 folders:
 
 ```
-<app>/saves/solo/      ← --nand for solo play; normal progress, written as you play
-<app>/saves/netplay/   ← --nand for netplay; ships with your 100%-unlocked save
+<app>/saves/solo/              ← --nand for solo play; normal progress, written as you play
+<app>/saves/netplay/<disc ID>/  ← --nand for netplay, one per game version (RDSPAF, RDSE70,
+                                  RDSJAF, RDBPAF, RDBE70, RDBJAF); each ships with that
+                                  version's 100%-unlocked save
 ```
+
+The launcher passes the folder of the version being played. A `saves/netplay/` from before
+per-version folders (a NAND with `title/` right in it: the BT3 PAL save) is moved into
+`saves/netplay/RDSPAF` on its own, and every version's folder is created.
 
 **Every player must have a byte-identical netplay save, or the match desyncs** (confirmed in
 testing, even with Dolphin's host-save sync on). So the fork verifies it:
@@ -390,11 +396,11 @@ testing, even with Dolphin's host-save sync on). So the fork verifies it:
 - `start` is refused with `save_data_mismatch` until every player is `ok` (`start force`
   overrides). After a player fixes their files, the host sends `save_check` to re-verify.
 
-Ship the same unlocked save in every install's `saves/netplay/`. On top of that,
+Ship the same unlocked save in every install's `saves/netplay/<disc ID>/`. On top of that,
 `--netplay-saves host-readonly` (default) keeps Dolphin's save sync on and write-back off, so the
 netplay save is never modified by a match.
 
-To install the unlocked save into `saves/netplay/`: in regular Dolphin set
+To install an unlocked save into `saves/netplay/<disc ID>/`: in regular Dolphin set
 Config → Paths → Wii NAND Root to that folder, then Tools → Import Wii Save (`data.bin`) — or copy
 the save's `title/00010000/<id>/data/` folder into the same place inside it.
 
