@@ -1,11 +1,15 @@
 extends RefCounted
 ## Controller presets: Dolphin GameCube pad profiles (.ini with a [Profile] section) that the
 ## frontend copies into the profile's Config/GCPadNew.ini as [GCPad1], the mapping the game
-## uses (offline and in netplay). Presets come from two places, the second winning on a name
-## clash:
-##   res://presets/controllers/*.ini        shipped with the frontend
-##   <SparkingData>/controllers/*.ini       your own (Save current mapping, or copy Dolphin
-##                                           profiles from User/Config/Profiles/GCPad here)
+## uses (offline and in netplay). Every game has its own (its own button layout) and its own
+## choice; the one of the game being launched goes in before every launch. Presets come from
+## two places, the second winning on a name clash:
+##   res://presets/controllers/<game>/*.ini        shipped with the frontend
+##   <SparkingData>/controllers/<game>/*.ini       your own (Create / Edit config, or copy
+##                                                  Dolphin profiles from
+##                                                  User/Config/Profiles/GCPad here)
+## <game> = bt3, bt2 (Settings.GAMES). Presets from before per-game folders
+## (<SparkingData>/controllers/*.ini) were Tenkaichi 3's: they move into controllers/bt3.
 ## An optional [Sparking] section with `Match = xbox, xinput` lets "Auto" pick the preset when
 ## a controller with one of those words in its name is connected. Dolphin ignores that section.
 ## (No class_name, so the project runs without the editor's class cache: `preload` this.)
@@ -15,8 +19,45 @@ const AUTO := "auto"   # pick by connected controller, else keep
 const KEEP := "keep"   # leave GCPadNew.ini as it is
 
 
+## The game whose presets these are: the one the menus are on.
+static func game() -> String:
+	return Settings.game
+
+
 static func user_dir() -> String:
-	return Settings.data_path("controllers")
+	return Settings.data_path("controllers").path_join(game())
+
+
+static func builtin_dir() -> String:
+	return BUILTIN_DIR.path_join(game())
+
+
+## The current game's preset choice (Auto, Keep, or a preset name). Tenkaichi 3's was the one
+## choice there was before per-game ones.
+static func choice() -> String:
+	var c := String(Settings.get_value("controller", game() + "_preset"))
+	if c == "" and game() == "bt3":
+		c = String(Settings.get_value("controller", "preset"))
+	return c if c != "" else AUTO
+
+
+static func set_choice(value: String) -> void:
+	Settings.set_value("controller", game() + "_preset", value)
+
+
+## Presets saved before per-game folders were Tenkaichi 3's.
+static func migrate() -> void:
+	var root := Settings.data_path("controllers")
+	var d := DirAccess.open(root)
+	if d == null:
+		return
+	for f in d.get_files():
+		if f.get_extension().to_lower() != "ini":
+			continue
+		var bt3 := root.path_join("bt3")
+		DirAccess.make_dir_recursive_absolute(bt3)
+		if not FileAccess.file_exists(bt3.path_join(f)):
+			DirAccess.rename_absolute(root.path_join(f), bt3.path_join(f))
 
 
 static func gcpad_path() -> String:
@@ -83,8 +124,9 @@ static func _load_dir(dir: String, into: Dictionary, builtin: bool) -> void:
 
 ## Every preset, sorted by name.
 static func list() -> Array:
+	migrate()
 	var all := {}
-	_load_dir(BUILTIN_DIR, all, true)
+	_load_dir(builtin_dir(), all, true)
 	_load_dir(user_dir(), all, false)
 	var names := all.keys()
 	names.sort_custom(func(a, b): return String(a).naturalnocasecmp_to(b) < 0)
@@ -122,12 +164,12 @@ static func auto_pick() -> Dictionary:
 
 ## The preset the current setting resolves to ({} = keep GCPadNew.ini as it is).
 static func selected() -> Dictionary:
-	var choice: String = Settings.get_value("controller", "preset")
-	if choice == KEEP:
+	var c := choice()
+	if c == KEEP:
 		return {}
-	if choice == AUTO:
+	if c == AUTO:
 		return auto_pick()
-	var p := find(choice)
+	var p := find(c)
 	# A preset that's gone (renamed or deleted): fall back to Auto rather than nothing.
 	return p if not p.is_empty() else auto_pick()
 
@@ -163,12 +205,12 @@ static func current_keys() -> Array:
 	return parse_ini(FileAccess.get_file_as_string(path)).get("GCPad1", [])
 
 
-## Saves the current [GCPad1] mapping as <SparkingData>/controllers/<name>.ini.
+## Saves the current [GCPad1] mapping as <SparkingData>/controllers/<game>/<name>.ini.
 static func save_current_as(name: String) -> String:
 	return save_preset(name, current_keys())
 
 
-## Writes <SparkingData>/controllers/<name>.ini ([Profile] = keys). Returns the saved name or "".
+## Writes <SparkingData>/controllers/<game>/<name>.ini ([Profile] = keys). Returns the saved name or "".
 static func save_preset(name: String, keys: Array) -> String:
 	if keys.is_empty():
 		return ""

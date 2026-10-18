@@ -1,7 +1,8 @@
 extends "res://scripts/screens/form_screen.gd"
-## Controller presets: scroll through them with Left/Right. The choice is written into the
-## profile's GCPadNew.ini ([GCPad1], the mapping the game uses, in netplay too) right away and
-## again before every game. "Auto" picks the preset matching the first connected controller.
+## Controller presets of the game whose menu this is (each game has its own presets and its own
+## choice): scroll through them with Left/Right. The choice is written into the profile's
+## GCPadNew.ini ([GCPad1], the mapping the game uses, in netplay too) right away and again
+## before every game of it. "Auto" picks the preset matching the first connected controller.
 
 const Controllers := preload("res://scripts/controllers.gd")
 
@@ -17,7 +18,7 @@ func screen_title() -> String:
 
 
 func screen_desc() -> String:
-	return "Pick a controller preset with Left / Right.\nIt's used offline and on DRAGON NET."
+	return tr("Pick a %s controller preset with Left / Right.\nIt's used offline and on DRAGON NET.") % Settings.GAMES[Settings.game]["short"]
 
 
 func on_enter() -> void:
@@ -48,7 +49,7 @@ func build_rows() -> Array:
 	for p in _presets:
 		values.append(p["name"])
 		names.append(p["name"])
-	var choice: String = Settings.get_value("controller", "preset")
+	var choice := Controllers.choice()
 	if not choice in values:
 		choice = Controllers.AUTO
 	var sel := _resolved()
@@ -63,7 +64,7 @@ func build_rows() -> Array:
 		{"type": "action", "key": "new", "label": "Create New Config",
 			"desc": "Map every GameCube button yourself by pressing it on your controller.\nAlso shows live what the menus and Dolphin see from your controller."},
 		{"type": "action", "key": "folder", "label": "Open presets folder",
-			"desc": "SparkingData\\controllers: drop Dolphin GameCube pad profiles (.ini) here\nto add them to the list."},
+			"desc": tr("SparkingData\\controllers\\%s: drop Dolphin GameCube pad profiles (.ini) here\nto add them to this game's list.") % Settings.game},
 		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the game menu."},
 	]
 
@@ -91,7 +92,7 @@ func _on_joy_changed(_id: int, _connected: bool) -> void:
 func on_value(key: String, value: Variant) -> void:
 	match key:
 		"preset":
-			Settings.set_value("controller", "preset", value)
+			Controllers.set_choice(value)
 			var p := _resolved()
 			if Controllers.apply(p):
 				app.toast(tr("Controller: %s") % p["name"], 1.5)
@@ -105,7 +106,7 @@ func on_value(key: String, value: Variant) -> void:
 			if saved == "":
 				app.toast("Nothing to save: no mapping in GCPadNew.ini yet.")
 				return
-			Settings.set_value("controller", "preset", saved)
+			Controllers.set_choice(saved)
 			list.set_rows(build_rows(), "preset")
 			app.toast(tr("Saved preset: %s") % saved)
 

@@ -146,12 +146,16 @@ marked "Selected". A choice is saved for the next game, and switched live if a g
 The GameCube prompts are the `@Buttons/Vanilla` texture folder; the folder keeps that name, only
 the menus call it GameCube.
 
-**Controller Setup.** Scroll through presets with Left/Right. The one you pick is written into
-`SparkingData\user\Config\GCPadNew.ini` as `[GCPad1]` right away, and again before every
-game. It's used offline and in netplay.
+**Controller Setup.** Every game has its own (its own button layout): its own presets and
+its own choice. Scroll through the game's presets with Left/Right. The one you pick is written
+into `SparkingData\user\Config\GCPadNew.ini` as `[GCPad1]` right away, and again before every
+game of it. It's used offline and in netplay.
+- Presets: `presets/controllers/<game>/` (built in) and `SparkingData\controllers\<game>\`
+  (yours; `bt3`, `bt2`). Presets from before per-game folders, in `SparkingData\controllers\`,
+  move into `bt3`: they were Tenkaichi 3's. Budokai Tenkaichi 2 has no built-in presets yet.
 - **Auto** (the default) picks the preset that matches the first connected controller. If none
   matches, it leaves the mapping alone.
-- Built-in presets: Xbox One / Series, Xbox 360, PlayStation 4 and PlayStation 5, all the
+- Tenkaichi 3's built-in presets: Xbox One / Series, Xbox 360, PlayStation 4 and PlayStation 5, all the
   **tecbox** layout. PlayStation pads go through SDL with the buttons in the same spots
   (Square/Cross/Circle/Triangle = Xbox X/A/B/Y); their SDL device names aren't confirmed yet.
   A selected preset that no longer exists falls back to Auto.

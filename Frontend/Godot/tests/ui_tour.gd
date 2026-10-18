@@ -907,7 +907,8 @@ func _tour() -> void:
 			and "PlayStation 5 - Sparking Standard" in preset_row["values"])
 	await pick("preset", pads.list)   # Accept on a choice = next: keep -> first preset
 	await press("ui_right")           # and one more
-	var chosen: String = Settings.get_value("controller", "preset")
+	var chosen: String = pads.Controllers.choice()
+	check("the choice is Tenkaichi 3's", Settings.get_value("controller", "bt3_preset") == chosen)
 	var gc := FileAccess.get_file_as_string(pads.Controllers.gcpad_path())
 	var want_dev: String = pads.Controllers.find(chosen).get("device", "?")
 	check("preset '%s' written to GCPadNew.ini" % chosen, ("[GCPad1]\nDevice = " + want_dev) in gc)
@@ -943,9 +944,19 @@ func _tour() -> void:
 	var saved := FileAccess.get_file_as_string(pads.Controllers.user_dir().path_join("Tour Pad.ini"))
 	check("config saved", "Device = XInput/0/Gamepad" in saved and "Buttons/A = `Button X`" in saved
 			and "Triggers/L-Analog = `Trigger R`" in saved)
-	check("saved config selected", Settings.get_value("controller", "preset") == "Tour Pad" and app.top() == pads)
+	check("saved config selected, in Tenkaichi 3's own folder", pads.Controllers.choice() == "Tour Pad"
+			and app.top() == pads and pads.Controllers.user_dir().ends_with("controllers/bt3"))
 	await wait_for("helper Dolphin stopped", func():
 		return Dolphin._helpers.all(func(h): return h["proc"] == Presence._helper), 10)
+	# Budokai Tenkaichi 2: its own presets (not Tenkaichi 3's) and its own choice.
+	Settings.use_game("bt2")
+	var bt2_names: Array = pads.Controllers.list().map(func(p): return p["name"])
+	check("BT2 doesn't list Tenkaichi 3's presets", not "Tour Pad" in bt2_names
+			and not "Xbox One - Sparking Standard" in bt2_names)
+	check("BT2 has its own choice", pads.Controllers.choice() == pads.Controllers.AUTO)
+	pads.Controllers.set_choice(pads.Controllers.KEEP)
+	Settings.use_game("bt3")
+	check("Tenkaichi 3's choice untouched", pads.Controllers.choice() == "Tour Pad")
 	await back()
 
 	# --- Tenkaichi Terminology -------------------------------------------------------------

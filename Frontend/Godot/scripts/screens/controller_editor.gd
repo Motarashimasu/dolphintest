@@ -304,7 +304,7 @@ func _save() -> void:
 	if saved == "":
 		app.toast("Couldn't save the config.")
 		return
-	Settings.set_value("controller", "preset", saved)
+	Controllers.set_choice(saved)
 	Controllers.apply(Controllers.find(saved))
 	app.toast(tr("Saved and selected: %s") % saved)
 	app.pop()

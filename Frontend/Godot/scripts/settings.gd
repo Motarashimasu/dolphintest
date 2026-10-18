@@ -110,7 +110,9 @@ var defaults := {
 		"mode": "single", "board_mode": "single", "board_region": "global",
 		"last_single": 0, "last_team": 0,     # last known ratings, for the menu's rating plate
 		"b2last_single": 0, "b2last_team": 0},   # (Budokai Tenkaichi 2's)
-	"controller": {"preset": "auto"},    # auto, keep, or a preset name (scripts/controllers.gd)
+	# Per game: "<game>_preset" = auto, keep, or a preset name (scripts/controllers.gd); "" = not
+	# chosen yet. ("preset": the one choice before per-game ones, now Tenkaichi 3's.)
+	"controller": {"preset": "auto", "bt3_preset": "", "bt2_preset": ""},
 	# Game copies: "<game>_<version>" = disc image path, "<game>_offline" = the version Play
 	# Offline uses, "<game>_netplay" = the version last picked for DRAGON NET.
 	"games": {},
