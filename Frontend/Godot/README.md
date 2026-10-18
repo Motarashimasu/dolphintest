@@ -106,9 +106,11 @@ press B again to leave.
   can join while a set is on and get in line as soon as it ends. Hold Select: the host's Stop Set
   pauses the ladder, and someone waiting in line can Stop Watching (only their own view).
 - **Ranked Match** (DRAGON NET > Ranked Match): rated 1-on-1 matches on the ranked server
-  (`Server/ranked`, PHP + MySQL; `[ranked] server` in the settings). Needs a Discord login
-  (Profile, or the first time you open a ranked screen): Discord opens in the browser, you press
-  Authorize, and your Discord name becomes your ranked name. Its own Lobby Browser (ranked lobbies
+  (`Server/ranked`, PHP + MySQL; `[ranked] server` in the settings). Needs a DRAGON NET account
+  (Profile, or the first time you open a ranked or Friends screen): username + password, made right
+  there (Create account). A ranked profile from before accounts (made with Discord): "Convert my
+  Discord ranked profile" logs in with Discord once, then asks for a username + password; the
+  ratings stay. Its own Lobby Browser (ranked lobbies
   only, with the host's rating), Host and Find; 2 players, no spectators. Single Battle is first
   to 2 wins (FT2, shown in the lobby title), Team Battle is one match. The host presses Start
   Match for each ranked match; both launchers report the result, and the lobby shows the rating
@@ -234,6 +236,14 @@ changes it any time. Netplay is called **DRAGON NET** in the menus and on Discor
 - Or without the editor: files named after the slot in `SparkingData\sounds` (`move.wav`,
   `select.ogg`, ...). Those win over the slots.
 - Volume: Options > Sound effects (0 = off).
+
+**Friends** (Main Menu > Friends, needs the DRAGON NET account): add someone by username (they
+get a request to accept or decline), the friends list with who's online. While the launcher is
+open you're online for your friends (it checks in every 20 seconds). A friend coming online pops
+up at the right of the screen: a green bar with their name and a character sprite (one of
+`look/online/*.png` at random) sliding in, then out; never over a game. **Messages** from the
+admin panel (Server/ranked > Messages) pop up in the middle of the screen, in the striped box,
+until closed with a button; each one once.
 
 **Discord status.** With the Discord app running, your profile shows what you're doing: in the
 menus, playing offline, waiting in a Single/Team Battle lobby (1 of 2), or "vs <opponent>" in a

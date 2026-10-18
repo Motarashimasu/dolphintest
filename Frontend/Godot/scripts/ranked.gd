@@ -1,7 +1,10 @@
 extends Node
 ## DRAGON NET Ranked: talks to the ranked server (Server/ranked, PHP) over HTTPS.
-##   - Discord login: the server gives a Discord "Authorize" link, we open it in the browser and
-##     poll until the server says it's done; the session token goes in frontend.cfg.
+##   - DRAGON NET accounts: username + password, made here (account.php register / login); the
+##     session token goes in frontend.cfg. The same account has friends (scripts/social.gd).
+##   - A ranked profile from before accounts was made with a Discord login: login() still runs
+##     that (the server gives a Discord "Authorize" link, we open it in the browser and poll),
+##     once, so its owner can give it a username + password (claim()); `needs_account` until then.
 ##   - api(endpoint, body) for everything else (lobbies, matches, leaderboard).
 ## Every call returns a Dictionary; failures come back as {"ok": false, "error": code}.
 
@@ -13,6 +16,7 @@ const MODE_CAP := {"single": 2, "team": 1}   # wins that take a ranked match
 
 var profile := {}            # me.php: player, ratings {single, team}, lifetime (of profile.game)
 var logging_in := false
+var needs_account := false   # logged in with Discord, the profile has no username + password yet
 ## How a login link is opened. Tests swap it for a scripted "browser".
 var open_url: Callable = func(url: String): OS.shell_open(url)
 var _cancel_login := false
@@ -116,6 +120,7 @@ func login() -> Dictionary:
 			"done":
 				Settings.set_value("ranked", "token", String(p["token"]))
 				Settings.set_value("ranked", "name", String(p.get("player", {}).get("name", "")))
+				needs_account = bool(p.get("needs_account", false))
 				await refresh()
 				result = {"ok": true}
 				break
@@ -134,6 +139,34 @@ func login() -> Dictionary:
 
 func cancel_login() -> void:
 	_cancel_login = true
+
+
+## Logs in to a DRAGON NET account (`create`: makes it first). {"ok": true} or an error code.
+func account_login(username: String, password: String, create := false) -> Dictionary:
+	if logging_in:
+		return {"ok": false, "error": "busy"}
+	logging_in = true
+	var res := await api("account.php", {"action": "register" if create else "login",
+		"username": username.strip_edges(), "password": password})
+	if res.get("ok", false):
+		Settings.set_value("ranked", "token", String(res["token"]))
+		Settings.set_value("ranked", "name", String(res["player"]["name"]))
+		needs_account = false
+		await refresh()
+	logging_in = false
+	changed.emit()
+	return res
+
+
+## A profile from before accounts (just logged in with Discord) gets its username + password.
+func claim(username: String, password: String) -> Dictionary:
+	var res := await api("account.php", {"action": "claim", "username": username.strip_edges(),
+		"password": password})
+	if res.get("ok", false) or String(res.get("error", "")) == "already_claimed":
+		needs_account = false
+		await refresh()
+	changed.emit()
+	return res
 
 
 func refresh() -> Dictionary:
@@ -157,6 +190,7 @@ func logout() -> void:
 
 func _forget() -> void:
 	Settings.set_value("ranked", "token", "")
+	needs_account = false
 	for key in Settings.GAMES:
 		for mode in ["single", "team"]:
 			Settings.set_value("ranked", String(Settings.GAMES[key]["ranked_prefix"]) + "last_" + mode, 0)
@@ -187,8 +221,20 @@ static func error_text(code: String) -> String:
 	var t := {
 		"unreachable": "Couldn't reach the ranked server. Check your connection.",
 		"bad_response": "The ranked server sent something unexpected.",
-		"discord_not_configured": "Ranked isn't set up on the server yet (Discord login).",
-		"login_required": "Log in with Discord first.",
+		"discord_not_configured": "The Discord login isn't set up on the server.",
+		"login_required": "Log in to your DRAGON NET account first.",
+		"wrong_login": "Wrong username or password.",
+		"username_taken": "That username is taken.",
+		"bad_username": "Usernames are 3-20 letters, digits, _ . or - (no spaces).",
+		"bad_password": "Passwords need at least 6 characters.",
+		"too_many_attempts": "Too many wrong passwords: wait 5 minutes and try again.",
+		"no_discord_profile": "No ranked profile for that Discord account: create an account instead.",
+		"already_claimed": "This profile already has an account.",
+		"no_such_player": "No player with that username.",
+		"own_name": "That's you.",
+		"already_friends": "You're already friends.",
+		"too_many_friends": "Friends list full (200).",
+		"no_request": "That request is gone.",
 		"denied": "Discord login was cancelled.",
 		"expired": "The Discord login timed out. Try again.",
 		"cancelled": "Discord login cancelled.",

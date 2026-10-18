@@ -28,6 +28,7 @@ var _toast_timer: SceneTreeTimer
 var _log_panel: Panel
 var _log_text: RichTextLabel
 var notifier: Control        # the red / blue / yellow notification bars (scripts/ui/notifier.gd)
+var social_popups: Control   # friends coming online, admin messages (scripts/ui/social_popups.gd)
 
 # In-game menu (compact window) state.
 var _compact: Control = null
@@ -323,6 +324,13 @@ func _main_menu() -> Control:
 			"action": func():
 				Settings.use_game(key)
 				push(_game_menu(key))})
+	items.append({"label": "Friends", "glyph": "F", "color": "#3fbf6b",
+		"desc": func():
+			if not Ranked.logged_in():
+				return tr("Your DRAGON NET friends: who's online, friend requests.\nNeeds a DRAGON NET account (made here).")
+			var n := Social.friends.filter(func(f): return f.get("online", false)).size()
+			return tr("Your DRAGON NET friends: who's online, friend requests.\n%d online now.") % n,
+		"action": open_friends})
 	return _menu("Main Menu", items + [
 		{"label": "Video Settings", "glyph": "V", "color": "#9b6be6",
 			"desc": "Change your video settings here.",
@@ -460,7 +468,7 @@ func _netplay_menu() -> Control:
 			"desc": "Play in Training Mode, with the option to practice with pad buffering to emulate an online environment, so you can be prepared for anything! near or far!",
 			"action": open_buffer_training},
 		{"label": "Ranked Match", "glyph": "R", "color": "#c94bd6", "bumper": true,
-			"desc": "Rated 1-on-1 matches with a leaderboard. Single Battle is first to 2 wins\n(FT2), Team Battle is one match. Needs a Discord login.",
+			"desc": "Rated 1-on-1 matches with a leaderboard. Single Battle is first to 2 wins\n(FT2), Team Battle is one match. Needs a DRAGON NET account.",
 			"action": func(): push(_ranked_menu())},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the game menu."},
@@ -478,7 +486,7 @@ func open_buffer_training() -> void:
 
 ## Ranked Match: its own lobby browser, host and find (ranked lobbies only, 2 players, no
 ## spectators), the leaderboard, and the Discord profile. Everything but the leaderboard needs
-## the Discord login first.
+## the DRAGON NET account first.
 func _ranked_menu() -> Control:
 	return _menu("Ranked Match", [
 		{"label": "Lobby Browser", "glyph": "L", "color": "#3fa9f5",
@@ -497,18 +505,27 @@ func _ranked_menu() -> Control:
 			"desc": "Watch your ranked matches again, from the first round\nto the last KO. Saved automatically.",
 			"action": func(): open("replays")},
 		{"label": "Profile", "glyph": "P", "color": "#5865f2",
-			"desc": "Your Discord login, ratings and records.",
+			"desc": "Your DRAGON NET account, ratings and records.",
 			"action": func(): open("ranked_account")},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the DRAGON NET menu."},
 	], "netplay")
 
 
-## Ranked screens need the game set up and a Discord login (the login screen continues on).
+## Friends: needs the DRAGON NET account (the login screen continues on).
+func open_friends() -> void:
+	var go := func(): open("friends")
+	if Ranked.logged_in() and not Ranked.needs_account:
+		go.call()
+	else:
+		push(load(SCREENS % "ranked_account").new().setup(go))
+
+
+## Ranked screens need the game set up and a DRAGON NET account (the login screen continues on).
 func _open_ranked(then: Callable) -> void:
 	if not require_setup():
 		return
-	if Ranked.logged_in():
+	if Ranked.logged_in() and not Ranked.needs_account:
 		then.call()
 	else:
 		push(load(SCREENS % "ranked_account").new().setup(then))
@@ -602,6 +619,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F12:
 		_toggle_log()
+		_handled()
+		return
+	# An admin message on screen takes every input until it's closed.
+	if social_popups and social_popups.has_message_open():
+		social_popups.handle_input(event)
 		_handled()
 		return
 	if _compact:
@@ -911,6 +933,10 @@ func _build_backdrop() -> void:
 	notifier.app = self
 	notifier.z_index = 20   # in front of the menu wheel's raised rows
 	_overlay.add_child(notifier)
+	social_popups = load("res://scripts/ui/social_popups.gd").new()
+	social_popups.app = self
+	social_popups.z_index = 30
+	_overlay.add_child(social_popups)
 	_fade = ColorRect.new()
 	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

@@ -28,6 +28,9 @@ https://tecshideout.ct.ws/sparking/admin.php and sign in with it.
   Seasons  Start new season (type RESET): the final standings are archived (viewable there),
            then every rating goes back to 1000 and every record to 0-0, region boards too.
            The all-time record keeps every season.
+  Messages send a message (up to 500 characters) to every logged-in player: it pops up once on
+           their launcher (outside games) until they close it with a button; players who log in
+           while it's on (1-30 days) get it too. See how many closed it; Switch off stops it.
   Log      every admin action, with what changed
 Leave admin_key empty to switch the panel off.
 
@@ -36,7 +39,9 @@ What's in here
   admin.php        the admin panel (above)
   index.php        the leaderboard web page (mode, region, all-time record)
   leaderboard.php  the same as JSON for the launcher
-  auth.php         Discord login for the launcher (start / poll / logout)
+  account.php      DRAGON NET accounts: register / login (username + password) / claim
+  social.php       friends (requests, who's online) and the admin's messages
+  auth.php         logout; and the Discord login, only to convert a profile from before accounts
   discord.php      where Discord sends the browser back after "Authorize"
   me.php           your profile: ratings and records
   lobby.php        ranked lobbies: open / heartbeat / close / list / join / status / leave
@@ -58,13 +63,20 @@ changes within 2 minutes.
 
 Rules
 -----
-- One Discord account = one ranked profile. Ratings: Elo (K=32), 1000 to start, separate for
+- Accounts: players make a DRAGON NET account in the launcher (username 3-20 letters, digits,
+  _ . -; password 6+ characters, stored hashed). 8 wrong passwords for one username = a 5-minute
+  wait. Ranked profiles from before accounts were made with a Discord login: their owner uses
+  "Convert my Discord ranked profile" once (Discord login, then a username + password) and keeps
+  the ratings. Discord makes no new profiles. A player is "online" for friends while their
+  launcher is open (it checks in every 20 seconds).
+- One account = one ranked profile. Ratings: Elo (K=32), 1000 to start, separate for
   Single Battle (first to 2 wins) and Team Battle (one match), and per game: Budokai
   Tenkaichi 2 has its own ladder (modes b2single / b2team on the server, "BT2 ..." on the web
   page). A game's versions (NTSC-U / PAL / NTSC-J) share a rating, but a ranked lobby only lists
   for players on the same version.
 - Updating from an older version: just upload the files; the database adds what's new on the
-  first request (lobbies get a "version" column).
+  first request (lobbies get a "version" column; players get username / password; friends,
+  messages and login-attempt tables are made).
 - A match counts when both players' launchers report the same result. One report alone counts
   after 2 minutes (the other player left or crashed). Reports that disagree void the match.
   Leaving or stopping a running match counts as a loss.

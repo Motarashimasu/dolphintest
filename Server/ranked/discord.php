@@ -90,14 +90,17 @@ try {
     $st = $db->prepare('SELECT id FROM players WHERE discord_id = ?');
     $st->execute([$discord_id]);
     $pid = $st->fetchColumn();
-    if ($pid) {
-        $db->prepare('UPDATE players SET name = ?, avatar = ?, last_seen = ? WHERE id = ?')
-            ->execute([$name, $avatar, now(), $pid]);
-    } else {
-        $db->prepare('INSERT INTO players (discord_id, name, avatar, created, last_seen) VALUES (?, ?, ?, ?, ?)')
-            ->execute([$discord_id, $name, $avatar, now(), now()]);
-        $pid = $db->lastInsertId();
+    // Discord only brings back profiles from before accounts (to give them a username and
+    // password, account.php claim): new players make an account in the game.
+    if (!$pid) {
+        $fail('no_discord_profile', 'There is no ranked profile for this Discord account. Make a DRAGON NET account in the game instead.');
     }
+    $st = $db->prepare('SELECT username FROM players WHERE id = ?');
+    $st->execute([$pid]);
+    $has_account = (string)$st->fetchColumn() !== '';
+    // A converted profile keeps its username as its name; one still to convert, its Discord name.
+    $db->prepare('UPDATE players SET avatar = ?, last_seen = ?' . ($has_account ? '' : ', name = ?') . ' WHERE id = ?')
+        ->execute($has_account ? [$avatar, now(), $pid] : [$avatar, now(), $name, $pid]);
     $db->prepare('UPDATE logins SET player_id = ? WHERE id = ?')->execute([(int)$pid, $login]);
     page("Logged in as $name", 'You can close this tab and go back to the game.', true);
 } catch (Throwable $e) {

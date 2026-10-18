@@ -6,7 +6,7 @@ extends Control
 ##   {type:"choice", key, label, values:[...], names:[...], value, desc}
 ##   {type:"toggle", key, label, value: bool, on_text, off_text, desc}
 ##   {type:"number", key, label, value, min, max, step, desc}
-##   {type:"text",   key, label, value, placeholder, max_length, desc}
+##   {type:"text",   key, label, value, placeholder, max_length, secret (password dots), desc}
 ##   {type:"action", key, label, value (right-hand text), desc}
 ##   {type:"info",   key, label, value}           (not selectable)
 ## Every row may also carry `disabled: true` (shown dimmed, can't change) and `color`.
@@ -227,6 +227,7 @@ func _rebuild() -> void:
 		if r.get("type", "") == "text":
 			edit = Style.line_edit(String(r.get("placeholder", "")), int(r.get("max_length", 0)))
 			edit.text = String(r.get("value", ""))
+			edit.secret = bool(r.get("secret", false))
 			edit.text_submitted.connect(func(_t): edit.release_focus())
 			edit.focus_exited.connect(_on_edit_done.bind(i))
 			edit.focus_entered.connect(_set_index.bind(i))

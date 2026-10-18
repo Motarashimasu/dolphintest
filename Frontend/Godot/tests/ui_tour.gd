@@ -21,6 +21,7 @@ func _ready() -> void:
 	app.transitions = false   # no half-faded screenshots (the fades get their own check)
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(config_path))
 	out_dir = cfg["out_dir"]
+	vegeta_token = String(cfg.get("vegeta_token", ""))
 	Settings.use_file(cfg["settings_file"])
 	for section in cfg.get("settings", {}):
 		for key in cfg["settings"][section]:
@@ -146,6 +147,70 @@ func wait_for(label: String, cond: Callable, seconds := 20.0) -> bool:
 
 func top() -> Control:
 	return app.top()
+
+
+var vegeta_token := ""
+
+
+## social.php as Vegeta (the harness's ranked host).
+func as_vegeta(body: Dictionary) -> Dictionary:
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request(Ranked.server() + "social.php", PackedStringArray(["Content-Type: application/json",
+		"X-Sparking-Token: " + vegeta_token]), HTTPClient.METHOD_POST, JSON.stringify(body))
+	var res: Array = await req.request_completed
+	req.queue_free()
+	var data = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
+	return data if data is Dictionary else {}
+
+
+## Friends (on the main menu), a friend coming online, an admin message.
+func friends_and_popups() -> void:
+	await choose("Friends")
+	var fr: Control = top()
+	check("Friends screen (logged in as Goku)", app._title.text == "Friends" and "Goku" in fr.screen_desc())
+	await type_into(fr.list, "add", "vegeta")
+	await wait_for("friend request sent", func(): return "Friend request sent to Vegeta" in fr._status, 15)
+	check("waiting for Vegeta", Social.outgoing.any(func(r): return r["name"] == "Vegeta"))
+	var p := await as_vegeta({"action": "poll"})
+	var goku_id := -1
+	for r in p.get("incoming", []):
+		if r["name"] == "Goku":
+			goku_id = int(r["id"])
+	check("Vegeta got the request", goku_id > 0)
+	await as_vegeta({"action": "accept", "id": goku_id})
+	await Social.poll()
+	await frames(5)
+	check("a new friend isn't announced as coming online", app.social_popups._toast == null
+			and app.social_popups._toasts.is_empty())
+	check("Vegeta on the friends list, online", Social.friends.size() == 1 and Social.friends[0]["name"] == "Vegeta"
+			and Social.friends[0]["online"] and String(fr.list.row("f:%d" % int(Social.friends[0]["id"])).get("value")) == "Online")
+	await shot("friends")
+	# A friend coming online: the green bar slides in from the right with a sprite.
+	Social._online.clear()   # (as if Vegeta had been offline at the last poll)
+	await Social.poll()
+	await wait_for("online pop-up shown", func(): return app.social_popups._toast != null, 5)
+	var t: Control = app.social_popups._toast
+	await get_tree().create_timer(0.6).timeout
+	check("online pop-up: centre right, a quarter of the screen at most (%s, %s)" % [t.position, t.size], t.position.x >= 1280 - 330
+			and t.size.x <= 321 and t.position.y > 100 and t.position.y + t.size.y < 620)
+	check("online pop-up: green bar, sprite, name", t.get_child(0) is Panel
+			and t.get_children().any(func(c): return c is TextureRect and c.texture != null)
+			and "Vegeta" in t.get_child(0).get_child(1).text)
+	await shot("friend_online_popup")
+	await wait_for("online pop-up gone by itself", func(): return app.social_popups._toast == null, 8)
+	# An admin message: the striped box until it's closed with a button; once.
+	Social.message.emit(990001, "Server maintenance tonight at 22:00 UTC. Ranked will be back in an hour.")
+	await wait_for("message shown", func(): return app.social_popups.has_message_open(), 5)
+	await frames(15)
+	await shot("admin_message")
+	var before: String = top().list.current_key()
+	await press("ui_down")
+	check("the menu behind doesn't move while it's open", top().list.current_key() == before)
+	await press("ui_accept")
+	check("closed with a button", not app.social_popups.has_message_open())
+	await back()
+	check("back at the main menu", app._title.text == "Main Menu")
 
 
 ## Budokai Tenkaichi 2's tab, game copies per version, the version picked for DRAGON NET.
@@ -419,9 +484,13 @@ func _tour() -> void:
 	check("description follows the selection", "Sparking! NEO" in app._desc.text)
 	await shot("main_menu_bt2")
 	await press("ui_down")
+	check("then Friends", top().carousel.current().get("label") == "Friends"
+			and "Needs a DRAGON NET account" in app._desc.text)
+	await press("ui_down")
 	check("then Video Settings", top().carousel.current().get("label") == "Video Settings"
 			and app._desc.text == "Change your video settings here.")
 	await shot("main_menu_video")
+	await press("ui_up")
 	await press("ui_up")
 	await press("ui_up")
 
@@ -659,12 +728,7 @@ func _tour() -> void:
 	await back()   # -> Battle Lounge menu
 	await back()   # -> DRAGON NET
 
-	# --- Ranked Match: Discord login, ranked lobby browser, an FT2 match, leaderboard -------
-	# The "browser" for the Discord login: follows the authorize link as the fake Discord's Goku.
-	Ranked.open_url = func(url: String):
-		var req := HTTPRequest.new()
-		add_child(req)
-		req.request(url + "&as=goku")
+	# --- Ranked Match: DRAGON NET account, ranked lobby browser, an FT2 match, leaderboard ----
 	await choose("Ranked Match")
 	check("Ranked Match menu", app._title.text == "Ranked Match")
 	await shot("ranked_menu")
@@ -675,11 +739,16 @@ func _tour() -> void:
 	await back()
 	await choose("Lobby Browser")
 	var rlogin: Control = top()
-	check("ranked asks for the Discord login first", app._title.text == "Ranked Login")
-	await shot("ranked_login")
+	check("ranked asks for the DRAGON NET login first", app._title.text == "DRAGON NET Login")
+	await type_into(rlogin.list, "username", "Goku")
+	await type_into(rlogin.list, "password", "tour-pass-1")
+	check("the password is hidden", rlogin.list._nodes.any(func(n): return n.edit != null and n.edit.secret))
 	await pick("login", rlogin.list)
-	await wait_for("logged in with Discord", func(): return app.top() != rlogin, 30)
-	check("Discord name is the ranked name", Ranked.display_name() == "Goku" and Ranked.logged_in())
+	await wait_for("no such account yet", func(): return "Wrong username" in rlogin._status, 15)
+	await shot("ranked_login")
+	await pick("create", rlogin.list)
+	await wait_for("account made, logged in", func(): return app.top() != rlogin, 30)
+	check("the account name is the ranked name", Ranked.display_name() == "Goku" and Ranked.logged_in())
 	var rb: Control = top()
 	check("on to the Ranked Lobby Browser", app._title.text == "Ranked Lobbies")
 	await wait_for("ranked lobbies loaded", func(): return not rb._loading, 15)
@@ -1027,6 +1096,7 @@ func _tour() -> void:
 			and top().list.row("files").is_empty())
 	await back()
 	await games_and_versions()
+	await friends_and_popups()
 	app.open("setup")
 	await shot("first_run_setup")
 	check("setup asks for one copy of each game", top().list.row("game_bt3").get("value", "").begins_with("PAL")

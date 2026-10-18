@@ -26,6 +26,8 @@ DISCORD_USERS = {
     "goku": {"id": "1001", "username": "goku_s", "global_name": "Goku"},
     "vegeta": {"id": "1002", "username": "vegeta_p", "global_name": "Vegeta"},
     "krillin": {"id": "1003", "username": "krillin", "global_name": None},
+    "bulma": {"id": "1004", "username": "bulma_b", "global_name": "Bulma"},
+    "yamcha": {"id": "1005", "username": "yamcha", "global_name": "Yamcha"},
 }
 
 
@@ -143,7 +145,36 @@ def call(server, endpoint, token=None, **params):
         return e.code, json.loads(e.read() or b"{}")
 
 
+def account_name(who):
+    u = DISCORD_USERS.get(who, {"username": who})
+    return u.get("global_name") or u["username"]
+
+
 def login(server, who):
+    """The launcher's DRAGON NET account login (made the first time): (response, "")."""
+    name, password = account_name(who), f"pw-{who}-123"
+    _, p = call(server, "account.php", action="login", username=name, password=password)
+    if not p.get("ok"):
+        _, p = call(server, "account.php", action="register", username=name, password=password)
+    return p, ""
+
+
+def seed_discord_profile(server, who):
+    """A profile from before accounts (made by the old Discord login), straight into the database."""
+    import sqlite3
+    u = DISCORD_USERS[who]
+    con = sqlite3.connect(server.db)
+    con.execute("INSERT INTO players (discord_id, name, avatar, created, last_seen) VALUES (?, ?, NULL, ?, ?)",
+                (u["id"], u.get("global_name") or u["username"], int(time.time()), int(time.time())))
+    con.commit()
+    pid = con.execute("SELECT id FROM players WHERE discord_id = ?", (u["id"],)).fetchone()[0]
+    con.execute("INSERT INTO ratings (player_id, mode, rating, wins, losses) VALUES (?, 'single', 1111, 0, 0)", (pid,))
+    con.commit()
+    con.close()
+    return pid
+
+
+def discord_login(server, who):
     """The launcher's Discord login: start, the browser visits Discord, poll for the session."""
     _, s = call(server, "auth.php", action="start")
     try:
@@ -153,6 +184,36 @@ def login(server, who):
         page = e.read().decode()
     _, p = call(server, "auth.php", action="poll", login=s["login"], poll=s["poll"])
     return p, page
+
+
+def social_checks(server, check, G, V, K):
+    def poll(tok):
+        return call(server, "social.php", tok, action="poll")[1]
+    _, r = call(server, "social.php", G, action="request", name="vegeta")
+    check("friend request by username (any case)", r.get("state") == "pending" and r.get("name") == "Vegeta")
+    p = poll(V)
+    check(f"Vegeta sees Goku's request {p.get('incoming')}", [x["name"] for x in p["incoming"]] == ["Goku"])
+    check("Goku sees his request waiting", [x["name"] for x in poll(G)["outgoing"]] == ["Vegeta"])
+    _, a = call(server, "social.php", V, action="accept", id=p["incoming"][0]["id"])
+    p = poll(G)
+    check(f"friends now, Vegeta online {p['friends']}", p["friends"] == [{"id": p["friends"][0]["id"], "name": "Vegeta", "online": True}])
+    _, r = call(server, "social.php", K, action="request", name="Goku")
+    _, r2 = call(server, "social.php", G, action="request", name="krillin")
+    check("asking someone who asked you: friends at once", r2.get("state") == "friends")
+    _, nf = call(server, "social.php", G, action="request", name="nobody_here")
+    check("unknown username", nf.get("error") == "no_such_player")
+    _, own = call(server, "social.php", G, action="request", name="Goku")
+    check("not yourself", own.get("error") == "own_name")
+    server.write_config(report_grace=3, time_offset=200)   # nobody polled for 200 s
+    time.sleep(3)
+    p = poll(G)
+    check(f"friends who stopped polling are offline {p['friends']}", all(not f["online"] for f in p["friends"]))
+    server.write_config(report_grace=3)
+    time.sleep(3)
+    kid = [f["id"] for f in poll(G)["friends"] if f["name"] == "krillin"][0]
+    call(server, "social.php", G, action="remove", id=kid)
+    check("unfriend", [f["name"] for f in poll(G)["friends"]] == ["Vegeta"])
+    check("messages: none yet", poll(G)["messages"] == [])
 
 
 def admin_checks(server, check, tokens):
@@ -229,8 +290,19 @@ def admin_checks(server, check, tokens):
     check("admin: past season archived with final standings", "Season 1" in seasons and "Final standings" in seasons)
     sid = re.search(r"view=(\d+)", seasons).group(1)
     check("admin: final standings kept", "1234" in page(f"?p=seasons&view={sid}"))
+    # Messages: every logged-in player gets it once, until they close it.
+    out = act(a="message", text="Server maintenance tonight at 22:00 UTC.", days="2")
+    check("admin: message sent", "every logged-in player sees it once" in out)
+    msgs = call(server, "social.php", tokens["vegeta"], action="poll")[1]["messages"]
+    check(f"players get the message {msgs}", [m["text"] for m in msgs] == ["Server maintenance tonight at 22:00 UTC."])
+    call(server, "social.php", tokens["vegeta"], action="ack", message=msgs[0]["id"])
+    check("closed: not sent again", call(server, "social.php", tokens["vegeta"], action="poll")[1]["messages"] == [])
+    check("others still get it", len(call(server, "social.php", tokens["goku"], action="poll")[1]["messages"]) == 1)
+    check("admin: how many closed it", ">1</td>" in page("?p=messages"))
+    act(a="message_off", message=msgs[0]["id"])
+    check("switched off: nobody else gets it", call(server, "social.php", tokens["goku"], action="poll")[1]["messages"] == [])
     log = page("?p=log")
-    check("admin: every action logged", all(w in log for w in ("edit_stats", "void_match", "ban", "unban", "new_season")))
+    check("admin: every action logged", all(w in log for w in ("edit_stats", "void_match", "ban", "unban", "new_season", "message")))
     server.write_config(admin_key="")
 
 
@@ -247,17 +319,61 @@ def main():
     try:
         _, me = call(server, "me.php")
         check("profile needs a login", me.get("error") == "login_required")
-        g, page = login(server, "goku")
-        check(f"Discord login hands the launcher a session ({g.get('state')})",
-              g.get("state") == "done" and len(g.get("token", "")) == 64 and "Logged in as Goku" in page)
-        _, again = call(server, "auth.php", action="poll", login="x" * 32, poll="y" * 32)
-        check("a session is handed out once (unknown login expires)", again.get("state") == "expired")
+        # DRAGON NET accounts: made in the launcher, username + password.
+        _, r = call(server, "account.php", action="register", username="Goku", password="pw-goku-123")
+        check(f"account made, logged in ({r.get('player')})",
+              r.get("ok") and len(r.get("token", "")) == 64 and r["player"]["name"] == "Goku")
+        g = r
+        code, dup = call(server, "account.php", action="register", username="goku", password="whatever1")
+        check("a username is taken whatever its case", code == 409 and dup["error"] == "username_taken")
+        for bad_name, bad_pass, err in (("ab", "secret12", "bad_username"), ("Goku Son", "secret12", "bad_username"),
+                                        ("Gohan", "123", "bad_password")):
+            _, b = call(server, "account.php", action="register", username=bad_name, password=bad_pass)
+            check(f"refused: {bad_name!r} / {bad_pass!r} -> {b.get('error')}", b.get("error") == err)
+        code, wrong = call(server, "account.php", action="login", username="Goku", password="nope-nope")
+        check("wrong password refused", code == 401 and wrong["error"] == "wrong_login")
+        _, again = call(server, "account.php", action="login", username="GOKU", password="pw-goku-123")
+        check("log in (username in any case)", again.get("ok") and again["player"]["id"] == g["player"]["id"])
+        for _ in range(9):
+            call(server, "account.php", action="login", username="Vegeta", password="guessing")
+        _, slow = call(server, "account.php", action="login", username="Vegeta", password="guessing")
+        check("too many wrong passwords: that username waits", slow.get("error") == "too_many_attempts")
+        server.write_config(report_grace=3, time_offset=400)   # the pause is over
+        time.sleep(3)
         v, _ = login(server, "vegeta")
         k, _ = login(server, "krillin")
-        check("no display name: the Discord username", k.get("player", {}).get("name") == "krillin")
-        d, page = login(server, "deny")
+        server.write_config(report_grace=3)
+        time.sleep(3)
+        check("accounts for Vegeta and krillin", v.get("ok") and k.get("player", {}).get("name") == "krillin")
+
+        # Discord: only to bring back a profile from before accounts, once, keeping its ratings.
+        bulma_id = seed_discord_profile(server, "bulma")
+        b, page = discord_login(server, "bulma")
+        check(f"old Discord profile: logged in, asked to make its account ({b.get('state')})",
+              b.get("state") == "done" and b.get("needs_account") is True and "Logged in as Bulma" in page)
+        _, taken = call(server, "account.php", b["token"], action="claim", username="Goku", password="bulma-pw-1")
+        check("claiming a taken username refused", taken.get("error") == "username_taken")
+        _, cl = call(server, "account.php", b["token"], action="claim", username="Bulma", password="bulma-pw-1")
+        check("old profile gets its username + password", cl.get("ok") and cl["player"]["id"] == bulma_id)
+        _, bl = call(server, "account.php", action="login", username="Bulma", password="bulma-pw-1")
+        _, bme = call(server, "me.php", bl["token"])
+        check(f"and logs in with it, ratings kept ({bme['ratings']['single']})",
+              bme["player"]["id"] == bulma_id and bme["ratings"]["single"]["rating"] == 1111)
+        _, again2 = call(server, "account.php", b["token"], action="claim", username="Bulma2", password="bulma-pw-1")
+        check("claiming twice refused", again2.get("error") == "already_claimed")
+        b2, _ = discord_login(server, "bulma")
+        check("Discord again: no account to make now", b2.get("state") == "done" and b2.get("needs_account") is False
+              and b2.get("username") == "Bulma")
+        y, page = discord_login(server, "yamcha")
+        check("Discord makes no new profiles", y.get("state") == "error" and "Make a DRAGON NET account" in page)
+        d, page = discord_login(server, "deny")
         check("cancelled on Discord: the launcher hears so", d.get("state") == "error" and "cancelled" in page)
+        _, again = call(server, "auth.php", action="poll", login="x" * 32, poll="y" * 32)
+        check("a session is handed out once (unknown login expires)", again.get("state") == "expired")
         G, V, K = g["token"], v["token"], k["token"]
+
+        # Friends, who's online, and the admin's messages.
+        social_checks(server, check, G, V, K)
         _, me = call(server, "me.php", G)
         check(f"profile: 1000 in both modes {me.get('ratings')}",
               me["ratings"]["single"]["rating"] == 1000 and me["ratings"]["team"]["rating"] == 1000)

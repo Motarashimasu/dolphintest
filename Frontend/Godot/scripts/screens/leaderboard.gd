@@ -445,7 +445,7 @@ func _fill_you() -> void:
 	else:
 		rank.text = ""
 		value.text = ""
-		text.text = tr("Log in with Discord to get ranked") if not Ranked.logged_in() \
+		text.text = tr("Log in to get ranked") if not Ranked.logged_in() \
 				else tr("You're not on this board yet")
 
 

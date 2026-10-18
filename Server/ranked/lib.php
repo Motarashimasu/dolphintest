@@ -1,7 +1,11 @@
 <?php
 // DRAGON NET Ranked server: shared code. Every endpoint includes this file.
 //
-// Players log in with Discord (one Discord account = one ranked profile). Ranked lobbies are
+// Players have a DRAGON NET account: a username + password made in the launcher (account.php).
+// Profiles from before accounts were made with a Discord login: their owner logs in with Discord
+// once more and sets a username + password (keeping the ratings); Discord makes no new
+// profiles. Accounts also have friends (social.php: requests, who's online) and get the
+// admin's messages (admin.php > Messages). Ranked lobbies are
 // listed here (not on Dolphin's lobby server): a host opens one, a guest joins it, the host
 // starts a match, and both players' launchers report the result. A match counts when both
 // reports agree; a lone report counts after a grace period (the other player left / crashed);
@@ -15,7 +19,7 @@
 // (the all-time record) never resets. Banned players can't play ranked and aren't listed.
 declare(strict_types=1);
 
-const SCHEMA_VERSION = '3';
+const SCHEMA_VERSION = '4';
 const MODES = ['single', 'team', 'b2single', 'b2team'];
 const GAME_MODES = ['bt3' => ['single', 'team'], 'bt2' => ['b2single', 'b2team']];
 const MODE_LABELS = ['single' => 'Single Battle FT2', 'team' => 'Team Battle',
@@ -27,6 +31,10 @@ const LOBBY_TIMEOUT = 60;     // s without a host heartbeat: the lobby is gone
 const GUEST_TIMEOUT = 45;     // s without a guest status call: the seat is free again
 const LOGIN_TIMEOUT = 600;    // s to finish the Discord login
 const MATCH_TIMEOUT = 7200;   // s: a match nobody reported is void
+const ONLINE_WINDOW = 75;     // s since the last request: still online (the launcher polls every ~20 s)
+const LOGIN_FAILS = 8;        // wrong passwords for one username before a pause
+const LOGIN_PAUSE = 300;      // s: that pause
+const FRIENDS_MAX = 200;
 
 function cfg(): array
 {
@@ -106,6 +114,15 @@ function migrate(PDO $db): void
             started INTEGER NOT NULL, ended INTEGER NOT NULL, standings TEXT NOT NULL)",
         "admin_log (id $id, at INTEGER NOT NULL, action VARCHAR(32) NOT NULL,
             detail VARCHAR(255) NOT NULL)",
+        // Version 4: friends (a < b; requester = who asked; state pending | friends), admin
+        // messages and who has closed each, login failures per username.
+        "friends (a INTEGER NOT NULL, b INTEGER NOT NULL, requester INTEGER NOT NULL,
+            state VARCHAR(8) NOT NULL, created INTEGER NOT NULL, PRIMARY KEY (a, b))",
+        "messages (id $id, at INTEGER NOT NULL, text TEXT NOT NULL, expires INTEGER NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1)",
+        "message_reads (message_id INTEGER NOT NULL, player_id INTEGER NOT NULL,
+            PRIMARY KEY (message_id, player_id))",
+        "login_fails (k VARCHAR(64) PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL)",
         "matches (id $id, lobby_id INTEGER NOT NULL, mode VARCHAR(8) NOT NULL,
             region VARCHAR(4) NOT NULL, p1 INTEGER NOT NULL, p2 INTEGER NOT NULL,
             state VARCHAR(8) NOT NULL, r1 VARCHAR(8) NULL, r2 VARCHAR(8) NULL,
@@ -122,12 +139,21 @@ function migrate(PDO $db): void
               'players ADD COLUMN ban_reason VARCHAR(255) NULL',
               'matches ADD COLUMN season INTEGER NOT NULL DEFAULT 1',
               // Version 3: the disc version a lobby plays ('' = before versions: BT3 PAL).
-              "lobbies ADD COLUMN version VARCHAR(8) NOT NULL DEFAULT ''"] as $alter) {
+              "lobbies ADD COLUMN version VARCHAR(8) NOT NULL DEFAULT ''",
+              // Version 4: accounts (uname_key = the username in lowercase, unique).
+              'players ADD COLUMN username VARCHAR(24) NULL',
+              'players ADD COLUMN uname_key VARCHAR(24) NULL',
+              'players ADD COLUMN pass_hash VARCHAR(255) NULL'] as $alter) {
         try {
             $db->exec("ALTER TABLE $alter");
         } catch (Throwable $e) {
             // column exists
         }
+    }
+    try {
+        $db->exec('CREATE UNIQUE INDEX players_uname ON players (uname_key)');
+    } catch (Throwable $e) {
+        // index exists
     }
     // The all-time record starts from everything played so far.
     if (!(int)$db->query('SELECT COUNT(*) FROM career')->fetchColumn()) {
@@ -214,6 +240,38 @@ function auth(bool $allow_banned = false): array
         fail('banned', 403, ['reason' => (string)($p['ban_reason'] ?? '')]);
     }
     return $p;
+}
+
+/** A username: 3-20 letters, digits, _ . - (spaces not allowed, so names are easy to type). */
+function valid_username(?string $name): string
+{
+    $name = trim((string)$name);
+    if (!preg_match('/^[A-Za-z0-9_.\-]{3,20}$/', $name)) {
+        fail('bad_username');
+    }
+    return $name;
+}
+
+function valid_password(?string $pass): string
+{
+    $pass = (string)$pass;
+    if (strlen($pass) < 6 || strlen($pass) > 128) {
+        fail('bad_password');
+    }
+    return $pass;
+}
+
+function find_by_username(string $name): ?array
+{
+    $st = db()->prepare('SELECT * FROM players WHERE uname_key = ?');
+    $st->execute([strtolower($name)]);
+    $p = $st->fetch();
+    return $p ?: null;
+}
+
+function is_online(array $p): bool
+{
+    return now() - (int)$p['last_seen'] <= ONLINE_WINDOW;
 }
 
 function new_session(int $player_id): string

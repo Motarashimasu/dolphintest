@@ -524,7 +524,9 @@ Notes:
 ### Ranked server
 
 `Server/ranked` (PHP 8.1+, MySQL/MariaDB; see its README.txt) runs ranked play for the
-launcher: Discord OAuth login (one Discord account = one profile), the ranked lobby list
+launcher: DRAGON NET accounts (account.php: username + password, made in the launcher; profiles
+from before accounts convert once through the Discord OAuth login), friends and the admin's
+messages (social.php), the ranked lobby list
 (host opens / heartbeats, guest joins a seat), matches (the host starts one; each player reports
 win / loss; agreeing reports count, a lone report counts after 2 minutes, disagreeing reports void
 it; a forfeit is a loss), Elo per mode (K=32, start 1000), per-region records and the

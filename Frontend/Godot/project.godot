@@ -32,6 +32,7 @@ Presence="*res://scripts/presence.gd"
 Sfx="*res://scripts/sfx.gd"
 Lang="*res://scripts/lang.gd"
 Ranked="*res://scripts/ranked.gd"
+Social="*res://scripts/social.gd"
 
 [display]
 

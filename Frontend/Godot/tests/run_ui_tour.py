@@ -271,6 +271,7 @@ def main():
     with open(config, "w") as f:
         json.dump({
             "out_dir": out_dir,
+            "vegeta_token": vegeta_token,   # (the tour plays Vegeta's side of a friend request)
             "settings_file": os.path.join(work, "settings.cfg"),
             "settings": {
                 "paths": {"dolphin": exe, "game": dol, "data": data, "profile": "user",

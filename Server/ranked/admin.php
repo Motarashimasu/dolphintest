@@ -30,7 +30,7 @@ function page(string $title, string $body, bool $nav = true): never
         }
     }
     $links = $nav ? "<nav><a href='$self?p=players'>Players</a><a href='$self?p=matches'>Matches</a>"
-        . "<a href='$self?p=seasons'>Seasons</a><a href='$self?p=log'>Log</a>"
+        . "<a href='$self?p=seasons'>Seasons</a><a href='$self?p=messages'>Messages</a><a href='$self?p=log'>Log</a>"
         . "<form method=post class=inline><input type=hidden name=csrf value='" . $h($_SESSION['csrf'] ?? '') . "'>"
         . "<button name=a value=logout>Sign out</button></form></nav>" : '';
     $flash = '';
@@ -161,6 +161,23 @@ try {
                 $to = isset($_POST['return_player']) ? 'p=player&id=' . (int)$_POST['return_player'] : 'p=matches';
                 back($to, $ok ? "Match #{$m['id']} voided: its rating changes and records are undone." : "Match #{$m['id']} wasn't counted, nothing to undo.");
 
+            case 'message':
+                $text = trim(str_replace("\r\n", "\n", (string)($_POST['text'] ?? '')));
+                if ($text === '' || mb_strlen($text) > 500) {
+                    back('p=messages', 'A message needs 1 to 500 characters.');
+                }
+                $days = max(1, min(30, (int)($_POST['days'] ?? 3)));
+                $db->prepare('INSERT INTO messages (at, text, expires, active) VALUES (?, ?, ?, 1)')
+                    ->execute([now(), $text, now() + $days * 86400]);
+                admin_log('message', mb_substr($text, 0, 200));
+                back('p=messages', "Sent: every logged-in player sees it once (for $days day" . ($days > 1 ? 's' : '') . ').');
+
+            case 'message_off':
+                $mid = (int)($_POST['message'] ?? 0);
+                $db->prepare('UPDATE messages SET active = 0 WHERE id = ?')->execute([$mid]);
+                admin_log('message_off', "#$mid");
+                back('p=messages', "Message #$mid switched off: nobody else gets it.");
+
             case 'season':
                 if (trim((string)($_POST['confirm'] ?? '')) !== 'RESET') {
                     back('p=seasons', 'Type RESET to confirm a new season.');
@@ -287,6 +304,23 @@ try {
                 }
             }
             page('Seasons', $body);
+
+        case 'messages':
+            $rows = '';
+            foreach ($db->query('SELECT m.*, (SELECT COUNT(*) FROM message_reads r WHERE r.message_id = m.id) AS seen
+                                 FROM messages m ORDER BY m.id DESC LIMIT 100')->fetchAll() as $m) {
+                $live = (int)$m['active'] && (int)$m['expires'] > now();
+                $off = $live ? "<form method=post class=inline>$csrf<input type=hidden name=message value={$m['id']}>"
+                    . "<button class=plain name=a value=message_off>Switch off</button></form>" : '<span class=muted>off</span>';
+                $rows .= "<tr><td>#{$m['id']}</td><td>" . $when($m['at']) . '</td><td>' . nl2br($h($m['text']))
+                    . "</td><td class=n>{$m['seen']}</td><td>" . $when($m['expires']) . "</td><td>$off</td></tr>";
+            }
+            $form = "<form method=post class=box>$csrf<p>Pops up once on every logged-in player's launcher (outside games; "
+                . 'they close it with a button). Players who log in while it is on get it too.</p>'
+                . "<textarea name=text rows=4 cols=70 maxlength=500 placeholder='Your message (500 characters at most)'></textarea>"
+                . "<div class=row>Show for <input type=number name=days value=3 min=1 max=30> days <button name=a value=message>Send</button></div></form>";
+            page('Messages', $form . '<table><tr><th>#</th><th>Sent</th><th>Text</th><th class=n>Closed by</th><th>Until</th><th></th></tr>'
+                . ($rows ?: '<tr><td colspan=6 class=muted>No messages yet.</td></tr>') . '</table>');
 
         case 'log':
             $rows = '';

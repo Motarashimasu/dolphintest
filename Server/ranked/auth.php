@@ -1,5 +1,6 @@
 <?php
-// Discord login for the launcher.
+// Discord login for the launcher: only for profiles from before DRAGON NET accounts, so their
+// owner can give them a username + password (account.php claim). New players use account.php.
 //   action=start  -> {login, poll, url}: the launcher opens `url` (Discord's authorize page) in
 //                    the browser, then polls with login + poll.
 //   action=poll   -> {state: waiting | done (+ token, player) | error | expired}
@@ -54,8 +55,12 @@ guard(function () {
                 out(['ok' => true, 'state' => 'expired']);
             }
             $token = new_session((int)$l['player_id']);
+            $st = $db->prepare('SELECT username FROM players WHERE id = ?');
+            $st->execute([(int)$l['player_id']]);
+            $username = (string)$st->fetchColumn();
             out(['ok' => true, 'state' => 'done', 'token' => $token,
-                 'player' => player_brief((int)$l['player_id'], 'single')]);
+                 'player' => player_brief((int)$l['player_id'], 'single'),
+                 'needs_account' => $username === '', 'username' => $username]);
 
         case 'logout':
             $token = $_SERVER['HTTP_X_SPARKING_TOKEN'] ?? arg('token') ?? '';
