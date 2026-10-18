@@ -362,8 +362,9 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
   timebase) is off with NEOcode.
 - NEOcode's saves never include the graphics card's texture cache / EFB contents, whatever
   "Save Texture Cache to State" says: reading them back every field would cost more the higher
-  the resolution and anti-aliasing. A rewind starts the texture cache over (a screen effect may
-  look off for one frame); the game itself isn't affected.
+  the resolution and anti-aliasing. A rewind keeps the texture cache as it is (emptying it lost
+  the frame / effect copies that only live there: purple flashes and big stutters); an effect
+  copy may be a few frames old right after a rewind. The game itself isn't affected.
 - With NEOcode the automatic pad buffer is lower (`max(1, buffer-6, (buffer+1)/2)`), ranked
   replays are off, spectators stay on delay netplay, and every player needs this build.
 - If saving / rewinding fails, the match goes on as delay netplay ("NEOcode stopped ...").

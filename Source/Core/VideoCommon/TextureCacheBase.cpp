@@ -562,7 +562,12 @@ void TextureCacheBase::DoState(PointerWrap& p)
   // Flush all pending XFB copies before either loading or saving.
   FlushEFBCopies();
 
-  p.Do(m_last_entry_id);
+  // (A NEOcode rewind keeps the cache, State::KeepsGpuCaches: the ids keep counting up, or a new
+  // frame could get the id of the one shown before and be taken for a repeat.)
+  u64 last_entry_id = m_last_entry_id;
+  p.Do(last_entry_id);
+  if (!(p.IsReadMode() && State::KeepsGpuCaches()))
+    m_last_entry_id = last_entry_id;
 
   if (p.IsWriteMode() || p.IsMeasureMode())
     DoSaveState(p);
@@ -701,7 +706,10 @@ void TextureCacheBase::DoLoadState(PointerWrap& p)
   // Only clear out state when actually restoring/loading.
   // Since we throw away entries when not in loading mode now, we don't need to check
   // before inserting entries into the cache, as GetEntry will always return null.
-  const bool commit_state = p.IsReadMode();
+  // Sparking: not for NEOcode's rewinds, whose saves carry no textures (State::KeepsGpuCaches):
+  // the cache stays as it is (textures from RAM are still checked against it when used).
+  const bool keep = State::KeepsGpuCaches();
+  const bool commit_state = p.IsReadMode() && !keep;
   if (commit_state)
     Invalidate();
 
@@ -764,7 +772,7 @@ void TextureCacheBase::DoLoadState(PointerWrap& p)
   }
 
   // Clear bound textures
-  for (u32 i = 0; i < m_bound_textures.size(); i++)
+  for (u32 i = 0; i < m_bound_textures.size() && !keep; i++)
     m_bound_textures[i].reset();
 
   // Fill in bound textures

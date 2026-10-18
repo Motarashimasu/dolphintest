@@ -125,6 +125,11 @@ bool LoadFromMemory(Core::System& system, std::span<u8> buffer, bool skip_ram = 
 bool IsRollbackState();
 // "Save Texture Cache to State", unless the state being saved is one without the GPU caches.
 bool SavesGpuCaches();
+// Inside a save / load without the GPU caches (NEOcode's): loading keeps the texture cache as it
+// is instead of emptying it. Emptying it on every rewind lost the frame (XFB) and effect copies
+// that only live there ("to texture only"): the next frames were decoded from RAM instead,
+// purple / green garbage, and every texture was decoded / loaded again (big stutters).
+bool KeepsGpuCaches();
 
 void LoadLastSaved(Core::System& system, int i = 1);
 void SaveFirstSaved(Core::System& system);

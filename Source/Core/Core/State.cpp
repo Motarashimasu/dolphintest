@@ -282,6 +282,11 @@ bool IsRollbackState()
   return s_rollback_state;
 }
 
+bool KeepsGpuCaches()
+{
+  return s_no_gpu_caches;
+}
+
 bool SavesGpuCaches()
 {
   return !s_no_gpu_caches && Config::Get(Config::GFX_SAVE_TEXTURE_CACHE_TO_STATE);
