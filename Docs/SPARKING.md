@@ -33,7 +33,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--netplay-direct` | off | Host by IP:port instead of a room code. By default hosting uses Dolphin's traversal server (`stun.dolphin-emu.org`, ports 6262/6226) and gets a room code, whatever `Dolphin.ini` says. |
 | `--automap gc\|wii\|none` | `gc` | Netplay host: joiners get the next free GameCube port. |
 | `--gecko <name>` (repeatable) / `--no-gecko` | ini selection | Solo: exactly these Gecko codes on, everything else off, for this run. |
-| `--gecko-extra <name>` (repeatable) | | Solo: the game's default Gecko codes plus these, e.g. `Player 1 Splitscreen Remover` when capturing battle states (the remover has to run from boot: a state captured without it glitches the picture once it switches on). |
+| `--gecko-extra <name>` (repeatable) | | Solo: the game's default Gecko codes plus these, for this run. (Battle states are captured with the defaults only: never with a splitscreen remover, which is per player and netplay-only.) |
 | `--netplay-gecko <port>=<name>` (repeatable) | none | Netplay: the player on GameCube port `<port>` runs only these codes. Everything else is off for everyone, and Dolphin's "Sync Codes" is forced off. |
 | `--list-gecko <GAMEID>[:<rev>]` | | Print every Gecko code Dolphin knows for the game (`gecko_codes` event), then exit. Starts no game. |
 | `--textures <Group>=<Option>` (repeatable) | none | Texture variant to load, i.e. folder `@<Group>/<Option>` in the game's texture pack. Turns custom textures on. See *Texture variants*. |

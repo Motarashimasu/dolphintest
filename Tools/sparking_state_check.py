@@ -4,15 +4,15 @@
     python Tools/sparking_state_check.py SparkingData/states/RDSPAF-SingleBattle.sav [...]
 
 Prints the game ID and the Dolphin build that saved it, and for BT3 PAL (RDSPAF) whether the
-"PAL60 Mode + Black Bar Removal" code and a splitscreen remover were running when it was
-captured. A state captured
+"PAL60 Mode + Black Bar Removal" code was running when it was captured. A state captured
 without it keeps every DRAGON NET match at 25 fps (the game sets its video mode up before
 the menus, so the code can't change it after the state loads).
 
-Also: whether an old splitscreen remover (the insert-ASM version, before the plain-write one)
-was running when it was captured. That one patched branches into the game's code that point
-into the Gecko code list; the codes in use now don't overwrite them, so such a state would jump
-into whatever the new code list holds there. Pure Python, no packages.
+Also: whether a splitscreen remover was running when it was captured. The removers are
+insert-ASM codes: they patch branches into the game's code that point into the Gecko code list.
+A state must be captured offline without them (they're netplay-only, per player); one captured
+with them keeps those branches, and the plain-write version of the removers (tried in Oct 2026)
+also left its patches in the game code (reported as "plain-write remover patches"). Pure Python, no packages.
 """
 import struct
 import sys
@@ -24,19 +24,17 @@ MEM1_SIZE = 0x01800000
 CHECKS = {
     "RDSPAF": [
         ("PAL60 Mode + Black Bar Removal (30 fps)", 0x391AA8, bytes.fromhex("00000014")),
-        # The splitscreen remover (plain-write version) patched in since boot: the game set its
-        # screens up for one fullscreen player (3_capture_battle_states.bat runs P1's).
-        ("Splitscreen Remover (fullscreen) in the game code", 0x01528C,
-         bytes.fromhex("2C1F0000408200443860")),
     ],
 }
 
-# Game ID -> MEM1 offsets the old insert-ASM splitscreen removers hooked (a branch there into the
+# Game ID -> MEM1 offsets the insert-ASM splitscreen removers hook (a branch there into the
 # Gecko code area = captured while one was running).
 OLD_HOOKS = {
     "RDSPAF": [0x09136C, 0x015264, 0x015274],
 }
 GECKO_AREA = (0x80001800, 0x80003000)
+# The plain-write removers (04 codes, Oct 2026, rolled back): what they wrote at 0x8001528C.
+PLAIN_WRITE_REMOVER = {"RDSPAF": (0x01528C, bytes.fromhex("2C1F0000408200443860"))}
 
 
 def branches_into_codes(word: int, address: int) -> bool:
@@ -159,11 +157,16 @@ def main() -> int:
             if branches_into_codes(word, 0x80000000 + off):
                 hooked.append(f"0x{0x80000000 + off:08X}")
         if hooked:
-            print(f"  BAD  old splitscreen remover hooks in the game code ({', '.join(hooked)}):"
-                  " recapture this state offline")
+            print(f"  BAD  splitscreen remover hooks in the game code ({', '.join(hooked)}):"
+                  " recapture this state offline, without the removers")
             bad += 1
         elif game_id in OLD_HOOKS:
-            print("  OK   no old splitscreen remover hooks")
+            print("  OK   no splitscreen remover hooks")
+        plain = PLAIN_WRITE_REMOVER.get(game_id)
+        if plain and payload[mem1 + plain[0]:mem1 + plain[0] + len(plain[1])] == plain[1]:
+            print("  BAD  plain-write remover patches in the game code: recapture this state"
+                  " offline, without the removers")
+            bad += 1
     return 1 if bad else 0
 
 
