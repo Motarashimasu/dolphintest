@@ -749,6 +749,8 @@ user's `GameSettings/<ID>.ini`, which overrides entries with the same name):
 p1_health_pct = f32 0x803D1024
 p1_hp         = u32 0x80400000 > 0x1C       # pointer: read the u32 at 0x80400000, add 0x1C,
                                             # read the value there (chain as many as needed)
+# a ratio: <value> / <value> [* number]  (null when the divisor is unreadable or 0)
+p1_health_pct = u32 0x805F3210 > 0x0 > 0x11D8 / u32 0x805F3210 > 0x0 > 0x11E0 * 100
 [Sparking.Trigger]
 # name = watch op number [&& watch op number ...]  ops: == != < <= > >=
 p1_ko = p1_health_pct <= 0
@@ -787,23 +789,13 @@ Still to check:
 
 ## Memory notes for other games (not active yet)
 
-Addresses found so far for games that don't have a `[Sparking.Watch]` section yet. When a game
-is added to the collection, confirm them, then move them into that game's ini.
-
-**BT2 — Budokai Tenkaichi 2 / Sparking! NEO** (game ID not recorded yet; check the title bar or
-`game_info.game_id` when it runs)
-
-| Name | Address | Type | Status |
-|---|---|---|---|
-| `p2_health?` | `0x804ECECC` | f32 | **Unconfirmed.** Found by memory search; changed 1428.37 → 493.13 as P2 took damage. Not 0-100 like BT3's percentages, so probably P2's raw HP (float) or a health-bar value. To check: note P2's max at full health, then see whether value / max × 100 tracks the bar. P1's value is likely a few bytes before it. |
-
-When confirmed, a BT2 ini would look like (percentage computed by the game or not):
-```ini
-[Sparking.Watch]
-p2_health = f32 0x804ECECC
-```
-The round counter / HUD currently need `p1_health_pct` / `p2_health_pct` in 0-100; for a raw-HP
-game they'll need a "max" (e.g. `p2_health_max`) or an equivalent percentage address.
+**BT2 NTSC-J (RDBJAF)** keeps its health as whole HP numbers (max 30000 / 50000 / ... per
+character), so its ini computes the percentages with ratios: each fighter is a 0x1560-byte struct
+in MEM2 from the pointer at `0x805F3210` (`r13-0x72f0`; P1's struct first, P2's right after it),
+with current HP at `+0x11D8`, the bar's lagging damage value at `+0x11DC` and max HP at `+0x11E0`.
+Found by memory search (P1 `0x924D1378`, P2 `0x924D28D8` in one battle) and checked in a battle
+dump: P1 50000 / 50000, P2 29170 / 30000 (97%). Not checked yet in Tag Battle, where each side has
+two fighters (BT3's percentages are the whole team's).
 
 ## Controllers
 

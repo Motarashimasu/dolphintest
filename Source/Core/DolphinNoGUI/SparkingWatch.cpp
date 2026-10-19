@@ -43,12 +43,22 @@ enum class ValueType
   F32,
 };
 
-struct Watch
+// One value in memory: "f32 0x803D1024 > 0x1C".
+struct Source
 {
-  std::string name;
   ValueType type = ValueType::U32;
   u32 address = 0;
   std::vector<u32> offsets;  // pointer chain: address = read_u32(address) + offset, per entry
+};
+
+struct Watch
+{
+  std::string name;
+  Source value;
+  // "<value> / <value> [* scale]": the first divided by this one, times the scale (e.g. current
+  // HP / max HP * 100 = a percentage). Unreadable or 0: the watch reads as null.
+  std::optional<Source> divisor;
+  double scale = 1;
   std::optional<double> last;
   bool reported = false;  // every watch is reported once at game start, even if unreadable
 };
@@ -142,7 +152,7 @@ size_t TypeSize(ValueType t)
 }
 
 // "f32 0x803D1024 > 0x1C > 0x8"
-std::optional<Watch> ParseWatch(const std::string& name, const std::string& spec)
+std::optional<Source> ParseSource(const std::string& spec)
 {
   std::vector<std::string> parts;
   std::stringstream ss(spec);
@@ -160,17 +170,44 @@ std::optional<Watch> ParseWatch(const std::string& name, const std::string& spec
   if (!type || !address)
     return std::nullopt;
 
-  Watch w;
-  w.name = name;
-  w.type = *type;
-  w.address = *address;
+  Source src;
+  src.type = *type;
+  src.address = *address;
   for (size_t i = 1; i < parts.size(); ++i)
   {
     const auto offset = ParseU32(parts[i]);
     if (!offset)
       return std::nullopt;
-    w.offsets.push_back(*offset);
+    src.offsets.push_back(*offset);
   }
+  return src;
+}
+
+// "<value>", or "<value> / <value> [* number]" (a ratio, e.g. a percentage).
+std::optional<Watch> ParseWatch(const std::string& name, const std::string& spec)
+{
+  Watch w;
+  w.name = name;
+  const size_t slash = spec.find('/');
+  const auto value = ParseSource(Trim(std::string_view(spec).substr(0, slash)));
+  if (!value)
+    return std::nullopt;
+  w.value = *value;
+  if (slash == std::string::npos)
+    return w;
+  std::string rest = spec.substr(slash + 1);
+  if (const size_t star = rest.find('*'); star != std::string::npos)
+  {
+    const std::string number = Trim(std::string_view(rest).substr(star + 1));
+    const auto [p, ec] = std::from_chars(number.data(), number.data() + number.size(), w.scale);
+    if (ec != std::errc() || p != number.data() + number.size())
+      return std::nullopt;
+    rest.resize(star);
+  }
+  const auto divisor = ParseSource(Trim(rest));
+  if (!divisor)
+    return std::nullopt;
+  w.divisor = *divisor;
   return w;
 }
 
@@ -241,7 +278,7 @@ bool ReadGuest(Core::System& system, u32 address, void* out, size_t size)
   return true;
 }
 
-std::optional<double> ReadWatch(Core::System& system, const Watch& w)
+std::optional<double> ReadSource(Core::System& system, const Source& w)
 {
   u32 address = w.address;
   for (const u32 offset : w.offsets)
@@ -280,6 +317,17 @@ std::optional<double> ReadWatch(Core::System& system, const Watch& w)
   }
   }
   return std::nullopt;
+}
+
+std::optional<double> ReadWatch(Core::System& system, const Watch& w)
+{
+  const std::optional<double> value = ReadSource(system, w.value);
+  if (!value || !w.divisor)
+    return value;
+  const std::optional<double> divisor = ReadSource(system, *w.divisor);
+  if (!divisor || *divisor == 0)
+    return std::nullopt;
+  return std::round(*value / *divisor * w.scale * 1000.0) / 1000.0;  // 3 decimals, like f32
 }
 
 std::string FormatValue(const std::optional<double>& v)

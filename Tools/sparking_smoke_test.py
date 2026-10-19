@@ -277,12 +277,17 @@ def main():
             f.write("[Gecko]\n"
                     "$Health [Sparking]\n04001010 42BC0000\n"   # f32 94.0
                     "$Patch [Sparking]\n0400310C CAFEBABE\n"    # overwrites the DOL's marker
-                    "[Gecko_Enabled]\n$Health\n$Patch\n"
+                    "$HP [Sparking]\n04001020 00007200\n04001024 00007530\n"   # 29184 of 30000
+                    "[Gecko_Enabled]\n$Health\n$Patch\n$HP\n"
                     "[Sparking.Watch]\n"
                     "p1_health_pct = f32 0x80001010\n"
                     "marker = u32 0x8000310C\n"
                     "via_pointer = u32 0x80004000 > 0x4\n"       # [0x80004000]=0x80004010, +0x4
                     "mem2 = u32 0x94000000\n"                   # just past MEM2 (64 MiB) -> null
+                    # ratios (BT2's health: current HP / max HP * 100)
+                    "hp_pct = u32 0x80001020 / u32 0x80001024 * 100\n"
+                    "ptr_ratio = u32 0x80004000 > 0x4 / u32 0x80004000 > 0x4\n"
+                    "bad_div = u32 0x80001020 / u32 0x94000000 * 100\n"
                     "broken = f64 0x80000000\n"
                     "[Sparking.Trigger]\n"
                     "p1_patched = marker == 3405691582 && p1_health_pct > 50\n"
@@ -293,7 +298,8 @@ def main():
         w.send("hello")
         loaded = w.wait_for("watches_loaded")
         check(f"watches loaded from the game ini {loaded}",
-              sorted(loaded["watches"]) == ["marker", "mem2", "p1_health_pct", "via_pointer"]
+              sorted(loaded["watches"]) == ["bad_div", "hp_pct", "marker", "mem2", "p1_health_pct",
+                                            "ptr_ratio", "via_pointer"]
               and sorted(loaded["triggers"]) == ["never", "p1_patched"])
         errors = {e.get("name") for e in w.history if e["event"] == "error"}
         check(f"bad watch / trigger lines reported {errors}", {"broken", "bad"} <= errors)
@@ -312,6 +318,9 @@ def main():
         check("pointer chain resolved (0x80004000 > 0x4 -> 0x80003100)",
               latest("via_pointer", 0x80003100) == 0x80003100)
         check("unreadable address reports null", latest("mem2", None) is None)
+        check("ratio watch: 29184 / 30000 * 100 = 97.28", latest("hp_pct", 97.28) == 97.28)
+        check("ratio of pointer chains (same value: 1)", latest("ptr_ratio", 1) == 1)
+        check("ratio with an unreadable divisor reports null", latest("bad_div", None) is None)
         markers = [e["value"] for e in w.history if e["event"] == "watch" and e["name"] == "marker"]
         check(f"marker seen unpatched first, then patched {markers}",
               markers[:1] == [0x600DF00D] and markers[-1] == 0xCAFEBABE)

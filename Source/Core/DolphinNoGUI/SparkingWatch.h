@@ -10,6 +10,9 @@
 //   p1_health_pct = f32 0x803D1024
 //   p1_hp         = u32 0x80400000 > 0x1C          # follow a pointer: read u32 at 0x80400000,
 //                                                  # add 0x1C, read the value there
+//   p1_health_pct = u32 0x805F3210 > 0 > 0x11D8 / u32 0x805F3210 > 0 > 0x11E0 * 100
+//                                                  # a ratio: the first value / the second
+//                                                  # (x 100: a percentage); null if the second is 0
 //   [Sparking.Trigger]
 //   # name = watch op number [&& watch op number ...]   (ops: == != < <= > >=)
 //   p1_ko = p1_health_pct <= 0
