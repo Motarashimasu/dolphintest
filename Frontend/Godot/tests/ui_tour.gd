@@ -1175,11 +1175,14 @@ func _tour() -> void:
 	var bt2_names: Array = pads.Controllers.list().map(func(p): return p["name"])
 	check("BT2 doesn't list Tenkaichi 3's presets", not "Tour Pad" in bt2_names
 			and not "Xbox One - Sparking Standard" in bt2_names)
-	check("BT2's own built-in presets " + str(bt2_names), "PlayStation 4-5 - Sparking Standard" in bt2_names
-			and "Xbox - Sparking Standard" in bt2_names)
-	var bt2_xbox: Dictionary = pads.Controllers.find("Xbox - Sparking Standard")
+	check("BT2's own built-in presets " + str(bt2_names), bt2_names == ["PlayStation 4-5 (DirectInput) - Recovery Fix",
+			"PlayStation 4-5 (SDL)", "PlayStation 5 (Windows Gaming Input) - Recovery Fix", "Xbox - Recovery Fix"])
+	var bt2_xbox: Dictionary = pads.Controllers.find("Xbox - Recovery Fix")
 	check("BT2 Xbox preset: its layout, picked by Auto for Xbox pads", bt2_xbox.get("device") == "XInput/0/Gamepad"
 			and "xbox" in bt2_xbox.get("match", []) and ["Buttons/B", "`Button Y`"] in bt2_xbox.get("keys", []))
+	check("only the SDL PlayStation preset is picked by Auto", pads.Controllers.find("PlayStation 4-5 (SDL)").get("match", []).has("dualsense")
+			and pads.Controllers.find("PlayStation 5 (Windows Gaming Input) - Recovery Fix").get("match", []).is_empty()
+			and pads.Controllers.find("PlayStation 4-5 (DirectInput) - Recovery Fix").get("match", []).is_empty())
 	check("BT2 has its own choice", pads.Controllers.choice() == pads.Controllers.AUTO)
 	pads.Controllers.set_choice(pads.Controllers.KEEP)
 	Settings.use_game("bt3")
