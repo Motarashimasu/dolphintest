@@ -95,8 +95,10 @@ var defaults := {
 	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9",
 		"hud": false,             # score bar offline (netplay always shows it)
 		"hud_health": true,       # health % in the corners
-		"input_display": false,   # input history bar (fighting-game style) in every game
-		"training_input_display": true,   # the same in Buffer Training (its own switch)
+		"input_display": false,   # your input history (fighting-game style column) in every game
+		"input_display_other": false,     # P2's too (offline only: never in online matches)
+		"training_input_display": true,   # yours in Buffer Training (its own switch)
+		"training_input_display_other": false,   # the other port's in Buffer Training
 		"show_fps": false, "minimize_while_playing": true, "music_volume": 7,
 		"discord": true, "sfx_volume": 7,
 		"language": ""},          # en / es / it ("" = ask at first launch)         # Discord Rich Presence (scripts/presence.gd)
@@ -111,7 +113,8 @@ var defaults := {
 	"ranked": {"server": "https://tecshideout.ct.ws/sparking/", "token": "", "name": "",
 		"mode": "single", "board_mode": "single", "board_region": "global",
 		"last_single": 0, "last_team": 0,     # last known ratings, for the menu's rating plate
-		"b2last_single": 0, "b2last_team": 0},   # (Budokai Tenkaichi 2's)
+		"b2last_single": 0, "b2last_team": 0,   # (Budokai Tenkaichi 2's)
+		"auto_share": true},   # share every ranked replay on DRAGON NET (Replay Search) right away
 	# Per game: "<game>_preset" = auto, keep, or a preset name (scripts/controllers.gd); "" = not
 	# chosen yet. ("preset": the one choice before per-game ones, now Tenkaichi 3's.)
 	"controller": {"preset": "auto", "bt3_preset": "", "bt2_preset": ""},
@@ -438,6 +441,7 @@ func common_args() -> PackedStringArray:
 	a.append_array(["--aspect", get_value("options", "aspect")])
 	a.append_array(["--hud-health", "on" if get_value("options", "hud_health") else "off"])
 	a.append_array(["--input-display", "on" if get_value("options", "input_display") else "off"])
+	a.append_array(["--input-display-other", "on" if get_value("options", "input_display_other") else "off"])
 	a.append_array(["--textures-dir", data_path("textures")])
 	a.append_array(["--textures", "Graphics=" + get_value("options", "graphics")])
 	a.append_array(["--textures", "Buttons=" + get_value("options", "buttons")])
@@ -503,6 +507,7 @@ func rollback_test_args(fields: int, log: String, gpu_state := false, draw := fa
 func _netplay_base(nickname := "") -> PackedStringArray:
 	var a := common_args()
 	a.append_array(["--hud", "on"])   # score bar + ping always on in netplay matches
+	a.append_array(["--input-display-other", "off"])   # never the opponent's inputs online
 	a.append_array(["--nand", netplay_save_dir(), "--state-dir", data_path("states")])
 	a.append_array(["--nickname", nickname if nickname != "" else String(get_value("player", "nickname"))])
 	var codes: Dictionary = GAMES[game]["port_codes"]
@@ -556,12 +561,15 @@ func training_args() -> PackedStringArray:
 	var a := host_args("training", false, false)
 	# Its own input history switch (on by default): the later --input-display wins.
 	a.append_array(["--input-display", "on" if get_value("options", "training_input_display") else "off"])
+	a.append_array(["--input-display-other",
+		"on" if get_value("options", "training_input_display_other") else "off"])
 	return a
 
 
-## The settings key of the input history switch for a training session or any other game.
-static func input_display_key(training: bool) -> String:
-	return "training_input_display" if training else "input_display"
+## The settings key of an input history switch: yours or the other port's (`other`), in Buffer
+## Training or any other game.
+static func input_display_key(training: bool, other := false) -> String:
+	return ("training_" if training else "") + ("input_display_other" if other else "input_display")
 
 
 func join_args(target: String, koth := false) -> PackedStringArray:

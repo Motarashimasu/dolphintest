@@ -187,7 +187,9 @@ func friends_and_popups() -> void:
 			and Social.friends[0]["online"] and String(fr.list.row("f:%d" % int(Social.friends[0]["id"])).get("value")) == "Online")
 	await shot("friends")
 	# A friend coming online: the green bar slides in from the right with a sprite.
-	Social._online.clear()   # (as if Vegeta had been offline at the last poll)
+	# (Vegeta's launcher starts again: a new "came online" time, even within the online window.)
+	await get_tree().create_timer(1.1).timeout
+	await as_vegeta({"action": "poll", "start": true})
 	await Social.poll()
 	await wait_for("online pop-up shown", func(): return app.social_popups._toast != null, 5)
 	var t: Control = app.social_popups._toast
@@ -346,6 +348,10 @@ func choose(label: String) -> void:
 	check("carousel reaches '%s'" % label, c.current().get("label") == label)
 	await press("ui_accept")
 	await frames(4)
+
+
+func Replays_title(r: Dictionary) -> String:
+	return load("res://scripts/screens/replays.gd").title_of(r)
 
 
 ## On a form/lobby screen: move to the row with `key` using Up/Down, then Accept.
@@ -522,6 +528,8 @@ func _tour() -> void:
 	var tr_args := Settings.training_args()
 	check("Buffer Training: input history on by default (its own switch, given last)",
 			tr_args[tr_args.rfind("--input-display") + 1] == "on")
+	check("online matches: never the opponent's input history",
+			host[host.rfind("--input-display-other") + 1] == "off" and solo[solo.rfind("--input-display-other") + 1] == "off")
 
 	await choose("Budokai Tenkaichi 3")
 	check("game menu", app._title.text == "Tenkaichi 3")
@@ -785,6 +793,8 @@ func _tour() -> void:
 			return "\n".join(rl._chat).contains(tr("Ranked win! Rating %+d.") % 16), 60)
 		await wait_for("profile shows the new rating", func(): return Ranked.rating("single") == 1016, 20)
 		await wait_for("back in the ranked lobby", func(): return rl._phase == "lobby", 30)
+		await wait_for("the ranked replay is shared on DRAGON NET by itself", func():
+			return "\n".join(rl._chat).contains(tr("Replay shared on DRAGON NET (Replay Search).")), 60)
 		await frames(20)
 		await shot("ranked_after_match")
 		await leave_lobby(rl)
@@ -825,8 +835,12 @@ func _tour() -> void:
 			rk = r["key"]
 	check("the ranked match was saved as a replay (%s)" % rp.list.row(rk).get("label", "none"), rk != "")
 	await shot("replays")
+	check("the shared replay is marked shared", rk != "" and int(rp._replays[int(rk.get_slice(":", 1))].get("shared_id", 0)) > 0)
 	if rk != "":
 		await pick(rk, rp.list)
+		check("replay menu: watch, share, delete", top() != rp and "carousel" in top())
+		await shot("replay_menu")
+		await choose("Watch")
 		var player: Control = top()
 		check("replay player opened", player != rp and app._title.text == "Replay")
 		await wait_for("replay playing", func(): return player._state in ["playing", "ended"], 60)
@@ -834,6 +848,26 @@ func _tour() -> void:
 		await wait_for("replay plays to its end", func(): return is_instance_valid(player) and player._state == "ended", 180)
 		await wait_for("the replay closes by itself, back to the list", func(): return app.top() == rp, 30)
 		await wait_for("Dolphin exited (replay)", func(): return not Dolphin.is_running(), 10)
+	# Replay Search: the shared replay is there for everyone; download it.
+	await pick("search", rp.list)
+	var rs: Control = top()
+	check("Replay Search screen", app._title.text == "Replay Search")
+	await wait_for("shared replays listed", func(): return rs._searched and not rs._busy, 20)
+	check("the shared match is found (%d results)" % rs._results.size(), rs._results.size() >= 1
+			and "Goku" in Replays_title(rs._results[0]))
+	rs.on_value("q", "nobody_like_this")
+	await wait_for("searched again", func(): return not rs._busy, 20)
+	check("a name nobody has: nothing", rs._results.is_empty() and not rs.list.row("none").is_empty())
+	rs.on_value("q", "gok")
+	await wait_for("searched by part of a name", func(): return not rs._busy and rs._results.size() >= 1, 20)
+	await shot("replay_search")
+	await pick("r:0", rs.list)
+	await choose("Download")
+	var rid := int(rs._results[0]["id"])
+	await wait_for("downloaded", func(): return not rs._busy and rs._status == tr("Downloaded."), 60)
+	check("the download is a full replay", not load("res://scripts/replay_share.gd").downloaded(rid).is_empty())
+	await shot("replay_search_downloaded")
+	await back()   # Replay Search -> Replays
 	await back()
 	await back()   # Ranked Match -> DRAGON NET
 	# Logged in: the rating plate slides in while Ranked Match is selected, out when it isn't.
@@ -880,6 +914,11 @@ func _tour() -> void:
 	await wait_for("input history back on", func():
 		return "\n".join(Dolphin.log_lines).contains('"event":"input_display","enabled":true'), 10)
 	check("row says On again", app._compact.list.row("input_display").get("value") == "On")
+	check("training menu: P2 input history row (off)", app._compact.list.row("input_display_other").get("value") == "Off")
+	await pick("input_display_other", app._compact.list)
+	await wait_for("P2 input history on in training", func():
+		return "\n".join(Dolphin.log_lines).contains('"other":true'), 10)
+	check("training's P2 switch saved", Settings.get_value("options", "training_input_display_other") == true)
 	var before: int = training._buffer
 	await pick("buffer", app._compact.list)
 	await press("ui_right")

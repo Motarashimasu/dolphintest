@@ -53,7 +53,8 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--link auto\|wired\|wireless\|unknown` | `auto` | Netplay: this PC's connection type, shown to everyone. `auto` asks the OS which adapter reaches the internet (Ethernet = wired, Wi-Fi/mobile = wireless, VPN/tunnel/virtual adapter = `virtual`). Only this PC's own adapter is visible: a cable into a Wi-Fi extender/powerline/mesh node reads as wired. Self-reported, so not for anything ranked. |
 | `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: a score bar in the centre of BT3's top HUD (`Name1  W1 | W2  Name2`; long names shrink, then get cut with "..."), and in netplay the ping + pad buffer at the bottom centre. Needs the game's `p1/p2_health_pct` watches. The Godot frontend turns it on for netplay and leaves it to the player offline. |
 | `--hud-health on\|off` | `on` | Health % in the window's top corners (separate from `--hud`). |
-| `--input-display on\|off` | `off` | Input history bar at the bottom of the game picture, like a fighting game's training mode. See *Input history bar*. The launcher turns it on for Buffer Training (its own switch) and leaves it to the player elsewhere (Options > Input history). |
+| `--input-display on\|off` | `off` | Your own input history, like a fighting game's training mode: a column down the side of the game picture (port 1 left, port 2 right). See *Input history*. The launcher turns it on for Buffer Training (its own switch) and leaves it to the player elsewhere (Options > Your input history). |
+| `--input-display-other on\|off` | `off` | The other port's input history too (1 <-> 2). Offline and Buffer Training only: in an online match (another player on that port) it's never shown. |
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
@@ -203,7 +204,8 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `texture_path <tex1_name>` | any | Debug: which file a texture name is loaded from right now (`texture_path` event) |
 | `hud on\|off` | any | Show/hide the score bar (+ netplay ping/buffer) |
 | `hud_health on\|off` | any | Show/hide the health % in the corners |
-| `input_display on\|off\|toggle\|clear\|dump` | any | Show/hide the input history bar (`input_display` event); `clear` empties it; `dump` sends the recorded entries as an `input_history` event (newest first: `dir`, `c`, `dpad` in numpad notation, `buttons`, `frames`) |
+| `input_display on\|off\|toggle\|clear\|dump` | any | Show/hide your own input history (`input_display` event: `enabled`, `other`, `other_allowed`); `clear` empties both; `dump` sends the recorded entries as an `input_history` event (`entries` = yours, `p1`, `p2`, `shown`, `local_port`; newest first: `dir`, `c`, `dpad` in numpad notation, `buttons`, `frames`) |
+| `input_display_other on\|off\|toggle` | any | The other port's input history; refused with `not_allowed_online` while another player plays that port |
 | `score reset` | any | Set the round score back to 0-0 |
 | `background_input on\|off` | any | Controllers work (`on`) or are ignored (`off`) while the game window isn't focused. The frontend turns it off while its in-game menu is open (`background_input` event confirms). |
 | `focus_game` | any | Brings the game window to the front with the keyboard focus (Windows). The frontend sends it when its in-game menu closes; `focus_game` event confirms. |
@@ -609,20 +611,22 @@ Notes for the Godot side:
   as a child window still can't be drawn over; sharing frames as a GPU texture is a large,
   backend-specific job; copying frames through RAM adds input lag.
 
-## Input history bar
+## Input history
 
-`--input-display on` (or the `input_display` command) draws a strip at the bottom centre of the
-game picture, above the netplay ping line, listing the local player's inputs like a fighting
-game's training mode, **newest on the left** (highlighted, its frame count in yellow), older ones
-fading to the right:
+`--input-display on` (or the `input_display` command) draws your inputs like a fighting game's
+training mode: a column down the side of the game picture, **port 1 on the left, port 2 on the
+right**, newest on top (highlighted, its frame count in yellow), older ones fading downwards,
+between the health bars and the ki gauges. `--input-display-other on` / `input_display_other`
+adds the other port's column (offline, Buffer Training); in an online match (another player on
+that port) it's off and can't be switched on, and spectators see neither.
 
-- each cell is one input held for some frames (video fields, 60/s): the **frame count** on top,
-  then the **direction** of the main stick (an arrow, or a ring with a dot for **neutral**), then
-  the **buttons** held (A B X Y Z L R Start), then the C-stick and the D-pad if used.
-- recorded from the GameCube port the HUD says is local (`SetHudLocalPort`; port 1 offline;
-  spectators: none), at the moment the game reads it, i.e. after the netplay pad buffer: the
-  bar shows exactly what the game got and when. NEOcode re-runs aren't recorded twice.
-- recorded whether the bar is shown or not; emptied at each game start.
+- each row is one input held for some frames (video fields, 60/s): the **frame count** at the
+  outer edge, then the **direction** of the main stick (an arrow, or a ring with a dot for
+  **neutral**), then the **buttons** held (A B X Y Z L R Start), then the C-stick and the D-pad if
+  used.
+- ports 1 and 2 are recorded at the moment the game reads them, i.e. after the netplay pad
+  buffer: it shows exactly what the game got and when. NEOcode re-runs aren't recorded twice.
+- recorded whether shown or not; emptied at each game start.
 
 Button pictures, first found wins:
 
@@ -644,6 +648,24 @@ A = tex1_32x32_ce62786fc1170192_70b585e07941e91c_8
 
 RDSPAF has A B X Y Z (the textures the button packs replace). Other versions/games: add theirs
 (dump textures, find the button prompts, copy the names).
+
+## Shared replays and friends (DRAGON NET server)
+
+- `Server/ranked/replays.php`: ranked replays shared by players. The launcher shares each ranked
+  replay right after the match (Replays > Share new replays, on by default) or when asked
+  (Replays > a replay > Share): `start` (info + sizes + SHA-1s; the same replay or the same
+  ranked match already shared -> `exists`), the .dtm and .dtm.sav in 256 KB base64 pieces
+  (`part`), `finish` (checks them). Replay Search (`search`: part of a player's name, mode, this
+  game) lists them newest first; `file` downloads one (to `<SparkingData>/replays/online`), then
+  it plays like the player's own. Files live in `replay_dir` (config.php; default
+  `Server/ranked/replay_files`, closed to browsers); `replay_max_mb` (default 1500: the oldest go
+  first) and `replay_daily` (uploads per player per day, default 30). admin.php > Replays lists
+  and deletes them.
+- Friends "is online" pop-ups: the server keeps when each player came online (`online_since`: on
+  their first request after being offline, or when their launcher starts: `poll` with
+  `start`); `poll` returns each friend's `since`, and the launcher announces a friend whose `since`
+  is newer than the last one it saw. A missed poll, a slow server or a quick restart no longer
+  loses the pop-up.
 
 ## Memory watcher (match results, HUD data)
 

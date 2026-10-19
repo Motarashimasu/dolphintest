@@ -245,5 +245,11 @@ static func error_text(code: String) -> String:
 		"no_opponent": "Your opponent hasn't checked in with the ranked server yet.",
 		"database_error": "The ranked server had a problem. Try again in a moment.",
 		"banned": "Your ranked profile is suspended.",
+		"no_such_replay": "That replay isn't on DRAGON NET any more.",
+		"replay_missing": "The replay's files are missing.",
+		"replay_too_big": "That replay is too big to share.",
+		"too_many_uploads": "You've shared a lot of replays today: try again tomorrow.",
+		"upload_broken": "The upload got damaged on the way. Try again.",
+		"write_failed": "Couldn't save the replay (is the folder read-only?).",
 	}
 	return TranslationServer.translate(t.get(code, code.replace("_", " ")))

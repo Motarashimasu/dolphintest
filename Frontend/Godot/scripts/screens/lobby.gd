@@ -12,6 +12,7 @@ extends "res://scripts/screens/screen.gd"
 const OptionList := preload("res://scripts/ui/option_list.gd")
 const InGamePanel := preload("res://scripts/ui/ingame_panel.gd")
 const LinkIcon := preload("res://scripts/ui/link_icon.gd")
+const ReplayShare := preload("res://scripts/replay_share.gd")
 
 const ERRORS := {
 	"not_all_players_have_game": "Not everyone has the game yet.",
@@ -49,6 +50,7 @@ var _buffer := -1
 var _neocode := false     # NEOcode on for this lobby (the host switches it: PgUp + PgDn together)
 var _neo_r := -1          # its "R" while a match runs (-1: none)
 var _neo_out_of_sync := false
+var _match_id := 0           # ranked: the server's id of the match being / last played
 var _chat: PackedStringArray = []
 var _battle := {}
 var _logged_buffer := -1
@@ -179,6 +181,9 @@ func _ranked_tick() -> void:
 	if not is_inside_tree() or not res.get("ok", false) or not res.has("lobby"):
 		return
 	_ranked = res["lobby"]
+	for key in ["match", "last_match"]:
+		if _ranked.get(key) is Dictionary and int(_ranked[key].get("id", 0)) > _match_id:
+			_match_id = int(_ranked[key]["id"])
 	_announce_result(_ranked.get("last_match"))
 	_refresh_all()
 
@@ -207,6 +212,31 @@ func _report(result: String, why := "") -> void:
 		_system(why if why != "" else "Result sent to the ranked server.", "#cfe9ee")
 		_announce_result(res.get("match"))
 	_ranked_tick()
+
+
+## A ranked match's replay was saved: note which server match it is, and share it on DRAGON NET
+## (Replay Search) when the player wants that (Replays > Share new replays, on by default).
+func _on_replay_saved(data: Dictionary) -> void:
+	var jp := String(data.get("json", ""))
+	var info = JSON.parse_string(FileAccess.get_file_as_string(jp)) if jp != "" else null
+	if typeof(info) != TYPE_DICTIONARY:
+		return
+	info["path"] = String(data.get("dtm", ""))
+	info["json_path"] = jp
+	if _match_id > 0:
+		info["match_id"] = _match_id
+		var f := FileAccess.open(jp, FileAccess.WRITE)
+		if f:
+			var keep: Dictionary = info.duplicate()
+			keep.erase("path")
+			keep.erase("json_path")
+			f.store_string(JSON.stringify(keep, "\t"))
+			f.close()
+	if not Settings.get_value("ranked", "auto_share") or not Ranked.logged_in() or Ranked.needs_account:
+		return
+	var res: Dictionary = await ReplayShare.upload(info)
+	if is_inside_tree() and res.get("ok", false):
+		_system("Replay shared on DRAGON NET (Replay Search).", "#cfe9ee")
 
 
 func _announce_result(m: Variant) -> void:
@@ -564,7 +594,12 @@ func _action_rows(in_game_menu: bool) -> Array:
 		var setting := Settings.input_display_key(is_training())
 		rows.append({"type": "action", "key": "input_display", "label": "Input history",
 			"value": "On" if Settings.get_value("options", setting) else "Off",
-			"desc": "Your inputs at the bottom of the game: frames held, direction (dot = neutral), buttons."})
+			"desc": "Your inputs down the side of the game: frames held, direction (dot = neutral), buttons."})
+		if is_training():   # nobody else plays the other port (never in online matches)
+			var other := Settings.input_display_key(true, true)
+			rows.append({"type": "action", "key": "input_display_other", "label": "P2 input history",
+				"value": "On" if Settings.get_value("options", other) else "Off",
+				"desc": "The other port's inputs down the right side."})
 	# A spectator's Stop only ends their own view; the match goes on for the players.
 	var stop_label := "Stop Watching" if is_spectating() else ("Stop Training" if is_training() else "Stop Match")
 	if ranked:
@@ -689,11 +724,11 @@ func _on_press(key: String) -> void:
 			app.close_ingame_menu(false)
 		"resume":
 			app.close_ingame_menu()
-		"input_display":
-			var setting := Settings.input_display_key(is_training())
+		"input_display", "input_display_other":
+			var setting := Settings.input_display_key(is_training(), key == "input_display_other")
 			var on := not bool(Settings.get_value("options", setting))
 			Settings.set_value("options", setting, on)
-			Dolphin.send("input_display " + ("on" if on else "off"))
+			Dolphin.send(key + " " + ("on" if on else "off"))
 			_refresh_actions()
 			_refresh_panel()
 		"leave":
@@ -772,6 +807,8 @@ func _add_chat(line: String) -> void:
 
 func _on_event(name: String, data: Dictionary) -> void:
 	match name:
+		"replay_saved":
+			_on_replay_saved(data)
 		"lobby_opening":
 			if _phase != "searching":
 				_status = "Connecting..."

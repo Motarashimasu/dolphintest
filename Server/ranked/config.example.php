@@ -16,4 +16,11 @@ return [
 
     // Password for admin.php (12+ characters). Leave empty to turn the admin panel off.
     'admin_key' => '',
+
+    // Shared replays (replays.php), all optional: where the files go (keep it out of reach of
+    // browsers; an .htaccess is written there), the total size kept (the oldest go first) and
+    // how many replays one player may share per day.
+    // 'replay_dir' => __DIR__ . '/replay_files',
+    // 'replay_max_mb' => 1500,
+    // 'replay_daily' => 30,
 ];

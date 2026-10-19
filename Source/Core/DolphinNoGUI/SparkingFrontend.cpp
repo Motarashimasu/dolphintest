@@ -358,6 +358,17 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
       Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
     return;
   }
+  // The other port's column: "input_display_other on|off|toggle" (refused in online matches).
+  if (cmd.name == "input_display_other")
+  {
+    if (cmd.arg == "on" || cmd.arg == "off")
+      SetInputDisplayOther(cmd.arg == "on");
+    else if (cmd.arg.empty() || cmd.arg == "toggle")
+      SetInputDisplayOther(!InputDisplayOtherEnabled());
+    else
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+    return;
+  }
 
   if (cmd.name == "hud" || cmd.name == "hud_health")  // "hud on|off", "hud_health on|off"
   {
@@ -915,8 +926,15 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .action("store")
       .choices({"on", "off"})
       .set_default("off")
-      .help("Sparking mode: input history bar at the bottom of the game (fighting-game style "
-            "frames + inputs of the local player)");
+      .help("Sparking mode: the local player's input history (fighting-game style column: "
+            "port 1 left, port 2 right)");
+  parser.add_option("--input-display-other")
+      .dest("input_display_other")
+      .action("store")
+      .choices({"on", "off"})
+      .set_default("off")
+      .help("Sparking mode: also the other port's input history (offline / Buffer Training only, "
+            "never in online matches)");
   parser.add_option("--osd-messages")
       .dest("osd_messages")
       .action("store")
@@ -1186,8 +1204,9 @@ void InitFromOptions(const optparse::Values& options)
     }
     InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off",
             std::string_view(static_cast<const char*>(options.get("hud_health"))) != "off");
-    InitInputDisplay(std::string_view(static_cast<const char*>(options.get("input_display"))) ==
-                     "on");
+    InitInputDisplay(
+        std::string_view(static_cast<const char*>(options.get("input_display"))) == "on",
+        std::string_view(static_cast<const char*>(options.get("input_display_other"))) == "on");
     {
       // XInput / SDL "Back" (Xbox View/Back), "Select", "Share" (PlayStation Create/Share)
       std::vector<std::string> buttons{"Back", "Select", "Share"};

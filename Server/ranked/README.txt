@@ -31,6 +31,7 @@ https://tecshideout.ct.ws/sparking/admin.php and sign in with it.
   Messages send a message (up to 500 characters) to every logged-in player: it pops up once on
            their launcher (outside games) until they close it with a button; players who log in
            while it's on (1-30 days) get it too. See how many closed it; Switch off stops it.
+  Replays  the shared replays (newest first, size, downloads); Delete removes one
   Log      every admin action, with what changed
 Leave admin_key empty to switch the panel off.
 
@@ -41,6 +42,10 @@ What's in here
   leaderboard.php  the same as JSON for the launcher
   account.php      DRAGON NET accounts: register / login (username + password) / claim
   social.php       friends (requests, who's online) and the admin's messages
+  replays.php      shared replays: upload in pieces / search / download / delete. The files
+                   go to replay_files/ (made by itself, closed to browsers). Optional limits in
+                   config.php: replay_max_mb (all replays together, default 1500 MB: the oldest
+                   are deleted first), replay_daily (per player per day, default 30).
   auth.php         logout; and the Discord login, only to convert a profile from before accounts
   discord.php      where Discord sends the browser back after "Authorize"
   me.php           your profile: ratings and records

@@ -58,9 +58,12 @@ func _rows(in_game_menu: bool) -> Array:
 			"disabled": not running, "desc": "Switch the button prompts: GameCube, PlayStation, Xbox (F2)."},
 		{"type": "action", "key": "aspect", "label": "Aspect ratio", "value": _aspect,
 			"disabled": not running, "desc": "Switch between widescreen and 4:3 (F3)."},
-		{"type": "action", "key": "input_display", "label": "Input history",
+		{"type": "action", "key": "input_display", "label": "P1 input history",
 			"value": "On" if Settings.get_value("options", "input_display") else "Off", "disabled": not running,
-			"desc": "Your inputs at the bottom of the game: frames held, direction (dot = neutral), buttons."},
+			"desc": "Player 1's inputs down the left side: frames held, direction (dot = neutral), buttons."},
+		{"type": "action", "key": "input_display_other", "label": "P2 input history",
+			"value": "On" if Settings.get_value("options", "input_display_other") else "Off", "disabled": not running,
+			"desc": "Player 2's inputs down the right side."},
 		{"type": "action", "key": "stop", "label": "Stop Game", "color": "#e8663d",
 			"desc": "Close the game and go back to the menu."},
 	])
@@ -85,10 +88,10 @@ func on_press(key: String) -> void:
 			Dolphin.send("textures_cycle Buttons")
 		"aspect":
 			Dolphin.send("aspect toggle")
-		"input_display":
-			var on := not bool(Settings.get_value("options", "input_display"))
-			Settings.set_value("options", "input_display", on)
-			Dolphin.send("input_display " + ("on" if on else "off"))
+		"input_display", "input_display_other":
+			var on := not bool(Settings.get_value("options", key))
+			Settings.set_value("options", key, on)
+			Dolphin.send(key + " " + ("on" if on else "off"))
 			_refresh()
 		"stop":
 			_state = "stopping"

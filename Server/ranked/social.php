@@ -1,7 +1,11 @@
 <?php
 // Friends, who's online, and the admin's messages. Everything needs a login.
-//   poll                -> {friends: [{id, name, online}], incoming: [{id, name}],
-//                           outgoing: [{id, name}], messages: [{id, text, at}]}
+//   poll {start?}       -> {friends: [{id, name, online, since}], incoming: [{id, name}],
+//                           outgoing: [{id, name}], messages: [{id, text, at}], now}
+//                          since = when that friend came online (0 when offline): the launcher
+//                          announces a friend whose `since` is newer than the last it saw.
+//                          start=1: this launcher just started (a fresh "came online", even if
+//                          it was closed and opened again within the online window).
 //                          The launcher calls it every ~20 s: that's what keeps a player online.
 //                          messages = the admin's active messages this player hasn't closed.
 //   request {name}      ask someone (by username) to be friends; if they had asked you, you're
@@ -34,7 +38,10 @@ guard(function () {
     $db = db();
     switch (arg('action')) {
         case 'poll':
-            $st = $db->prepare('SELECT f.*, p.id AS pid, p.name, p.last_seen, p.banned FROM friends f
+            if (arg('start') === '1' || arg('start') === 'true') {
+                $db->prepare('UPDATE players SET online_since = ? WHERE id = ?')->execute([now(), $me]);
+            }
+            $st = $db->prepare('SELECT f.*, p.id AS pid, p.name, p.last_seen, p.online_since, p.banned FROM friends f
                 JOIN players p ON p.id = (CASE WHEN f.a = ? THEN f.b ELSE f.a END)
                 WHERE f.a = ? OR f.b = ? ORDER BY p.name');
             $st->execute([$me, $me, $me]);
@@ -43,6 +50,7 @@ guard(function () {
                 $who = ['id' => (int)$r['pid'], 'name' => $r['name']];
                 if ($r['state'] === 'friends') {
                     $who['online'] = !(int)$r['banned'] && is_online($r);
+                    $who['since'] = $who['online'] ? (int)$r['online_since'] : 0;
                     $friends[] = $who;
                 } elseif ((int)$r['requester'] === $me) {
                     $outgoing[] = $who;
@@ -57,7 +65,7 @@ guard(function () {
             $messages = array_map(fn($m) => ['id' => (int)$m['id'], 'text' => $m['text'], 'at' => (int)$m['at']],
                                   $st->fetchAll());
             out(['ok' => true, 'friends' => $friends, 'incoming' => $incoming, 'outgoing' => $outgoing,
-                 'messages' => $messages]);
+                 'messages' => $messages, 'now' => now()]);
 
         case 'request':
             $name = trim((string)arg('name', ''));

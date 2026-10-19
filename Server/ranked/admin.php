@@ -4,6 +4,7 @@
 //   Matches: recent matches; Void undoes a counted match (ratings and records).
 //   Seasons: start a new season (final standings archived, everyone back to 1000 and 0-0; the
 //            all-time record keeps counting), and see past seasons' final standings.
+//   Replays: the shared replays (replays.php), newest first; Delete removes one.
 //   Log: every admin action.
 require __DIR__ . '/lib.php';
 
@@ -30,7 +31,7 @@ function page(string $title, string $body, bool $nav = true): never
         }
     }
     $links = $nav ? "<nav><a href='$self?p=players'>Players</a><a href='$self?p=matches'>Matches</a>"
-        . "<a href='$self?p=seasons'>Seasons</a><a href='$self?p=messages'>Messages</a><a href='$self?p=log'>Log</a>"
+        . "<a href='$self?p=seasons'>Seasons</a><a href='$self?p=messages'>Messages</a><a href='$self?p=replays'>Replays</a><a href='$self?p=log'>Log</a>"
         . "<form method=post class=inline><input type=hidden name=csrf value='" . $h($_SESSION['csrf'] ?? '') . "'>"
         . "<button name=a value=logout>Sign out</button></form></nav>" : '';
     $flash = '';
@@ -178,6 +179,16 @@ try {
                 admin_log('message_off', "#$mid");
                 back('p=messages', "Message #$mid switched off: nobody else gets it.");
 
+            case 'replay_delete':
+                $rid = (int)($_POST['replay'] ?? 0);
+                $st = $db->prepare('SELECT * FROM replays WHERE id = ?');
+                $st->execute([$rid]);
+                if ($r = $st->fetch()) {
+                    replay_remove($r);
+                    admin_log('replay_delete', "#$rid {$r['p1']} vs {$r['p2']}");
+                }
+                back('p=replays', "Replay #$rid deleted.");
+
             case 'season':
                 if (trim((string)($_POST['confirm'] ?? '')) !== 'RESET') {
                     back('p=seasons', 'Type RESET to confirm a new season.');
@@ -321,6 +332,26 @@ try {
                 . "<div class=row>Show for <input type=number name=days value=3 min=1 max=30> days <button name=a value=message>Send</button></div></form>";
             page('Messages', $form . '<table><tr><th>#</th><th>Sent</th><th>Text</th><th class=n>Closed by</th><th>Until</th><th></th></tr>'
                 . ($rows ?: '<tr><td colspan=6 class=muted>No messages yet.</td></tr>') . '</table>');
+
+        case 'replays':
+            $rows = '';
+            $total = 0;
+            foreach ($db->query("SELECT r.*, p.name AS up FROM replays r LEFT JOIN players p ON p.id = r.uploader
+                                 ORDER BY r.id DESC LIMIT 200")->fetchAll() as $r) {
+                $mb = ((int)$r['dtm_size'] + (int)$r['sav_size']) / 1048576;
+                $total += $mb;
+                $del = "<form method=post class=inline>$csrf<input type=hidden name=replay value={$r['id']}>"
+                    . "<button class=bad name=a value=replay_delete>Delete</button></form>";
+                $rows .= "<tr><td>#{$r['id']}</td><td>" . $h("{$r['p1']} {$r['w1']} - {$r['w2']} {$r['p2']}")
+                    . '</td><td>' . $h($r['game_id'] . ' ' . $r['mode']) . '</td><td>' . $h((string)$r['up'])
+                    . ($r['state'] === 'ready' ? '' : ' <span class=muted>(uploading)</span>')
+                    . '</td><td>' . $when($r['created']) . "</td><td class=n>{$r['downloads']}</td><td class=n>"
+                    . sprintf('%.1f', $mb) . " MB</td><td>$del</td></tr>";
+            }
+            page('Replays', '<p class=muted>' . sprintf('%.0f', $total) . ' MB in the newest 200 (limit: replay_max_mb in config.php, '
+                . 'the oldest are deleted first).</p><table><tr><th>#</th><th>Match</th><th>Game</th><th>Shared by</th>'
+                . '<th>When</th><th class=n>Downloads</th><th class=n>Size</th><th></th></tr>'
+                . ($rows ?: '<tr><td colspan=8 class=muted>No replays yet.</td></tr>') . '</table>');
 
         case 'log':
             $rows = '';

@@ -8,6 +8,7 @@
 #include "DolphinNoGUI/SparkingGecko.h"
 #include "DolphinNoGUI/SparkingReplay.h"
 #include "DolphinNoGUI/SparkingHud.h"
+#include "DolphinNoGUI/SparkingInputDisplay.h"
 #include "DolphinNoGUI/SparkingLobby.h"
 #include "DolphinNoGUI/SparkingNet.h"
 #include "DolphinNoGUI/SparkingWatch.h"
@@ -1073,6 +1074,12 @@ void NetPlaySession::BootGame(const std::string& filename,
         port = i + 1;
     }
     SetHudLocalPort(port);  // "YOU WIN"/"YOU LOSE" from this player's side (0 = spectator)
+    {
+      // The other port's input history: only when nobody else plays it (Buffer Training).
+      const int other = port == 1 ? 2 : port == 2 ? 1 : 0;
+      SetInputDisplayOtherAllowed(other != 0 && (pad_map[other - 1] == 0 ||
+                                                 pad_map[other - 1] == m_client->GetLocalPlayerId()));
+    }
     PushHudPlayers();       // wired/Wi-Fi icons for whoever is on ports 1/2 this match
     std::shared_ptr<const UICommon::GameFile> game;
     {

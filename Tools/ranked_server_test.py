@@ -123,6 +123,7 @@ class RankedServer:
             "discord_redirect": f"http://127.0.0.1:{self.port}/discord.php",
             "discord_authorize": f"{self.discord.url}/oauth2/authorize",
             "discord_api": f"{self.discord.url}/api",
+            "replay_dir": os.path.join(os.path.dirname(self.db), "replay_files"),
         }
         cfg.update(extra)
         items = ",\n".join(f"    {json.dumps(k)} => {json.dumps(v)}" for k, v in cfg.items())
@@ -196,7 +197,18 @@ def social_checks(server, check, G, V, K):
     check("Goku sees his request waiting", [x["name"] for x in poll(G)["outgoing"]] == ["Vegeta"])
     _, a = call(server, "social.php", V, action="accept", id=p["incoming"][0]["id"])
     p = poll(G)
-    check(f"friends now, Vegeta online {p['friends']}", p["friends"] == [{"id": p["friends"][0]["id"], "name": "Vegeta", "online": True}])
+    f0 = p["friends"][0]
+    check(f"friends now, Vegeta online {p['friends']}", len(p["friends"]) == 1 and f0["name"] == "Vegeta"
+          and f0["online"] is True and f0["since"] > 0 and p["now"] >= f0["since"])
+    since0 = f0["since"]
+    # A launcher (re)start says so: a new "came online" time even within the online window.
+    time.sleep(1.1)
+    call(server, "social.php", V, action="poll", start=True)
+    since1 = poll(G)["friends"][0]["since"]
+    check(f"start=1: Vegeta came online again ({since0} -> {since1})", since1 > since0)
+    time.sleep(1.1)
+    poll(V)
+    check("a normal poll keeps the time Vegeta came online", poll(G)["friends"][0]["since"] == since1)
     _, r = call(server, "social.php", K, action="request", name="Goku")
     _, r2 = call(server, "social.php", G, action="request", name="krillin")
     check("asking someone who asked you: friends at once", r2.get("state") == "friends")
@@ -208,12 +220,94 @@ def social_checks(server, check, G, V, K):
     time.sleep(3)
     p = poll(G)
     check(f"friends who stopped polling are offline {p['friends']}", all(not f["online"] for f in p["friends"]))
+    check("offline friends: since 0", all(f["since"] == 0 for f in p["friends"]))
+    vp = poll(V)   # Vegeta comes back after the pause: any request makes him online again
+    v_since = [f for f in poll(G)["friends"] if f["name"] == "Vegeta"][0]["since"]
+    check(f"back online after being offline: a newer since ({since1} -> {v_since})", v_since >= since1 + 200)
     server.write_config(report_grace=3)
     time.sleep(3)
     kid = [f["id"] for f in poll(G)["friends"] if f["name"] == "krillin"][0]
     call(server, "social.php", G, action="remove", id=kid)
     check("unfriend", [f["name"] for f in poll(G)["friends"]] == ["Vegeta"])
     check("messages: none yet", poll(G)["messages"] == [])
+
+
+def replay_checks(server, check, G, V):
+    """replays.php: share a replay in pieces, find it, download it, no duplicates, delete."""
+    import base64
+    import hashlib
+    dtm = bytes(range(256)) * 1200 + b"end"             # ~300 KB: two pieces
+    sav = b"STATE" * 70000
+    meta = {"game_id": "RDSPAF", "mode": "single", "players": ["Goku", "Vegeta"], "wins": [2, 1],
+            "winner": "Goku", "seconds": 185, "date": "2026-10-19 01:30:00", "gecko": ["Infinite Health"],
+            "frames": 11100, "dtm": "x.dtm"}
+
+    def start(tok, **extra):
+        body = dict(action="start", meta=meta, dtm_size=len(dtm), sav_size=len(sav),
+                    dtm_sha=hashlib.sha1(dtm).hexdigest(), sav_sha=hashlib.sha1(sav).hexdigest())
+        body.update(extra)
+        return call(server, "replays.php", tok, **body)[1]
+
+    def send(tok, rid, which, data, chunk):
+        for off in range(0, len(data), chunk):
+            _, r = call(server, "replays.php", tok, action="part", id=rid, which=which, offset=off,
+                        data=base64.b64encode(data[off:off + chunk]).decode())
+            if not r.get("ok"):
+                return r
+        return {"ok": True}
+
+    _, anon = call(server, "replays.php", action="start", meta=meta)
+    check("sharing a replay needs a login", anon.get("error") == "login_required")
+    st = start(G)
+    check(f"upload starts {st}", st.get("ok") and st.get("id") and st.get("chunk") == 262144)
+    rid, chunk = st["id"], st["chunk"]
+    _, bad = call(server, "replays.php", G, action="part", id=rid, which="dtm", offset=5,
+                  data=base64.b64encode(b"x").decode())
+    check("a piece at the wrong place is refused", bad.get("error") == "wrong_offset" and bad.get("have") == 0)
+    _, nope = call(server, "replays.php", V, action="part", id=rid, which="dtm", offset=0,
+                   data=base64.b64encode(b"x").decode())
+    check("someone else can't add to it", nope.get("error") == "not_yours")
+    _, s0 = call(server, "replays.php", action="search")
+    check("not listed while uploading", s0.get("ok") and s0["replays"] == [])
+    check("inputs uploaded in pieces", send(G, rid, "dtm", dtm, chunk).get("ok"))
+    check("start state uploaded", send(G, rid, "sav", sav, chunk).get("ok"))
+    _, fin = call(server, "replays.php", G, action="finish", id=rid)
+    check(f"finish: sizes + SHA-1 check out {fin}", fin.get("ok") and fin.get("id") == rid)
+    _, s1 = call(server, "replays.php", action="search", q="vege")
+    hit = s1["replays"][0] if s1.get("replays") else {}
+    check(f"search by part of a name {hit}", hit.get("id") == rid and hit["players"] == ["Goku", "Vegeta"]
+          and hit["wins"] == [2, 1] and hit["winner"] == "Goku" and hit["uploader"] == "Goku"
+          and hit["size"] == len(dtm) + len(sav) and hit["mode"] == "single")
+    _, s2 = call(server, "replays.php", action="search", q="krillin")
+    check("no match: empty", s2["replays"] == [])
+    _, s3 = call(server, "replays.php", action="search", game="bt2")
+    check("game filter (BT2: none)", s3["replays"] == [])
+    _, s4 = call(server, "replays.php", action="search", game="bt3", mode="single", version="RDSPAF")
+    check("game + mode + version filter", [r["id"] for r in s4["replays"]] == [rid])
+    _, s5 = call(server, "replays.php", action="search", q="%")
+    check("a % in the search is just a character", s5["replays"] == [])
+    _, got = call(server, "replays.php", action="get", id=rid)
+    check("get: the full info", got["replay"]["meta"]["gecko"] == ["Infinite Health"])
+    for which, data in (("dtm", dtm), ("sav", sav)):
+        with urllib.request.urlopen(f"{server.url}replays.php?action=file&id={rid}&which={which}", timeout=10) as r:
+            body = r.read()
+        check(f"download {which}: same bytes ({len(body)})", body == data)
+    _, s6 = call(server, "replays.php", action="search")
+    check("downloads counted", s6["replays"][0]["downloads"] == 1)
+    again = start(V)
+    check(f"the same replay again: already there {again}", again.get("exists") is True and again.get("id") == rid)
+    _, dl = call(server, "replays.php", V, action="delete", id=rid)
+    check("only the one who shared it can delete it", dl.get("error") == "not_yours")
+    _, dl = call(server, "replays.php", G, action="delete", id=rid)
+    _, s7 = call(server, "replays.php", action="search")
+    check("deleted", dl.get("ok") and s7["replays"] == [])
+    big = start(G, sav_size=200 * 1048576)
+    check("too big refused", big.get("error") == "replay_too_big")
+    broken = start(G)
+    send(G, broken["id"], "dtm", dtm, chunk)
+    send(G, broken["id"], "sav", sav[:-1] + b"X", chunk)
+    _, fin2 = call(server, "replays.php", G, action="finish", id=broken["id"])
+    check("a damaged upload is thrown away", fin2.get("error") == "upload_broken")
 
 
 def admin_checks(server, check, tokens):
@@ -374,6 +468,7 @@ def main():
 
         # Friends, who's online, and the admin's messages.
         social_checks(server, check, G, V, K)
+        replay_checks(server, check, G, V)
         _, me = call(server, "me.php", G)
         check(f"profile: 1000 in both modes {me.get('ratings')}",
               me["ratings"]["single"]["rating"] == 1000 and me["ratings"]["team"]["rating"] == 1000)

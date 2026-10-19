@@ -19,7 +19,7 @@
 // (the all-time record) never resets. Banned players can't play ranked and aren't listed.
 declare(strict_types=1);
 
-const SCHEMA_VERSION = '4';
+const SCHEMA_VERSION = '5';
 const MODES = ['single', 'team', 'b2single', 'b2team'];
 const GAME_MODES = ['bt3' => ['single', 'team'], 'bt2' => ['b2single', 'b2team']];
 const MODE_LABELS = ['single' => 'Single Battle FT2', 'team' => 'Team Battle',
@@ -123,6 +123,14 @@ function migrate(PDO $db): void
         "message_reads (message_id INTEGER NOT NULL, player_id INTEGER NOT NULL,
             PRIMARY KEY (message_id, player_id))",
         "login_fails (k VARCHAR(64) PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL)",
+        // Version 5: shared replays (replays.php). Files in replay_dir: <id>.dtm, <id>.sav.
+        "replays (id $id, uploader INTEGER NOT NULL, state VARCHAR(8) NOT NULL,
+            game VARCHAR(4) NOT NULL, game_id VARCHAR(8) NOT NULL, mode VARCHAR(8) NOT NULL, p1 VARCHAR(64) NOT NULL,
+            p2 VARCHAR(64) NOT NULL, w1 INTEGER NOT NULL, w2 INTEGER NOT NULL,
+            winner VARCHAR(64) NOT NULL, seconds INTEGER NOT NULL, played VARCHAR(32) NOT NULL,
+            meta TEXT NOT NULL, dtm_size INTEGER NOT NULL, sav_size INTEGER NOT NULL,
+            dtm_sha CHAR(40) NOT NULL, sav_sha CHAR(40) NOT NULL, match_id INTEGER NULL,
+            created INTEGER NOT NULL, downloads INTEGER NOT NULL DEFAULT 0)",
         "matches (id $id, lobby_id INTEGER NOT NULL, mode VARCHAR(8) NOT NULL,
             region VARCHAR(4) NOT NULL, p1 INTEGER NOT NULL, p2 INTEGER NOT NULL,
             state VARCHAR(8) NOT NULL, r1 VARCHAR(8) NULL, r2 VARCHAR(8) NULL,
@@ -143,7 +151,9 @@ function migrate(PDO $db): void
               // Version 4: accounts (uname_key = the username in lowercase, unique).
               'players ADD COLUMN username VARCHAR(24) NULL',
               'players ADD COLUMN uname_key VARCHAR(24) NULL',
-              'players ADD COLUMN pass_hash VARCHAR(255) NULL'] as $alter) {
+              'players ADD COLUMN pass_hash VARCHAR(255) NULL',
+              // Version 5: when a player last came online (friends' "is online" pop-ups).
+              'players ADD COLUMN online_since INTEGER NOT NULL DEFAULT 0'] as $alter) {
         try {
             $db->exec("ALTER TABLE $alter");
         } catch (Throwable $e) {
@@ -235,7 +245,13 @@ function auth(bool $allow_banned = false): array
     }
     $t = now();
     db()->prepare('UPDATE sessions SET last_used = ? WHERE token_hash = ?')->execute([$t, token_hash($token)]);
+    // Offline until now (or never seen): online from now on.
+    if (!is_online($p) || !(int)($p['online_since'] ?? 0)) {
+        db()->prepare('UPDATE players SET online_since = ? WHERE id = ?')->execute([$t, $p['id']]);
+        $p['online_since'] = $t;
+    }
     db()->prepare('UPDATE players SET last_seen = ? WHERE id = ?')->execute([$t, $p['id']]);
+    $p['last_seen'] = $t;
     if ((int)($p['banned'] ?? 0) && !$allow_banned) {
         fail('banned', 403, ['reason' => (string)($p['ban_reason'] ?? '')]);
     }
@@ -639,4 +655,32 @@ function leaderboard(string $mode, string $region, int $limit = 100, string $gam
         $rows[] = $row;
     }
     return $rows;
+}
+
+// --- Shared replays (replays.php, admin.php) -------------------------------------------------
+
+function replay_dir(): string
+{
+    $dir = cfg()['replay_dir'] ?? (__DIR__ . '/replay_files');
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    if (!is_file("$dir/.htaccess")) {
+        @file_put_contents("$dir/.htaccess", "Require all denied\nDeny from all\n");
+        @file_put_contents("$dir/index.html", '');
+    }
+    return $dir;
+}
+
+function replay_path(int $id, string $which): string
+{
+    return replay_dir() . "/$id." . ($which === 'dtm' ? 'dtm' : 'sav');
+}
+
+function replay_remove(array $r): void
+{
+    foreach (['dtm', 'sav'] as $w) {
+        @unlink(replay_path((int)$r['id'], $w));
+    }
+    db()->prepare('DELETE FROM replays WHERE id = ?')->execute([$r['id']]);
 }

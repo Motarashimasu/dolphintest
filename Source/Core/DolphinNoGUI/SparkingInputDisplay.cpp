@@ -80,11 +80,18 @@ struct Entry
 };
 
 // --- Recording (CPU thread), drawing copies under the lock ----------------------------------
+// Ports 1 and 2 (index 0, 1).
+struct Track
+{
+  std::deque<Entry> history;  // front = newest
+  Input latest;
+  bool have_latest = false;  // polled since the game started
+};
 std::mutex s_mutex;
-std::deque<Entry> s_history;  // front = newest
-Input s_latest;
-bool s_have_latest = false;  // the local port was polled since the game started
-std::atomic<bool> s_enabled{false};
+std::array<Track, 2> s_tracks;
+std::atomic<bool> s_enabled{false};        // the local player's column
+std::atomic<bool> s_other_enabled{false};  // the other port's column (1 <-> 2)
+std::atomic<bool> s_other_allowed{true};   // false in online matches (another player is there)
 
 // --- Texture names from the game ini (any thread, under s_names_mutex) -----------------------
 std::mutex s_names_mutex;
@@ -148,12 +155,12 @@ Input Sample(const GCPadStatus& s)
 // CPU thread, every pad poll.
 void OnPad(int device_number, const GCPadStatus& status)
 {
-  if (device_number + 1 != HudLocalPort() || NeoCode::IsResimulating())
+  if (device_number < 0 || device_number > 1 || NeoCode::IsResimulating())
     return;
   const Input input = Sample(status);
   std::lock_guard lk(s_mutex);
-  s_latest = input;
-  s_have_latest = true;
+  s_tracks[device_number].latest = input;
+  s_tracks[device_number].have_latest = true;
 }
 
 // CPU thread, once per video field: the input the game had this field.
@@ -162,16 +169,19 @@ void OnField()
   if (NeoCode::IsResimulating())
     return;  // a NEOcode re-run of fields already recorded
   std::lock_guard lk(s_mutex);
-  if (!s_have_latest)
-    return;
-  if (!s_history.empty() && s_history.front().input == s_latest)
+  for (Track& t : s_tracks)
   {
-    ++s_history.front().frames;
-    return;
+    if (!t.have_latest)
+      continue;
+    if (!t.history.empty() && t.history.front().input == t.latest)
+    {
+      ++t.history.front().frames;
+      continue;
+    }
+    t.history.push_front({t.latest, 1});
+    if (t.history.size() > MAX_ENTRIES)
+      t.history.pop_back();
   }
-  s_history.push_front({s_latest, 1});
-  if (s_history.size() > MAX_ENTRIES)
-    s_history.pop_back();
 }
 
 std::string CaptureDir(const std::string& game_id)
@@ -476,13 +486,16 @@ void DrawButton(ImDrawList* dl, ImFont* font, int b, ImVec2 p0, float s, float a
   CenteredText(dl, font, c, s * 0.7f, s * 0.6f, IM_COL32(20, 20, 25, 255), d.label, alpha, false);
 }
 
-void DrawBar()
+// One port's column: port 1 down the left edge of the game picture, port 2 down the right edge
+// (mirrored: the frame count at the outer edge, then the direction, then the buttons inwards).
+// Newest on top.
+void DrawColumn(int index)
 {
   std::vector<Entry> history;
   {
     std::lock_guard lk(s_mutex);
-    const std::size_t n = std::min<std::size_t>(s_history.size(), 24);
-    history.assign(s_history.begin(), s_history.begin() + static_cast<std::ptrdiff_t>(n));
+    const auto& h = s_tracks[index].history;
+    history.assign(h.begin(), h.end());
   }
   if (history.empty())
     return;
@@ -505,22 +518,37 @@ void DrawBar()
   if (pw <= 0 || ph <= 0)
     return;
 
-  // The strip: bottom centre of the game picture, above the netplay ping line.
-  const float x0 = px0 + pw * 0.19f, x1 = px0 + pw * 0.81f;
-  const float y0 = py0 + ph * 0.822f, y1 = py0 + ph * 0.898f;
-  const float h = y1 - y0;
-  const float pad = h * 0.1f;
-  const float num_h = h * 0.3f;
-  const float s = h * 0.5f;          // icon size
+  const bool left = index == 0;
+  const float rh = ph * 0.042f;      // row height
+  const float row_gap = rh * 0.12f;
+  const float s = rh * 0.8f;         // icon size
   const float gap = s * 0.12f;
-  dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(8, 8, 18, 140), h * 0.18f);
+  const float pad = rh * 0.14f;
+  const float num_h = rh * 0.58f;
+  const float num_w = TextSize(font, num_h, "999+").x;
+  // Below the health bars, above the ki gauges.
+  const float top = py0 + ph * 0.155f, bottom = py0 + ph * 0.84f;
+  const float edge = left ? px0 + pw * 0.006f : px0 + pw * 0.994f;
+  const float dir = left ? 1.0f : -1.0f;  // which way the row grows from the edge
 
-  float x = x0 + pad;
-  for (std::size_t i = 0; i < history.size(); ++i)
+  // "P1" / "P2" tag over the column.
+  {
+    const char* tag = left ? "P1" : "P2";
+    const float th = rh * 0.62f;
+    const float tw = TextSize(font, th, tag).x;
+    const float tx = left ? edge + pad : edge - pad - tw;
+    const ImU32 col = left ? IM_COL32(110, 175, 255, 255) : IM_COL32(255, 120, 110, 255);
+    const ImVec2 p0(tx - pad, top - th - pad * 2), p1(tx + tw + pad, top - pad);
+    dl->AddRectFilled(p0, p1, IM_COL32(8, 8, 18, 150), th * 0.25f);
+    dl->AddText(font, th, ImVec2(tx, top - th - pad * 1.5f), col, tag);
+  }
+
+  float y = top;
+  for (std::size_t i = 0; i < history.size() && y + rh <= bottom; ++i, y += rh + row_gap)
   {
     const Entry& e = history[i];
     const bool newest = i == 0;
-    const float alpha = newest ? 1.0f : std::max(0.4f, 1.0f - static_cast<float>(i) * 0.055f);
+    const float alpha = newest ? 1.0f : std::max(0.45f, 1.0f - static_cast<float>(i) * 0.04f);
 
     std::vector<int> buttons;
     for (int b = 0; b < BTN_COUNT; ++b)
@@ -530,46 +558,59 @@ void DrawBar()
     }
     const int count = 1 + static_cast<int>(buttons.size()) + (e.input.cdir != NEUTRAL) +
                       (e.input.dpad != NEUTRAL);
-    const float icons_w = static_cast<float>(count) * s + static_cast<float>(count - 1) * gap;
-    const std::string frames = e.frames > 999 ? std::string("999+") : fmt::format("{}", e.frames);
-    const float text_w = TextSize(font, num_h, frames.c_str()).x;
-    const float cw = std::max(icons_w, text_w) + pad * 2;
-    if (x + cw > x1 - pad * 0.5f)
-      break;  // older inputs don't fit
-
+    const float row_w = pad + num_w + gap * 2 + static_cast<float>(count) * (s + gap) + pad;
+    const float x0 = left ? edge : edge - row_w;
+    dl->AddRectFilled(ImVec2(x0, y), ImVec2(x0 + row_w, y + rh),
+                      Fade(newest ? IM_COL32(40, 34, 10, 190) : IM_COL32(8, 8, 18, 150), alpha),
+                      rh * 0.22f);
     if (newest)
     {
-      dl->AddRectFilled(ImVec2(x, y0 + pad * 0.4f), ImVec2(x + cw, y1 - pad * 0.4f),
-                        IM_COL32(255, 255, 255, 26), h * 0.12f);
+      dl->AddRect(ImVec2(x0, y), ImVec2(x0 + row_w, y + rh), IM_COL32(255, 222, 80, 200),
+                  rh * 0.22f, 0, std::max(1.0f, rh * 0.05f));
     }
-    CenteredText(dl, font, ImVec2(x + cw / 2, y0 + pad * 0.5f + num_h / 2), cw, num_h,
+
+    // Walk from the edge inwards: frames, direction, buttons, C-stick, D-pad.
+    float cursor = edge + dir * pad;
+    const auto next = [&](float w) {
+      const float start = left ? cursor : cursor - w;  // left x of this item
+      cursor += dir * (w + gap);
+      return start;
+    };
+    const std::string frames = e.frames > 999 ? std::string("999+") : fmt::format("{}", e.frames);
+    const float nx = next(num_w + gap);
+    CenteredText(dl, font, ImVec2(nx + (num_w + gap) / 2, y + rh / 2), num_w, num_h,
                  newest ? IM_COL32(255, 222, 80, 255) : IM_COL32(235, 235, 242, 255),
                  frames.c_str(), alpha, true);
-
-    const float iy = y1 - pad - s;
-    float ix = x + (cw - icons_w) / 2;
-    DrawDirection(dl, ImVec2(ix + s / 2, iy + s / 2), s / 2, e.input.dir, alpha, newest);
-    ix += s + gap;
+    const float iy = y + (rh - s) / 2;
+    const float dx = next(s);
+    DrawDirection(dl, ImVec2(dx + s / 2, iy + s / 2), s / 2, e.input.dir, alpha, newest);
     for (const int b : buttons)
-    {
-      DrawButton(dl, font, b, ImVec2(ix, iy), s, alpha);
-      ix += s + gap;
-    }
+      DrawButton(dl, font, b, ImVec2(next(s), iy), s, alpha);
     if (e.input.cdir != NEUTRAL)
     {
-      DrawCStick(dl, ImVec2(ix + s / 2, iy + s / 2), s / 2, e.input.cdir, alpha);
-      ix += s + gap;
+      const float cx = next(s);
+      DrawCStick(dl, ImVec2(cx + s / 2, iy + s / 2), s / 2, e.input.cdir, alpha);
     }
     if (e.input.dpad != NEUTRAL)
-      DrawDpad(dl, ImVec2(ix + s / 2, iy + s / 2), s / 2, e.input.dpad, alpha);
-
-    x += cw;
-    if (x < x1 - pad)
     {
-      dl->AddLine(ImVec2(x, y0 + pad), ImVec2(x, y1 - pad), IM_COL32(255, 255, 255, 40),
-                  std::max(1.0f, h * 0.02f));
+      const float qx = next(s);
+      DrawDpad(dl, ImVec2(qx + s / 2, iy + s / 2), s / 2, e.input.dpad, alpha);
     }
   }
+}
+
+// The columns to draw now: the local player's own, and the other port's when allowed.
+std::array<bool, 2> ShownColumns()
+{
+  std::array<bool, 2> shown{};
+  const int local = HudLocalPort();
+  if (local < 1 || local > 2)
+    return shown;  // spectator: nobody's
+  if (s_enabled)
+    shown[local - 1] = true;
+  if (s_other_enabled && s_other_allowed)
+    shown[2 - local] = true;
+  return shown;
 }
 
 // Video backend shutdown (g_gfx still exists): free the icons.
@@ -584,9 +625,10 @@ void FreeIcons()
 }
 }  // namespace
 
-void InitInputDisplay(bool enabled)
+void InitInputDisplay(bool enabled, bool other)
 {
   s_enabled = enabled;
+  s_other_enabled = other;
   g_sparking_pad_observer = &OnPad;
   g_sparking_texture_decoded = &OnTextureDecoded;
   OSD::SetCustomShutdownCallback(FreeIcons);
@@ -596,10 +638,21 @@ void InitInputDisplay(bool enabled)
   (void)hook;
 }
 
+namespace
+{
+void EmitState()
+{
+  Emit("input_display", Json()
+                            .Add("enabled", s_enabled.load())
+                            .Add("other", s_other_enabled.load() && s_other_allowed.load())
+                            .Add("other_allowed", s_other_allowed.load()));
+}
+}  // namespace
+
 void SetInputDisplayEnabled(bool enabled)
 {
   s_enabled = enabled;
-  Emit("input_display", Json().Add("enabled", enabled));
+  EmitState();
 }
 
 bool InputDisplayEnabled()
@@ -607,12 +660,36 @@ bool InputDisplayEnabled()
   return s_enabled;
 }
 
+bool SetInputDisplayOther(bool enabled)
+{
+  if (enabled && !s_other_allowed)
+  {
+    Emit("error", Json().Add("code", "not_allowed_online").Add("command", "input_display_other"));
+    return false;
+  }
+  s_other_enabled = enabled;
+  EmitState();
+  return true;
+}
+
+bool InputDisplayOtherEnabled()
+{
+  return s_other_enabled && s_other_allowed;
+}
+
+void SetInputDisplayOtherAllowed(bool allowed)
+{
+  if (s_other_allowed.exchange(allowed) == allowed)
+    return;
+  if (!allowed)
+    s_other_enabled = false;  // and it stays off until switched on again where it's allowed
+  EmitState();
+}
+
 void ClearInputDisplay()
 {
   std::lock_guard lk(s_mutex);
-  s_history.clear();
-  s_have_latest = false;
-  s_latest = {};
+  s_tracks = {};
 }
 
 void LoadInputDisplay(const std::string& game_id, unsigned revision)
@@ -671,10 +748,9 @@ void LoadInputDisplay(const std::string& game_id, unsigned revision)
 
 void EmitInputHistory()
 {
-  std::vector<std::string> items;
-  {
-    std::lock_guard lk(s_mutex);
-    for (const Entry& e : s_history)
+  const auto list = [](const std::deque<Entry>& history) {
+    std::vector<std::string> items;
+    for (const Entry& e : history)
     {
       std::vector<std::string> buttons;
       for (int b = 0; b < BTN_COUNT; ++b)
@@ -690,19 +766,39 @@ void EmitInputHistory()
                           .Add("frames", static_cast<int>(e.frames))
                           .Str());
     }
+    return JsonArray(items);
+  };
+  std::string p1, p2;
+  {
+    std::lock_guard lk(s_mutex);
+    p1 = list(s_tracks[0].history);
+    p2 = list(s_tracks[1].history);
   }
-  Emit("input_history", Json().Add("enabled", s_enabled.load()).AddRaw("entries", JsonArray(items)));
+  const int local = HudLocalPort();
+  const auto shown = ShownColumns();
+  Emit("input_history", Json()
+                            .Add("enabled", s_enabled.load())
+                            .Add("local_port", local)
+                            .AddRaw("shown", fmt::format("[{},{}]", shown[0], shown[1]))
+                            .AddRaw("entries", local == 2 ? p2 : (local == 1 ? p1 : "[]"))
+                            .AddRaw("p1", p1)
+                            .AddRaw("p2", p2));
 }
 
 void DrawInputDisplay()
 {
-  if (!s_enabled)
+  const auto shown = ShownColumns();
+  if (!shown[0] && !shown[1])
     return;
   if (s_refresh_now.exchange(false) || --s_refresh_in <= 0)
   {
     RefreshIcons();
     s_refresh_in = 60;
   }
-  DrawBar();
+  for (int i = 0; i < 2; ++i)
+  {
+    if (shown[i])
+      DrawColumn(i);
+  }
 }
 }  // namespace Sparking

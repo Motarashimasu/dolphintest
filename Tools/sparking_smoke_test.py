@@ -1569,6 +1569,11 @@ def neocode_check(exe, work):
         host.send("input_display clear")
         host.send("input_display dump")
         check("input_display clear empties it", len(host.wait_for("input_history")["entries"]) <= 2)
+        check("online: the other port's history isn't allowed",
+              host.seen("input_display", lambda e: e["other_allowed"] is False)["other"] is False)
+        joiner.send("input_display_other on")
+        check("online: switching the opponent's history on is refused",
+              joiner.wait_for("error")["code"] == "not_allowed_online")
         host.send("input_display sideways")
         check("bad input_display argument rejected", host.wait_for("error")["code"] == "bad_argument")
         seqs = {}
@@ -1911,6 +1916,15 @@ def training_check(exe, dol, work, game_id, battle_sst):
         host.wait_for("game_started", timeout=40)
         host.send("buffer 12")
         check("buffer changed live while training", bool(host.seen("buffer_changed", lambda e: e["buffer"] == 12)))
+        host.send("input_display_other on")
+        ev = host.wait_for("input_display", lambda e: e["other"], timeout=10)
+        check(f"training: the other port's input history can be shown {ev}", ev["other_allowed"] is True)
+        host.send("input_display on")
+        host.wait_for("input_display", lambda e: e["enabled"], timeout=10)
+        host.send("input_display dump")
+        hist = host.wait_for("input_history")
+        check(f"training: both columns shown, P1 own {hist['shown']}",
+              hist["shown"] == [True, True] and hist["local_port"] == 1)
         time.sleep(2)
         host.send("stop")
         host.wait_for("game_stopped", timeout=30)

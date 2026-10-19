@@ -1,11 +1,16 @@
 extends "res://scripts/screens/form_screen.gd"
 ## Ranked > Replays: the ranked matches this PC played, newest first. Each one is recorded by
 ## Dolphin from the start of the first round to the end of the match (<SparkingData>/replays:
-## .dtm inputs + .dtm.sav start state + .json info). Pick one to watch it like a demo.
+## .dtm inputs + .dtm.sav start state + .json info). Pick one to watch it like a demo, share it
+## on DRAGON NET (everyone finds it in Replay Search) or delete it.
+
+const ReplayShare := preload("res://scripts/replay_share.gd")
 
 const KEEP := 50   # the oldest replays beyond this are deleted (each is a few MB)
 
 var _replays: Array = []   # the .json infos (+ "path": the .dtm), newest first
+var _status := ""
+var _busy := false
 
 
 func _init() -> void:
@@ -22,7 +27,7 @@ func screen_music() -> String:
 
 
 func screen_desc() -> String:
-	return "Your ranked matches, newest first. Pick one to watch it\nfrom the first round to the last KO."
+	return "Your ranked matches, newest first. Pick one to watch it,\nshare it on DRAGON NET or delete it."
 
 
 static func folder() -> String:
@@ -64,13 +69,22 @@ static func title_of(info: Dictionary) -> String:
 func build_rows() -> Array:
 	_replays = load_all()
 	var rows: Array = []
+	if _status != "":
+		rows.append({"type": "info", "key": "status", "label": _status, "value": ""})
+	rows.append({"type": "action", "key": "search", "label": "Replay Search",
+		"desc": "Everyone's shared replays: search by player name,\ndownload one and watch it."})
+	rows.append({"type": "toggle", "key": "auto_share", "label": "Share new replays",
+		"value": Settings.get_value("ranked", "auto_share"),
+		"desc": "Share every ranked match you finish on DRAGON NET right away,\nso anyone can find it in Replay Search."})
 	for i in _replays.size():
 		var r: Dictionary = _replays[i]
 		var mode := String(r.get("mode", ""))
 		var seconds := int(r.get("seconds", int(r.get("frames", 0)) / 60))
+		var shared := int(r.get("shared_id", 0)) > 0
 		rows.append({"type": "action", "key": "replay:%d" % i, "label": title_of(r),
-			"value": String(r.get("date", "")).left(16),
-			"desc": tr("%s, %s. Winner: %s.\nPress to watch it.") % [
+			"value": String(r.get("date", "")).left(16), "color": "#3fbf6b" if shared else "",
+			"desc": tr("%s, %s. Winner: %s. Shared on DRAGON NET.\nPress to watch or delete it." if shared
+				else "%s, %s. Winner: %s.\nPress to watch, share or delete it.") % [
 				Ranked.mode_title(mode) if mode in ["single", "team"] else tr("Ranked match"),
 				"%d:%02d" % [seconds / 60, seconds % 60], String(r.get("winner", "?"))]})
 	if _replays.is_empty():
@@ -82,14 +96,78 @@ func build_rows() -> Array:
 	return rows
 
 
+func on_value(key: String, value: Variant) -> void:
+	if key == "auto_share":
+		Settings.set_value("ranked", "auto_share", bool(value))
+
+
 func on_press(key: String) -> void:
 	if key.begins_with("replay:"):
-		var info: Dictionary = _replays[int(key.get_slice(":", 1))]
-		if not app.require_setup():
-			return
-		app.push(load("res://scripts/screens/replay_player.gd").new().setup(info))
+		_replay_menu(int(key.get_slice(":", 1)))
+	elif key == "search":
+		app.open("replay_search")
 	elif key == "folder":
 		DirAccess.make_dir_recursive_absolute(folder())
 		OS.shell_open(folder())
 	else:
 		super(key)
+
+
+func _replay_menu(i: int) -> void:
+	var info: Dictionary = _replays[i]
+	var shared := int(info.get("shared_id", 0)) > 0
+	var items: Array = [
+		{"label": "Watch", "glyph": "W", "color": "#3fbf6b", "desc": "Watch it from the first round to the last KO.",
+			"action": func():
+				app.pop()
+				watch(app, info)},
+		{"label": "Shared" if shared else "Share", "glyph": "S", "color": "#3fa9f5",
+			"desc": "Already on DRAGON NET: anyone can find it in Replay Search." if shared
+				else "Put it on DRAGON NET: anyone can find it in Replay Search.\nNeeds a DRAGON NET account.",
+			"action": func():
+				app.pop()
+				if not shared:
+					_share(info)},
+		{"label": "Delete", "glyph": "D", "color": "#e8663d", "desc": "Delete it from this PC (not from DRAGON NET).",
+			"action": func():
+				app.pop()
+				for p in [info["path"], String(info["path"]) + ".sav", info["json_path"]]:
+					DirAccess.remove_absolute(p)
+				list.set_rows(build_rows())},
+		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true, "desc": "Back to the replays."},
+	]
+	var m: Control = app.menu(title_of(info), items, "netplay")
+	m.notices = false
+	app.push(m)
+
+
+## Watches a replay (an info with "path"): the Replay screen.
+static func watch(p_app: Node, info: Dictionary) -> void:
+	if not p_app.require_setup():
+		return
+	p_app.push(load("res://scripts/screens/replay_player.gd").new().setup(info))
+
+
+func _share(info: Dictionary) -> void:
+	if _busy:
+		return
+	if not Ranked.logged_in() or Ranked.needs_account:
+		app.toast("Sharing replays needs a DRAGON NET account (Ranked Match > Profile).", 4.0)
+		return
+	_busy = true
+	_set_status(tr("Sharing... %s") % "0%")
+	var res: Dictionary = await ReplayShare.upload(info, func(p: float): _set_status(tr("Sharing... %s") % ("%d%%" % int(p * 100))))
+	_busy = false
+	if not is_inside_tree():
+		return
+	if res.get("ok", false):
+		_set_status(tr("Shared: anyone can find it in Replay Search.") if not res.get("exists", false)
+				else tr("Already shared: anyone can find it in Replay Search."))
+	else:
+		_set_status(tr("Couldn't share it: %s") % Ranked.error_text(String(res.get("error", ""))))
+
+
+func _set_status(text: String) -> void:
+	_status = text
+	if is_inside_tree():
+		list.set_rows(build_rows())
