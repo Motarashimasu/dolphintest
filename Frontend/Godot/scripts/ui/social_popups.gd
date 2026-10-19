@@ -1,5 +1,8 @@
 extends Control
 ## DRAGON NET pop-ups over the menus (scripts/social.gd):
+##   - "<friend> has entered the lobby!": the same, with a yellow bar (friend_joined(), from the
+##     lobby screen: any netplay lobby, ranked or not, when a player's DRAGON NET account is a
+##     friend's).
 ##   - "<friend> is online": a green bar sliding in from the right, centre right of the screen,
 ##     with a character sprite at its end (picked at random from look/online/*.png); a quarter
 ##     of the screen at most; leaves by itself. One at a time, the rest queued (a few).
@@ -20,7 +23,7 @@ const HOLD := 3.6
 const MAX_QUEUE := 4
 
 var app: Node
-var _toasts: Array = []          # names waiting
+var _toasts: Array = []          # [{name, kind: online | lobby}] waiting
 var _toast: Control = null       # the one on screen
 var _messages: Array = []        # [{id, text}] waiting
 var _box: Control = null         # the message on screen
@@ -51,7 +54,13 @@ func _ready() -> void:
 
 func _on_friend_online(friend: String) -> void:
 	if _toasts.size() < MAX_QUEUE:
-		_toasts.append(friend)
+		_toasts.append({"name": friend, "kind": "online"})
+
+
+## A friend is in the netplay lobby this player is in (yellow bar).
+func friend_joined(friend: String) -> void:
+	if _toasts.size() < MAX_QUEUE:
+		_toasts.append({"name": friend, "kind": "lobby"})
 
 
 ## Menus on screen: not in a game, not the in-game menu, not the splash.
@@ -68,12 +77,14 @@ func _process(_delta: float) -> void:
 	if _box == null and not _messages.is_empty():
 		_show_message(_messages.pop_front())
 	if _toast == null and not _toasts.is_empty():
-		_show_toast(_toasts.pop_front())
+		var t: Dictionary = _toasts.pop_front()
+		_show_toast(String(t["name"]), String(t["kind"]))
 
 
 # --- "X is online" -----------------------------------------------------------------------------
 
-func _show_toast(friend: String) -> void:
+func _show_toast(friend: String, kind := "online") -> void:
+	var lobby := kind == "lobby"
 	var t := Control.new()
 	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	t.size = Vector2(TOAST_W, TOAST_H)
@@ -84,8 +95,8 @@ func _show_toast(friend: String) -> void:
 	# The green bar along the bottom, the sprite standing on its right end.
 	var bar := Panel.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color("#2fae5a")
-	sb.border_color = Color("#bff5c9")
+	sb.bg_color = Color("#e3b21b") if lobby else Color("#2fae5a")
+	sb.border_color = Color("#fff0b3") if lobby else Color("#bff5c9")
 	sb.set_border_width_all(3)
 	sb.corner_radius_top_left = 14
 	sb.corner_radius_bottom_left = 14
@@ -100,12 +111,14 @@ func _show_toast(friend: String) -> void:
 	shine.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	Style.place(shine, 6, 5, TOAST_W - 6, BAR_H * 0.38)
 	bar.add_child(shine)
-	var name_l := Style.label(friend, 24, Color.WHITE, 5, Color("#0b4a22"), "button")
+	var outline := Color("#5a3d00") if lobby else Color("#0b4a22")
+	var name_l := Style.label(friend, 24, Color.WHITE, 5, outline, "button")
 	name_l.clip_text = true
 	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	Style.place(name_l, 16, 2, TOAST_W - SPRITE_SIZE * 0.62 - 16, 30)
 	bar.add_child(name_l)
-	var sub := Style.label(tr("is online!"), 17, Color("#eaffef"), 3, Color("#0b4a22"))
+	var sub := Style.label(tr("has entered the lobby!") if lobby else tr("is online!"), 17,
+			Color("#fff8df") if lobby else Color("#eaffef"), 3, outline)
 	Style.place(sub, 16, 30, TOAST_W - SPRITE_SIZE * 0.62 - 16, 24)
 	bar.add_child(sub)
 	if not _sprites.is_empty():

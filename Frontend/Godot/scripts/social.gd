@@ -110,6 +110,12 @@ func poll() -> void:
 	updated.emit()
 
 
+## Whether DRAGON NET account `name` is a friend (any case).
+func is_friend(name: String) -> bool:
+	var key := name.to_lower()
+	return key != "" and friends.any(func(f): return String(f.get("name", "")).to_lower() == key)
+
+
 ## The player closed message `id`: the server won't send it again.
 func close_message(id: int) -> void:
 	await Ranked.api("social.php", {"action": "ack", "message": id})

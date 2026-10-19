@@ -1,5 +1,5 @@
 extends "res://scripts/screens/form_screen.gd"
-## Main Menu > Friends (needs the DRAGON NET account): add someone by username, friend requests
+## DRAGON NET > Friends (the same list in every game's DRAGON NET menu) (needs the DRAGON NET account): add someone by username, friend requests
 ## (accept / decline), and the friends list with who's online (green). A friend coming online
 ## also pops up over the menus (scripts/ui/social_popups.gd).
 
@@ -17,7 +17,7 @@ func screen_title() -> String:
 
 
 func screen_music() -> String:
-	return "main_menu"
+	return "netplay"
 
 
 func screen_desc() -> String:
@@ -65,7 +65,7 @@ func build_rows() -> Array:
 	for r in Social.outgoing:
 		rows.append({"type": "action", "key": "out:%d" % int(r["id"]), "label": String(r["name"]), "pic": _pic(r),
 			"value": tr("request sent"), "desc": "Waiting for them to accept. Press to cancel the request."})
-	rows.append({"type": "action", "key": "back", "label": "Back", "desc": "Back to the main menu."})
+	rows.append({"type": "action", "key": "back", "label": "Back", "desc": "Back to the DRAGON NET menu."})
 	return rows
 
 
@@ -115,7 +115,7 @@ func on_press(key: String) -> void:
 			items = [{"label": "Remove friend", "glyph": "R", "color": "#e8663d",
 				"desc": tr("Stop being friends with %s.") % name, "action": func(): _do("remove", id)}]
 	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true, "desc": "Back to Friends."})
-	var m: Control = app.menu(name, items, "main_menu")
+	var m: Control = app.menu(name, items, "netplay")
 	m.notices = false
 	app.push(m)
 

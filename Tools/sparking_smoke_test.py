@@ -887,7 +887,9 @@ def spectator_check(exe, dol, work, game_id):
         check("the match runs on all four", True)
         for inst, port, codes in ((host, 1, ["Infinite Health", "Splitscreen Remover P1"]),
                                   (vegeta, 2, ["Infinite Health", "Splitscreen Remover P2"]),
-                                  (kaio, 0, ["Infinite Health"]), (bulma, 0, ["Infinite Health"])):
+                                  # Watchers run pad 1's codes: their game runs exactly like P1's.
+                                  (kaio, 0, ["Infinite Health", "Splitscreen Remover P1"]),
+                                  (bulma, 0, ["Infinite Health", "Splitscreen Remover P1"])):
             g = inst.seen("gecko_active")
             check(f"{inst.name}: port {g['port']}, codes {g['codes']}", g["port"] == port and g["codes"] == codes)
         time.sleep(4)
@@ -973,6 +975,20 @@ def ranked_check(exe, dol, work, game_id):
             inst.proc.wait(timeout=20)
         host.seen("players", lambda e: len(e["players"]) == 2 and
                   all(p["save_status"] == "ok" for p in e["players"] if not p["is_host"]), timeout=20)
+        # The host asks; the other player answers (the launcher starts the match on a yes).
+        host.send("ask_start")
+        asked = vegeta.wait_for("start_asked", timeout=10)
+        check(f"the other player is asked to approve the start {asked}", asked["from"] == "Goku")
+        vegeta.send("answer_start no")
+        check("declining is heard", host.wait_for("start_answered", timeout=10)["accepted"] is False)
+        vegeta.send("answer_start yes")
+        time.sleep(1)
+        check("an answer nobody asked for is ignored", count(host, "start_answered") == 1)
+        host.send("ask_start")
+        vegeta.wait_for("start_asked", timeout=10)
+        vegeta.send("answer_start yes")
+        ans = host.wait_for("start_answered", timeout=10)
+        check(f"accepting is heard {ans}", ans["accepted"] is True and ans["name"] == "Vegeta")
         host.send("start")
         host.wait_for("game_started", timeout=40)
         vegeta.wait_for("game_started", timeout=40)
@@ -1713,7 +1729,7 @@ def koth_check(exe, dol, work, game_id):
     def joiner(name, *extra):
         inst = Instance("koth-" + name, [exe, *common, *setup(name), "--netplay-join",
                                          "127.0.0.1:26297", "--netplay-game", dol,
-                                         "--nickname", name, *extra])
+                                         "--nickname", name, "--test-hooks", *extra])
         inst.send("hello")
         return inst
 
@@ -1733,16 +1749,19 @@ def koth_check(exe, dol, work, game_id):
     def line(e):
         return [x["name"] for x in e["line"]]
 
-    def hpoke(addr, val):
-        host.send(f"poke {addr} {val}")
-        host.wait_for("poked", lambda e: e["address"] == addr and e["value"] == val)
+    def hpoke(addr, val, inst=None):
+        inst = inst or host
+        inst.send(f"poke {addr} {val}")
+        inst.wait_for("poked", lambda e: e["address"] == addr and e["value"] == val)
         time.sleep(0.15)
 
-    def ko(loser_addr):
-        hpoke(HP1, FULL); hpoke(HP2, FULL)
-        before = count(host, "round_result")
-        hpoke(loser_addr, ZERO)
-        until(host, "round_result", before + 1, timeout=10)
+    def ko(loser_addr, inst=None):
+        """A KO in `inst`'s game (only its memory is poked: the others' games don't see it)."""
+        inst = inst or host
+        hpoke(HP1, FULL, inst); hpoke(HP2, FULL, inst)
+        before = count(inst, "round_result")
+        hpoke(loser_addr, ZERO, inst)
+        until(inst, "round_result", before + 1, timeout=10)
 
     host = Instance("koth-host", [exe, *common, *setup("host"), "--netplay-host", dol,
                                   "--netplay-direct", "--koth", "--mode", "single", "--public",
@@ -1752,8 +1771,11 @@ def koth_check(exe, dol, work, game_id):
     try:
         host.send("hello")
         host.wait_for("lobby_ready")
-        vegeta = joiner("Vegeta", "--koth"); insts.append(vegeta)
+        vegeta = joiner("Vegeta", "--koth", "--account", "vegeta_p"); insts.append(vegeta)
         host.seen("koth", lambda e: line(e) == ["Goku", "Vegeta"], timeout=20)
+        acc = host.seen("players", lambda e: any(p.get("account") == "vegeta_p" for p in e["players"]), timeout=20)
+        check("a player's DRAGON NET account is told to the lobby (friends get a pop-up)",
+              [p["account"] for p in acc["players"] if p["name"] == "Goku"] == [""])
         piccolo = joiner("Piccolo"); insts.append(piccolo)   # joins by address: no flag needed
         k = host.seen("koth", lambda e: line(e) == ["Goku", "Vegeta", "Piccolo"], timeout=20)
         check(f"line in join order, Single Battle first to 2 {line(k)} cap {k['cap']}",
@@ -1818,9 +1840,19 @@ def koth_check(exe, dol, work, game_id):
         # Set 3: Piccolo vs Vegeta, the host waits in line without a pad but still referees.
         for inst in (host, vegeta, piccolo, krillin):
             until(inst, "game_started", 3 if inst is not krillin else 1, timeout=60)
-        check("host waiting in line has no pad", [e for e in host.history if e["event"] == "gecko_active"][-1]["port"] == 0)
+        hg = [e for e in host.history if e["event"] == "gecko_active"][-1]
+        check(f"host waiting in line has no pad, runs pad 1's codes {hg['codes']}",
+              hg["port"] == 0 and "Splitscreen Remover P1" in hg["codes"])
+        # KOs only the host's own game sees don't count: it isn't fighting (a drifted game).
         ko(HP2)
         ko(HP2)
+        time.sleep(2)
+        check("the host's own game (no pad) can't decide a set", count(host, "koth_set") == 2)
+        # The players' games decide it: Piccolo (pad 1) tells the host each KO.
+        ko(HP2, piccolo)
+        ko(HP2, piccolo)
+        ks = host.seen("koth_set", lambda e: e["winner"] == "Piccolo" and e["streak"] == 2, timeout=10)
+        check(f"decided from the player's own KO count {ks}", ks["wins"] == [2, 0])
         until(host, "game_stopped", 3, timeout=20)
         k = host.seen("koth", lambda e: line(e) == ["Piccolo", "Goku", "Krillin", "Vegeta"], timeout=20)
         check(f"champion defends: streak {k['streak']}, the host's set ends without a pad", k["streak"] == 2)
@@ -1834,6 +1866,20 @@ def koth_check(exe, dol, work, game_id):
         check("stopped by hand: nobody moves, waiting for Start", bool(k))
         time.sleep(12)
         check("no set starts on its own while paused", count(host, "game_started") == 4)
+        # Step down: the champion goes to the back of the line between sets...
+        piccolo.send("step_down")
+        k = host.seen("koth", lambda e: line(e) == ["Goku", "Krillin", "Vegeta", "Piccolo"], timeout=10)
+        check(f"step down between sets: to the back, the champion's streak ends {line(k)}", k["streak"] == 0)
+        # ...and one of the two fighting forfeits the set.
+        host.send("start")
+        for inst in (host, krillin):
+            until(inst, "game_started", 5 if inst is host else 3, timeout=60)
+        krillin.send("step_down")
+        ks = host.seen("koth_set", lambda e: e.get("reason") == "stepped_down", timeout=10)
+        check(f"stepping down during a set forfeits it {ks}", ks["winner"] == "Goku" and ks["loser"] == "Krillin")
+        until(host, "game_stopped", 5, timeout=20)
+        k = host.seen("koth", lambda e: line(e) == ["Goku", "Vegeta", "Piccolo", "Krillin"], timeout=20)
+        check(f"...and goes to the back {line(k)}", bool(k))
         for inst in insts:
             inst.send("quit")
         for inst in insts:

@@ -51,6 +51,9 @@ var _neocode := false     # NEOcode on for this lobby (the host switches it: PgU
 var _neo_r := -1          # its "R" while a match runs (-1: none)
 var _neo_out_of_sync := false
 var _match_id := 0           # ranked: the server's id of the match being / last played
+var _friends_told := {}      # DRAGON NET accounts already announced in this lobby
+var _asking := false         # ranked host: waiting for the other player to approve the start
+var _ask_menu: Control = null   # ranked guest: the "start the match?" question on screen
 var _chat: PackedStringArray = []
 var _battle := {}
 var _logged_buffer := -1
@@ -212,6 +215,58 @@ func _report(result: String, why := "") -> void:
 		_system(why if why != "" else "Result sent to the ranked server.", "#cfe9ee")
 		_announce_result(res.get("match"))
 	_ranked_tick()
+
+
+## Ranked guest: the host wants to start. A question on screen: accept or decline.
+func _on_start_asked(host: String) -> void:
+	if _ask_menu and is_instance_valid(_ask_menu):
+		return
+	Sfx.play("player_join")
+	var state := {"answered": false}
+	var answer := func(yes: bool):
+		if state["answered"]:
+			return
+		state["answered"] = true
+		Dolphin.send("answer_start " + ("yes" if yes else "no"))
+		if _ask_menu and is_instance_valid(_ask_menu) and app.top() == _ask_menu:
+			app.pop()
+		_ask_menu = null
+		_system("You accepted: the match starts." if yes else "You declined the match.", "#cfe9ee")
+	var items: Array = [
+		{"label": "Accept", "glyph": "A", "color": "#3fbf6b", "desc": tr("Start the ranked match against %s now.") % host,
+			"action": func(): answer.call(true)},
+		{"label": "Decline", "glyph": "D", "color": "#e8663d", "desc": "Not yet: back to the lobby.",
+			"action": func(): answer.call(false)},
+	]
+	_ask_menu = app.menu(tr("%s wants to start") % host, items, "ranked")
+	_ask_menu.notices = false
+	# Backed out of it (B) without answering: that's a no.
+	_ask_menu.tree_exiting.connect(func():
+		if not state["answered"] and is_inside_tree():
+			state["answered"] = true
+			Dolphin.send("answer_start no"))
+	if app.is_ingame_menu_open():
+		app.close_ingame_menu(false)
+	app.push(_ask_menu)
+	app.show_window()
+	# Unanswered for 30 s: the host stops waiting; so does the question.
+	var menu := _ask_menu
+	await get_tree().create_timer(30.0).timeout
+	if is_instance_valid(menu) and app.top() == menu:
+		app.pop()
+		if _ask_menu == menu:
+			_ask_menu = null
+
+
+## A friend (their DRAGON NET account) is in this lobby: the yellow pop-up, once per lobby.
+func _announce_friends() -> void:
+	var me := Ranked.display_name().to_lower()
+	for p in _players:
+		var acc := String(p.get("account", ""))
+		if acc == "" or acc.to_lower() == me or _friends_told.has(acc.to_lower()) or not Social.is_friend(acc):
+			continue
+		_friends_told[acc.to_lower()] = true
+		app.social_popups.friend_joined(acc)
 
 
 ## A ranked match's replay was saved: note which server match it is, and share it on DRAGON NET
@@ -578,7 +633,7 @@ func _action_rows(in_game_menu: bool) -> Array:
 		var can_start: bool = _koth_line_size() >= 2 and String(_koth.get("state", "")) in ["ready", "next"] if koth \
 				else _playing().size() >= (1 if is_training() else 2)
 		rows.append({"type": "action", "key": "start", "label": "Start Training" if is_training() else "Start Match",
-			"color": "#3fbf6b", "disabled": _phase == "playing" or not can_start})
+			"color": "#3fbf6b", "disabled": _phase == "playing" or not can_start or _asking})
 	if not is_training():   # nobody to talk to in a solo session
 		rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": tr("Press %s to type") % Pad.prompt("accept")["key"],
 			"max_length": 200})
@@ -605,6 +660,11 @@ func _action_rows(in_game_menu: bool) -> Array:
 			rows.append({"type": "action", "key": "input_display_other", "label": "P2 input history",
 				"value": "On" if Settings.get_value("options", other) else "Off",
 				"desc": "The other port's inputs down the right side."})
+	# Battle Lounge: step down to the back of the line (forfeiting the set if you're fighting).
+	if koth and not ranked and not is_spectating() and int(_koth.get("local_pos", -1)) >= 0:
+		var fighting: bool = _phase == "playing" and int(_koth.get("local_pos", -1)) < 2
+		rows.append({"type": "action", "key": "step_down", "label": "Step down", "color": "#f2b531",
+			"desc": "Forfeit this set and go to the back of the line." if fighting else "Go to the back of the line."})
 	# A spectator's Stop only ends their own view; the match goes on for the players.
 	var stop_label := "Stop Watching" if is_spectating() else ("Stop Training" if is_training() else "Stop Match")
 	if ranked:
@@ -729,6 +789,10 @@ func _on_press(key: String) -> void:
 			app.close_ingame_menu(false)
 		"resume":
 			app.close_ingame_menu()
+		"step_down":
+			Dolphin.send("step_down")
+			if _phase == "playing":
+				app.close_ingame_menu()
 		"input_display", "input_display_other":
 			var setting := Settings.input_display_key(is_training(), key == "input_display_other")
 			var on := not bool(Settings.get_value("options", setting))
@@ -751,6 +815,38 @@ func _start_ranked() -> void:
 	if ranked_lobby <= 0:
 		_system("The ranked lobby isn't listed yet. Try again in a moment.", "#e8663d")
 		return
+	if _asking:
+		return
+	# The other player approves first (a pop-up on their screen).
+	_asking = true
+	var other := _other_player_name()
+	_system(tr("Waiting for %s to accept the match...") % other, "#cfe9ee")
+	Dolphin.send("ask_start")
+	_refresh_actions()
+	await get_tree().create_timer(30.0).timeout
+	if is_inside_tree() and _asking:
+		_asking = false
+		_system(tr("%s didn't answer. Press Start Match to ask again.") % other, "#e8663d")
+		_refresh_actions()
+
+
+func _other_player_name() -> String:
+	for p in _players:
+		if not p.get("is_host", false) and String(p.get("role", "player")) == "player":
+			return String(p.get("name", "?"))
+	return "?"
+
+
+## Ranked host: the other player answered.
+func _on_start_answered(data: Dictionary) -> void:
+	if not _asking:
+		return
+	_asking = false
+	_refresh_actions()
+	if not data.get("accepted", false):
+		_system(tr("%s declined the match.") % String(data.get("name", "?")), "#e8663d")
+		return
+	_system(tr("%s accepted. Starting!") % String(data.get("name", "?")), "#3fbf6b")
 	var res := await Ranked.api("match.php", {"action": "start", "lobby": ranked_lobby})
 	if not is_inside_tree():
 		return
@@ -814,6 +910,12 @@ func _on_event(name: String, data: Dictionary) -> void:
 	match name:
 		"replay_saved":
 			_on_replay_saved(data)
+		"start_asked":
+			_on_start_asked(String(data.get("from", "?")))
+		"start_answered":
+			_on_start_answered(data)
+		"koth_step_down":
+			_system(tr("%s stepped down to the back of the line.") % String(data.get("name", "?")), "#f2b531")
 		"lobby_opening":
 			if _phase != "searching":
 				_status = "Connecting..."
@@ -876,6 +978,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 				_system(tr("Couldn't list the lobby publicly (%s).") % data["error"], "#e8663d")
 		"players":
 			_players = data.get("players", [])
+			_announce_friends()
 			_maybe_auto_start()
 			if _phase == "lobby":
 				if is_training():

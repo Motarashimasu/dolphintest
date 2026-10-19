@@ -509,6 +509,9 @@ func _netplay_base(nickname := "") -> PackedStringArray:
 	a.append_array(["--input-display-other", "off"])   # never the opponent's inputs online
 	a.append_array(["--nand", netplay_save_dir(), "--state-dir", data_path("states")])
 	a.append_array(["--nickname", nickname if nickname != "" else String(get_value("player", "nickname"))])
+	# The DRAGON NET account (if logged in): friends in the same lobby get told.
+	if Ranked.logged_in() and not Ranked.needs_account and Ranked.display_name() != "":
+		a.append_array(["--account", Ranked.display_name()])
 	var codes: Dictionary = GAMES[game]["port_codes"]
 	for port in codes:
 		a.append_array(["--netplay-gecko", "%d=%s" % [port, codes[port]]])
@@ -579,7 +582,8 @@ func join_args(target: String, koth := false) -> PackedStringArray:
 	return a
 
 
-## Watch a lobby: joins it as a spectator (no controller port, default codes only).
+## Watch a lobby: joins it as a spectator (no controller port; runs pad 1's codes, so its game
+## runs exactly like player 1's).
 func watch_args(target: String, koth := false) -> PackedStringArray:
 	var a := join_args(target, koth)
 	a.append("--spectate")

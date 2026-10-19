@@ -796,5 +796,19 @@
  "Back to your account.": "Volver a tu cuenta.",
  "That picture can't be used (PNG, JPEG or WebP only).": "Esa imagen no se puede usar (solo PNG, JPEG o WebP).",
  "The picture has to be cropped first.": "Primero hay que recortar la imagen.",
- "That picture is too small (at least 32 x 32).": "Esa imagen es demasiado pequeña (mínimo 32 x 32)."
+ "That picture is too small (at least 32 x 32).": "Esa imagen es demasiado pequeña (mínimo 32 x 32).",
+ "has entered the lobby!": "¡ha entrado en la sala!",
+ "Waiting for %s to accept the match...": "Esperando a que %s acepte la partida...",
+ "%s didn't answer. Press Start Match to ask again.": "%s no respondió. Pulsa Empezar partida para preguntar de nuevo.",
+ "%s declined the match.": "%s rechazó la partida.",
+ "%s accepted. Starting!": "%s aceptó. ¡Empezamos!",
+ "%s stepped down to the back of the line.": "%s se fue al final de la fila.",
+ "Start the ranked match against %s now.": "Empezar ahora la partida clasificatoria contra %s.",
+ "Not yet: back to the lobby.": "Todavía no: volver a la sala.",
+ "%s wants to start": "%s quiere empezar",
+ "You accepted: the match starts.": "Aceptaste: la partida empieza.",
+ "You declined the match.": "Rechazaste la partida.",
+ "Step down": "Ceder el puesto",
+ "Forfeit this set and go to the back of the line.": "Abandona este combate y ve al final de la fila.",
+ "Go to the back of the line.": "Ve al final de la fila."
 }

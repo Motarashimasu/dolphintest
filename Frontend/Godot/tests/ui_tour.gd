@@ -164,8 +164,11 @@ func as_vegeta(body: Dictionary) -> Dictionary:
 	return data if data is Dictionary else {}
 
 
-## Friends (on the main menu), a friend coming online, an admin message.
+## Friends (in the DRAGON NET menus), a friend coming online, an admin message.
 func friends_and_popups() -> void:
+	Settings.use_game("bt3")
+	app.push(app._netplay_menu())
+	await frames(10)
 	await choose("Friends")
 	var fr: Control = top()
 	check("Friends screen (logged in as Goku)", app._title.text == "Friends" and "Goku" in fr.screen_desc())
@@ -201,6 +204,20 @@ func friends_and_popups() -> void:
 			and "Vegeta" in t.get_child(0).get_child(1).text)
 	await shot("friend_online_popup")
 	await wait_for("online pop-up gone by itself", func(): return app.social_popups._toast == null, 8)
+	# A friend in the same netplay lobby: the same pop-up with a yellow bar.
+	check("netplay tells the lobby this PC's DRAGON NET account",
+			"--account" in Settings.join_args("1.2.3.4:2626") and Settings.join_args("1.2.3.4:2626")[Settings.join_args("1.2.3.4:2626").find("--account") + 1] == "Goku")
+	check("friends are recognised by account name, any case", Social.is_friend("VEGETA") and not Social.is_friend("Trunks"))
+	app.social_popups.friend_joined("Vegeta")
+	await wait_for("lobby pop-up shown", func(): return app.social_popups._toast != null, 5)
+	var lt: Control = app.social_popups._toast
+	await get_tree().create_timer(0.6).timeout
+	var bar: Panel = lt.get_child(0)
+	check("lobby pop-up: yellow bar, 'has entered the lobby!'",
+			(bar.get_theme_stylebox("panel") as StyleBoxFlat).bg_color.is_equal_approx(Color("#e3b21b"))
+			and bar.get_child(2).text == tr("has entered the lobby!"))
+	await shot("friend_lobby_popup")
+	await wait_for("lobby pop-up gone by itself", func(): return app.social_popups._toast == null, 8)
 	# An admin message: the striped box until it's closed with a button; once.
 	Social.message.emit(990001, "Server maintenance tonight at 22:00 UTC. Ranked will be back in an hour.")
 	await wait_for("message shown", func(): return app.social_popups.has_message_open(), 5)
@@ -211,6 +228,8 @@ func friends_and_popups() -> void:
 	check("the menu behind doesn't move while it's open", top().list.current_key() == before)
 	await press("ui_accept")
 	check("closed with a button", not app.social_popups.has_message_open())
+	await back()
+	check("back in the DRAGON NET menu", app._title.text.begins_with("DRAGON NET"))
 	await back()
 	check("back at the main menu", app._title.text == "Main Menu")
 
@@ -490,13 +509,9 @@ func _tour() -> void:
 	check("description follows the selection", "Sparking! NEO" in app._desc.text)
 	await shot("main_menu_bt2")
 	await press("ui_down")
-	check("then Friends", top().carousel.current().get("label") == "Friends"
-			and "Needs a DRAGON NET account" in app._desc.text)
-	await press("ui_down")
-	check("then Video Settings", top().carousel.current().get("label") == "Video Settings"
+	check("then Video Settings (Friends moved to DRAGON NET)", top().carousel.current().get("label") == "Video Settings"
 			and app._desc.text == "Change your video settings here.")
 	await shot("main_menu_video")
-	await press("ui_up")
 	await press("ui_up")
 	await press("ui_up")
 
@@ -730,6 +745,10 @@ func _tour() -> void:
 		check("Battle Lounge has its own music track", Music.current_track() == "battle_lounge")
 		await frames(30)
 		await shot("koth_lobby_line")
+		check("Step down row in the line", kl._actions.row("step_down").get("label") == "Step down")
+		await pick("step_down", kl._actions)
+		await wait_for("stepped down: last in line (Trunks stays first)", func():
+			return "\n".join(kl._chat).contains(tr("%s stepped down to the back of the line.") % "Goku"), 15)
 		await leave_lobby(kl)
 		await wait_for("left Trunks' lobby", func(): return app.top() == kb, 15)
 		await wait_for("Dolphin exited (Battle Lounge)", func(): return not Dolphin.is_running(), 10)
@@ -783,6 +802,11 @@ func _tour() -> void:
 		await frames(30)
 		await shot("ranked_lobby")
 		print("TOUR_EVENT ranked_ready")
+		await wait_for("the host asks to start: a pop-up", func():
+			return app.top() != rl and tr("%s wants to start") % "Vegeta" == app._title.text, 30)
+		await shot("ranked_start_question")
+		await choose("Accept")
+		check("answered: back in the lobby", app.top() == rl)
 		await wait_for("ranked match running", func(): return rl._phase == "playing", 60)
 		# The harness pokes the host's health; this player's game sees the first round too (the
 		# real game has the same memory on both sides), which starts its replay recording.

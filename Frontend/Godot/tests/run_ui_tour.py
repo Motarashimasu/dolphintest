@@ -166,7 +166,7 @@ def main():
     rk_vegeta = Instance("rk-vegeta", [exe, *COMMON, "-u", ranked_user, "--netplay-host", dol,
                                        "--netplay-direct", "--ranked", "--mode", "single",
                                        "--nickname", "Vegeta", "--link", "wired", "--test-hooks",
-                                       *netplay_codes])
+                                       "--account", "Vegeta", *netplay_codes])
     rk_vegeta.send("hello")
     rk_vegeta.seen("lobby_ready")
     _, rk_open = ranked_call(ranked, "lobby.php", vegeta_token, action="open", mode="single",
@@ -180,7 +180,14 @@ def main():
     threading.Thread(target=rk_heartbeat, daemon=True).start()
 
     def rk_match():
-        """Vegeta (host) starts the ranked match; the tour (pad 2) wins 2-0; Vegeta reports."""
+        """Vegeta (host) asks, the tour accepts, Vegeta starts the ranked match; the tour (pad 2)
+        wins 2-0; Vegeta reports."""
+        # The other player approves the start first (the tour answers the pop-up).
+        rk_vegeta.send("ask_start")
+        ans = rk_vegeta.wait_for("start_answered", timeout=40)
+        if not ans.get("accepted"):
+            print("TOUR_HARNESS: the ranked start was declined")
+            return
         ranked_call(ranked, "match.php", vegeta_token, action="start", lobby=rk_lobby)
         rk_vegeta.send("start")
         rk_vegeta.seen("game_started", timeout=60)

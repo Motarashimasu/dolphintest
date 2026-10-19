@@ -7,6 +7,7 @@
 #include <array>
 #include <atomic>
 #include <cfloat>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -54,6 +55,7 @@ std::array<std::string, 2> s_links;   // guarded by s_mutex: wired/wireless/virt
 int s_rounds = 0;
 std::atomic<int> s_result_count{0};  // every confirmed KO, never reset
 std::array<std::atomic<int>, 2> s_port_wins{};  // KOs won per port (1, 2), never reset
+std::function<void(int)> s_ko_callback;          // guarded by s_mutex
 
 std::string DisplayName(const Side& side, int port)
 {
@@ -408,6 +410,12 @@ int HudResultCount()
   return s_result_count;
 }
 
+void SetHudKoCallback(std::function<void(int winner_port)> callback)
+{
+  std::lock_guard lk(s_mutex);
+  s_ko_callback = std::move(callback);
+}
+
 int HudPortWins(int port)
 {
   return port == 1 || port == 2 ? s_port_wins[port - 1].load() : 0;
@@ -522,9 +530,11 @@ void HudTick()
     json.Add("local_result", local == winner_port ? "win" : "lose");
   // The counters the netplay host decides sets / buffer changes from only count final results
   // (with NEOcode a rewind can still take this one back until then).
-  EmitFinal("round_result", json, [winner_port] {
+  EmitFinal("round_result", json, [winner_port, cb = s_ko_callback] {
     ++s_port_wins[winner_port - 1];
     ++s_result_count;
+    if (cb)
+      cb(winner_port);
   });
 }
 

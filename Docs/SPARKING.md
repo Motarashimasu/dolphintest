@@ -41,7 +41,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--input-test` | | Controller tester: prints the input devices Dolphin sees (`devices` event, again on every change) and every button/axis pressed or released (`input` events: `device`, `input`, `pressed`), with Dolphin's own names, until `quit` / stdin closes. The Godot controller config editor binds buttons with it. Starts no game. |
 | `--list-textures <GAMEID>` | | Print the game's variant groups and options (`texture_groups` event), then exit. |
 | `--public` | off | Host: list the lobby on Dolphin's lobby server (browser + matchmaking). Name on the server: `SPK1\|<mode>\|<link>\|<nickname>`. |
-| `--spectate` | off | With `--netplay-join`: watch only. Lobbies hold 2 players (GameCube ports 1-2) and up to 2 spectators. A spectator never gets a port (not even when a player leaves), runs the game's default codes without any per-port code (no splitscreen remover), and `stop` only ends their own game. A 3rd player or 3rd spectator is turned away (`error` `lobby_full` / `spectators_full`). The public listing's player count is players + 10 × spectators. |
+| `--spectate` | off | With `--netplay-join`: watch only. Lobbies hold 2 players (GameCube ports 1-2) and up to 2 spectators. A spectator never gets a port (not even when a player leaves), runs the game's default codes plus pad 1's per-port codes (so its game runs exactly like player 1's and shows their view; with no splitscreen remover at all the game's timing differs and it drifted from the players'), and `stop` only ends their own game. A 3rd player or 3rd spectator is turned away (`error` `lobby_full` / `spectators_full`). The public listing's player count is players + 10 × spectators. |
 | `--ranked` | off | Host: a ranked lobby. Uses the King of the Hill set engine for exactly 2 players: Single Battle first to 2 wins, Team Battle 1 win; spectators are turned away (`ranked_no_spectators`), a 3rd player gets `lobby_full`; after each set the lobby waits for the host's `start` (no automatic next set). Never listed on Dolphin's lobby server: the ranked server (`Server/ranked`) lists ranked lobbies and rates the results the launchers report. |
 | `--koth` | off | King of the Hill. Host: a KOTH lobby (see *King of the Hill*). `--netplay-find` / `--list-lobbies`: only KOTH lobbies (without it, only regular ones). `--netplay-join`: if a set is being played (Dolphin lets nobody in during a game), wait (`koth_waiting`) and retry every 3 s until it ends. |
 | `--mode single\|team\|training\|any` | `any` | Host: lobby mode, shown in the browser; `single`/`team`/`training` also auto-select that battle state from the game ini's `[Sparking.Modes]`. `training` is Buffer Training: a solo lobby that is never listed (even with `--public`) and turns anyone who joins away (`error` `training_solo`); `start` works with just the host, and `buffer <n>` changes the pad buffer live. |
@@ -50,6 +50,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--list-lobbies` [`--mode m`] | | Print the public Sparking lobbies for **this exact build** (`lobbies` event), then exit. Other builds, regular Dolphin rooms and passworded rooms are filtered out. |
 | `--netplay-find single\|team\|any` | | Matchmaking (needs `--netplay-game`): join the best open public lobby of a compatible mode for the same game (same region first, exact mode before "any"); if it's taken or none exist, host a public lobby of that mode and wait. `matchmaking` events report progress. |
 | `--menu-button <input>` (repeatable) / `--menu-hold-ms <ms>` | `Back`,`Select`,`Share` / `1000` | Holding that controller button sends `menu_request` (the frontend opens its in-game menu). `none` disables. |
+| `--account <username>` | | Netplay: the DRAGON NET account logged in on this PC, told to the other players (`account` in each `players` entry; the launcher pops up "<friend> has entered the lobby!" for a friend's). |
 | `--link auto\|wired\|wireless\|unknown` | `auto` | Netplay: this PC's connection type, shown to everyone. `auto` asks the OS which adapter reaches the internet (Ethernet = wired, Wi-Fi/mobile = wireless, VPN/tunnel/virtual adapter = `virtual`). Only this PC's own adapter is visible: a cable into a Wi-Fi extender/powerline/mesh node reads as wired. Self-reported, so not for anything ranked. |
 | `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: a score bar in the centre of BT3's top HUD (`Name1  W1 | W2  Name2`; long names shrink, then get cut with "..."), and in netplay the ping + pad buffer at the bottom centre. Needs the game's `p1/p2_health_pct` watches. The Godot frontend turns it on for netplay and leaves it to the player offline. |
 | `--hud-health on\|off` | `on` | Health % in the window's top corners (separate from `--hud`). |
@@ -205,6 +206,9 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `hud on\|off` | any | Show/hide the score bar (+ netplay ping/buffer) |
 | `hud_health on\|off` | any | Show/hide the health % in the corners |
 | `input_display on\|off\|toggle\|clear\|dump` | any | Show/hide your own input history (`input_display` event: `enabled`, `other`, `other_allowed`); `clear` empties both; `dump` sends the recorded entries as an `input_history` event (`entries` = yours, `p1`, `p2`, `shown`, `local_port`; newest first: `dir`, `c`, `dpad` in numpad notation, `buttons`, `frames`) |
+| `step_down` | Battle Lounge player | Go to the back of the line; one of the two fighting forfeits the set (the other wins it, then the line rotates as after any set). `koth_step_down` event to everyone (`name`, `forfeit`) |
+| `ask_start` | ranked host | Ask the other player to approve the start: they get `start_asked` (`from`); their answer comes back as `start_answered` (`accepted`, `name`). The launcher starts the ranked match only on a yes (30 s to answer) |
+| `answer_start yes\|no` | ranked guest | Answer `start_asked` |
 | `input_display_other on\|off\|toggle` | any | The other port's input history; refused with `not_allowed_online` while another player plays that port |
 | `score reset` | any | Set the round score back to 0-0 |
 | `background_input on\|off` | any | Controllers work (`on`) or are ignored (`off`) while the game window isn't focused. The frontend turns it off while its in-game menu is open (`background_input` event confirms). |
@@ -541,6 +545,12 @@ Notes:
   A code that was on at capture time can still leave its last written values in memory (turning
   it off doesn't undo them), so capture battle states with no per-port code on.
 
+### Ranked match start
+
+The host's Start Match first asks the other player (`ask_start`): a "<host> wants to start"
+question pops up on their launcher (Accept / Decline, 30 s). Only on Accept does the host open the
+match on the ranked server and start it.
+
 ### Ranked server
 
 `Server/ranked` (PHP 8.1+, MySQL/MariaDB; see its README.txt) runs ranked play for the
@@ -564,7 +574,7 @@ asking player's version; a game's versions share one rating.
 `--koth` lobbies are a ladder. Everyone who joins (not `--spectate` watchers) gets in line, up
 to 8 people in all: line position 1 holds GameCube pad 1 (the champion), position 2 pad 2 (the
 challenger), and the rest wait without a pad (they watch the set like spectators: default codes
-only, no splitscreen code; per-port codes follow whoever holds the pad at each boot).
++ pad 1's codes; per-port codes follow whoever holds the pad at each boot).
 
 - A **set** is one boot of the battle state. The host counts KOs per pad from the health
   watches: Single Battle sets go to the first to 2 wins, Team Battle sets to 1 win (the team
@@ -581,6 +591,18 @@ only, no splitscreen code; per-port codes follow whoever holds the pad at each b
 - Public KOTH lobbies are listed as `SPK1|koth.<mode>|<link>|<host>` (`format: koth`): the
   listing's players are the 2 on pads, spectators everyone else. They're only shown with
   `--koth`, and regular lobbies only without it.
+
+- **Who decides a set:** the two players' own games. Each player's Dolphin tells the host every
+  KO it counts (`kothko <p1 wins> <p2 wins>`), and the host takes the highest of those (and of its
+  own count, only when it's fighting itself). Before, the host counted from its own game even
+  while it waited in line, and a game without a pad could drift from the players' (see below):
+  a KO it never saw made the set endless.
+- **Everyone without a pad runs pad 1's codes** (watchers and people waiting in line): with
+  neither splitscreen remover the game draws both views, which changes how long its frames take,
+  and that game drifted away from the players'. Now it runs exactly like player 1's (and shows
+  player 1's view).
+- **Step down** (lobby / in-game menu): to the back of the line. Between sets the line just
+  moves (a champion stepping down loses the streak); one of the two fighting forfeits the set.
 
 ## Overlay
 

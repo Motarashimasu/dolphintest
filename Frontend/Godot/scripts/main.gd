@@ -324,13 +324,6 @@ func _main_menu() -> Control:
 			"action": func():
 				Settings.use_game(key)
 				push(_game_menu(key))})
-	items.append({"label": "Friends", "glyph": "F", "color": "#3fbf6b",
-		"desc": func():
-			if not Ranked.logged_in():
-				return tr("Your DRAGON NET friends: who's online, friend requests.\nNeeds a DRAGON NET account (made here).")
-			var n := Social.friends.filter(func(f): return f.get("online", false)).size()
-			return tr("Your DRAGON NET friends: who's online, friend requests.\n%d online now.") % n,
-		"action": open_friends})
 	return _menu("Main Menu", items + [
 		{"label": "Video Settings", "glyph": "V", "color": "#9b6be6",
 			"desc": "Change your video settings here.",
@@ -470,6 +463,7 @@ func _netplay_menu() -> Control:
 		{"label": "Ranked Match", "glyph": "R", "color": "#c94bd6", "bumper": true,
 			"desc": "Rated 1-on-1 matches with a leaderboard. Single Battle is first to 2 wins\n(FT2), Team Battle is one match. Needs a DRAGON NET account.",
 			"action": func(): push(_ranked_menu())},
+		_friends_item(),
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the game menu."},
 	], "netplay")
@@ -513,6 +507,17 @@ func _ranked_menu() -> Control:
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the DRAGON NET menu."},
 	], "netplay")
+
+
+## Friends, in every game's DRAGON NET menu (one friends list for all of them).
+func _friends_item() -> Dictionary:
+	return {"label": "Friends", "glyph": "F", "color": "#3fbf6b",
+		"desc": func():
+			if not Ranked.logged_in():
+				return tr("Your DRAGON NET friends: who's online, friend requests.\nNeeds a DRAGON NET account (made here).")
+			var n := Social.friends.filter(func(f): return f.get("online", false)).size()
+			return tr("Your DRAGON NET friends: who's online, friend requests.\n%d online now.") % n,
+		"action": open_friends}
 
 
 ## Friends: needs the DRAGON NET account (the login screen continues on).

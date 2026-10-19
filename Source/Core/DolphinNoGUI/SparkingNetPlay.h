@@ -63,6 +63,9 @@ struct NetPlayOptions
   bool gecko_defaults = true;
   // This PC's network link ("wired", "wireless", "virtual", "unknown"); empty = detect.
   std::string link;
+  // The DRAGON NET account logged in on this PC ("" = none): told to the others ("account" in
+  // the players event), so a friend joining the lobby can be announced.
+  std::string account;
   // Host: list the lobby publicly on Dolphin's lobby server (see SparkingLobby.h).
   bool is_public = false;
   std::string mode = "any";       // "single", "team", "any": shown in the browser, and picks the
@@ -266,8 +269,11 @@ private:
   // and anyone over the 2 + 2 limit is told why and removed.
   bool m_spectate = false;
   std::map<NetPlay::PlayerId, std::string> m_roles;  // guarded by m_links_mutex
+  std::string m_local_account;
+  std::map<NetPlay::PlayerId, std::string> m_accounts;  // guarded by m_links_mutex
   std::map<NetPlay::PlayerId, std::string> m_names;  // last player list, guarded by m_links_mutex
-  std::string RoleOf(NetPlay::PlayerId pid);           // "player", "spectator" or "pending"
+  std::string RoleOf(NetPlay::PlayerId pid);
+  std::string AccountOf(NetPlay::PlayerId pid);         // DRAGON NET account, "" = none           // "player", "spectator" or "pending"
   std::map<NetPlay::PlayerId, std::chrono::steady_clock::time_point> m_first_seen;  // host thread
   struct PendingKick
   {
@@ -350,7 +356,7 @@ private:
 
   // King of the Hill (host runs it, everyone is told with "koth" control messages).
   //  - The line: m_line[0] holds pad 1 (the champion), m_line[1] pad 2 (the challenger), the
-  //    rest wait for their turn without a pad (like spectators: default codes only). Joiners go
+  //    rest wait for their turn without a pad (like spectators: pad 1's codes). Joiners go
   //    to the back. Watchers (--spectate) never get in line. Up to KOTH_MAX_PEOPLE in all.
   //  - A set is one boot: the host counts KOs per port (Single Battle: first to 2, Team Battle:
   //    1), then a few seconds after the deciding KO it stops the game, rotates the line (winner
@@ -401,6 +407,18 @@ private:
   std::atomic<bool> m_refused_game_running{false};
   std::atomic<bool> m_koth_start_aborted{false};
   bool m_in_koth_line = false;
+  // The players' own KO counts this set ("kothko <p1> <p2>" from the two on pads): the host
+  // decides the set from them (and from its own game only if it's on a pad itself), so a host
+  // waiting in line or a watcher whose game drifted can't miss a KO. [slot][port], slot 0 = pad 1.
+  std::array<std::array<std::atomic<int>, 2>, 2> m_ko_reports{};
+  std::array<int, 2> m_local_ko_base{};
+  // Battle Lounge "Step down": players who asked to go to the back of the line (host thread).
+  std::mutex m_step_down_mutex;
+  std::vector<NetPlay::PlayerId> m_step_down;  // guarded by m_step_down_mutex
+  void DecideSet(int winner_slot, const std::string& reason);  // host
+  void KothStepDowns();                                        // host thread, in PumpKoth
+  // Ranked: the host asks the other player before starting ("askstart" / "startanswer").
+  std::atomic<bool> m_asked_start{false};
 
   std::string m_last_room_json;
   std::chrono::steady_clock::time_point m_last_player_emit{};

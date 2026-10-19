@@ -14,6 +14,7 @@
 #include "DolphinNoGUI/SparkingWatch.h"
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <charconv>
 #include <filesystem>
@@ -93,6 +94,16 @@ std::string_view TraversalErrorString(Common::TraversalClient::FailureReason r)
 // Control messages travel as NetPlay chat starting with this marker (ASCII unit separator, which
 // nobody types). Version the payload so a future protocol change can't be misread.
 constexpr std::string_view CONTROL_MARKER = "\x1fSPK1 ";
+
+// A DRAGON NET username: 3-20 letters, digits, _ . - (what the server allows).
+bool IsAccountName(const std::string& s)
+{
+  if (s.size() < 3 || s.size() > 20)
+    return false;
+  return std::ranges::all_of(s, [](char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' || c == '-';
+  });
+}
 
 std::vector<std::string> SplitSpaces(std::string_view s)
 {
@@ -198,6 +209,7 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
 {
   m_nickname = options.nickname.empty() ? Config::Get(Config::NETPLAY_NICKNAME) : options.nickname;
   m_local_link = options.link.empty() ? DetectLinkType() : options.link;
+  m_local_account = IsAccountName(options.account) ? options.account : std::string();
   Emit("link", Json().Add("type", m_local_link));
   SetHudNetplayStats(-2, static_cast<int>(Config::Get(Config::NETPLAY_BUFFER_SIZE)));
   m_mode = IsValidLobbyMode(options.mode) ? options.mode : "any";
@@ -422,9 +434,12 @@ void NetPlaySession::Pump()
       std::lock_guard lk(m_links_mutex);
       m_links[m_client->GetLocalPlayerId()] = m_local_link;
       m_roles[m_client->GetLocalPlayerId()] = m_spectate ? "spectator" : "player";
+      m_accounts[m_client->GetLocalPlayerId()] = m_local_account;
     }
     SendControl(std::string("role ") + (m_spectate ? "spectator" : "player"));
     SendControl("link " + m_local_link);
+    if (!m_local_account.empty())
+      SendControl("account " + m_local_account);
     PushHudPlayers();
     m_players_dirty = true;
   }
@@ -478,6 +493,7 @@ void NetPlaySession::EmitPlayers()
                        .Add("mapping", NetPlay::GetPlayerMappingString(p->pid, pad_map, gba, wii_map))
                        .Add("revision", p->revision)
                        .Add("link", LinkOf(p->pid))
+                       .Add("account", AccountOf(p->pid))
                        .Add("role", p->IsHost() ? std::string("player") : RoleOf(p->pid))
                        .Add("jitter", quality[p->pid].jitter_ms)
                        .Add("quality", quality[p->pid].rating)
@@ -653,6 +669,13 @@ void NetPlaySession::ApplyAutoMap()
   }
 }
 
+std::string NetPlaySession::AccountOf(NetPlay::PlayerId pid)
+{
+  std::lock_guard lk(m_links_mutex);
+  const auto it = m_accounts.find(pid);
+  return it == m_accounts.end() ? std::string() : it->second;
+}
+
 std::string NetPlaySession::RoleOf(NetPlay::PlayerId pid)
 {
   std::lock_guard lk(m_links_mutex);
@@ -786,6 +809,36 @@ bool NetPlaySession::HandleCommand(const Command& cmd)
   {
     EmitPlayers();
   }
+  else if (cmd.name == "step_down")
+  {
+    // Battle Lounge: go to the back of the line (forfeiting the set if this player is fighting).
+    // (A joiner by address learns it's a Battle Lounge from the host's "koth" messages.)
+    if ((!m_koth && m_seen_koth_cap == 0) || m_ranked)
+      Emit("error", Json().Add("code", "not_allowed").Add("command", cmd.name));
+    else if (m_server)
+    {
+      std::lock_guard lk(m_step_down_mutex);
+      m_step_down.push_back(m_client->GetLocalPlayerId());
+    }
+    else
+      SendControl("kothstepdown");
+  }
+  else if (cmd.name == "ask_start")
+  {
+    // Ranked host: ask the other player to approve the start ("start_answered" comes back).
+    if (host_only())
+    {
+      m_asked_start = true;
+      SendControl("askstart");
+    }
+  }
+  else if (cmd.name == "answer_start")
+  {
+    if (cmd.arg != "yes" && cmd.arg != "no")
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+    else if (!m_server)
+      SendControl("startanswer " + cmd.arg);
+  }
   else if (cmd.name == "quit" || cmd.name == "eof")
   {
     if (m_game_running)
@@ -857,6 +910,9 @@ void NetPlaySession::CmdStart(bool force)
     m_set_players = {m_line[0], m_line[1]};
     m_set_base = {HudPortWins(1), HudPortWins(2)};
     m_set_wins = {};
+    for (auto& slot : m_ko_reports)
+      for (auto& v : slot)
+        v = 0;
     m_set_decided = false;
     m_set_winner_port = 0;
     m_set_stop_at.reset();
@@ -1074,6 +1130,22 @@ void NetPlaySession::BootGame(const std::string& filename,
         port = i + 1;
     }
     SetHudLocalPort(port);  // "YOU WIN"/"YOU LOSE" from this player's side (0 = spectator)
+    // Battle Lounge players tell the host each KO they count (it decides the set from those).
+    m_local_ko_base = {HudPortWins(1), HudPortWins(2)};
+    // (A joiner by address learns it's a Battle Lounge from the host's "koth" messages.)
+    if ((m_koth || m_seen_koth_cap > 0) && (port == 1 || port == 2))
+    {
+      SetHudKoCallback([this, alive = m_alive](int) {
+        if (!*alive || !m_client)
+          return;
+        SendControl(fmt::format("kothko {} {}", HudPortWins(1) - m_local_ko_base[0],
+                                HudPortWins(2) - m_local_ko_base[1]));
+      });
+    }
+    else
+    {
+      SetHudKoCallback({});
+    }
     {
       // The other port's input history: only when nobody else plays it (Buffer Training).
       const int other = port == 1 ? 2 : port == 2 ? 1 : 0;
@@ -1093,7 +1165,11 @@ void NetPlaySession::BootGame(const std::string& filename,
     std::vector<std::string> names;
     if (game && m_gecko_defaults)
       names = DefaultEnabledGeckoNames(game->GetGameID(), game->GetRevision(), all_port_names);
-    if (const auto it = m_port_gecko.find(port); it != m_port_gecko.end())
+    // Without a pad (watchers, the Battle Lounge line): pad 1's codes, so this game runs exactly
+    // like that player's. (With neither splitscreen remover the game draws both views, which
+    // changes its timing: it drifted away from the players' game, KOs went unseen.)
+    const int code_port = port == 0 ? 1 : port;
+    if (const auto it = m_port_gecko.find(code_port); it != m_port_gecko.end())
       names.insert(names.end(), it->second.begin(), it->second.end());
     std::vector<std::string> missing;
     if (game)
@@ -1433,6 +1509,7 @@ void NetPlaySession::OnPlayerDisconnect(const std::string& player)
       {
         m_roles.erase(it->first);
         m_links.erase(it->first);
+        m_accounts.erase(it->first);
         it = m_names.erase(it);
       }
       else
@@ -1758,6 +1835,74 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
                              "lobby_full";
     }
     m_rejected = true;
+    return;
+  }
+  else if (parts[0] == "kothko" && parts.size() == 3 && m_server && m_koth)
+  {
+    // A player's own KO count this set: only the two on pads count.
+    for (int slot = 0; slot < 2; ++slot)
+    {
+      if (m_client->GetPadMapping()[slot] != from)
+        continue;
+      for (int port = 0; port < 2; ++port)
+        m_ko_reports[slot][port] = std::max(0, std::atoi(parts[port + 1].c_str()));
+    }
+    return;
+  }
+  else if (parts[0] == "kothstep" && parts.size() == 3 && !m_server)
+  {
+    if (from != 1)
+      return;
+    std::string who = "?";
+    for (const NetPlay::Player* p : m_client->GetPlayers())
+    {
+      if (p->pid == static_cast<NetPlay::PlayerId>(std::atoi(parts[1].c_str())))
+        who = p->name;
+    }
+    Emit("koth_step_down", Json().Add("name", who).Add("forfeit", parts[2] == "1"));
+    return;
+  }
+  else if (parts[0] == "kothstepdown" && m_server && m_koth && !m_ranked)
+  {
+    std::lock_guard lk(m_step_down_mutex);
+    m_step_down.push_back(from);
+    return;
+  }
+  else if (parts[0] == "askstart" && !m_server)
+  {
+    if (from != 1)
+      return;
+    std::string host = "?";
+    for (const NetPlay::Player* p : m_client->GetPlayers())
+    {
+      if (p->pid == from)
+        host = p->name;
+    }
+    Emit("start_asked", Json().Add("from", host));
+    return;
+  }
+  else if (parts[0] == "startanswer" && parts.size() == 2 && m_server)
+  {
+    if (!m_asked_start.exchange(false))
+      return;
+    std::string who = "?";
+    for (const NetPlay::Player* p : m_client->GetPlayers())
+    {
+      if (p->pid == from)
+        who = p->name;
+    }
+    Emit("start_answered", Json().Add("accepted", parts[1] == "yes").Add("name", who));
+    return;
+  }
+  else if (parts[0] == "account" && parts.size() == 2)
+  {
+    if (!IsAccountName(parts[1]))
+      return;
+    {
+      std::lock_guard lk(m_links_mutex);
+      m_accounts[from] = parts[1];
+    }
+    m_players_dirty = true;
     return;
   }
   else if (parts[0] == "link" && parts.size() == 2)
@@ -2338,31 +2483,22 @@ void NetPlaySession::PumpKoth()
 
   if (m_set_live)
   {
+    KothStepDowns();
     if (!m_set_decided)
     {
-      m_set_wins = {HudPortWins(1) - m_set_base[0], HudPortWins(2) - m_set_base[1]};
-      for (int i = 0; i < 2; ++i)
+      // The host's own count only if it's fighting; and the two players' own counts.
+      std::array<int, 2> wins{};
+      const int local = HudLocalPort();
+      if (local == 1 || local == 2)
+        wins = {HudPortWins(1) - m_set_base[0], HudPortWins(2) - m_set_base[1]};
+      for (const auto& slot : m_ko_reports)
+        for (int port = 0; port < 2; ++port)
+          wins[port] = std::max(wins[port], slot[port].load());
+      m_set_wins = wins;
+      for (int i = 0; i < 2 && !m_set_decided; ++i)
       {
-        if (m_set_wins[i] < m_koth_cap)
-          continue;
-        // Set decided: let the KO play out, then end the game for everyone.
-        m_set_decided = true;
-        m_set_winner_port = i + 1;
-        m_set_stop_at = now + std::chrono::seconds(4);
-        const LineEntry& winner = m_set_players[i];
-        const LineEntry& loser = m_set_players[1 - i];
-        const int streak = i == 0 && m_streak > 0 && m_champion == winner.pid ? m_streak + 1 : 1;
-        ReplaySetDecided(winner.name, loser.name, m_set_wins[i], m_set_wins[1 - i]);
-        SendControl(fmt::format("kothset {} {} {} {} {}", static_cast<int>(winner.pid),
-                                static_cast<int>(loser.pid), streak, m_set_wins[i],
-                                m_set_wins[1 - i]));
-        Emit("koth_set", Json()
-                             .Add("winner", winner.name)
-                             .Add("loser", loser.name)
-                             .Add("streak", streak)
-                             .AddRaw("wins", fmt::format("[{},{}]", m_set_wins[i],
-                                                         m_set_wins[1 - i])));
-        break;
+        if (m_set_wins[i] >= m_koth_cap)
+          DecideSet(i, "ko");
       }
     }
     if (m_set_stop_at && now >= *m_set_stop_at)
@@ -2376,6 +2512,7 @@ void NetPlaySession::PumpKoth()
   }
 
   // Between sets.
+  KothStepDowns();
   if (!m_koth_paused)
   {
     if (m_line.size() < 2 || !m_next_set_at)
@@ -2390,6 +2527,71 @@ void NetPlaySession::PumpKoth()
     }
   }
   BroadcastKoth(false);
+}
+
+// The set is over: the player on pad `winner_slot` + 1 won. Let the KO play out, then end the
+// game for everyone (OnSetEnded rotates the line).
+void NetPlaySession::DecideSet(int winner_slot, const std::string& reason)
+{
+  const int i = winner_slot;
+  m_set_decided = true;
+  m_set_winner_port = i + 1;
+  m_set_stop_at = std::chrono::steady_clock::now() + std::chrono::seconds(reason == "ko" ? 4 : 1);
+  const LineEntry& winner = m_set_players[i];
+  const LineEntry& loser = m_set_players[1 - i];
+  const int streak = i == 0 && m_streak > 0 && m_champion == winner.pid ? m_streak + 1 : 1;
+  ReplaySetDecided(winner.name, loser.name, m_set_wins[i], m_set_wins[1 - i]);
+  SendControl(fmt::format("kothset {} {} {} {} {}", static_cast<int>(winner.pid),
+                          static_cast<int>(loser.pid), streak, m_set_wins[i], m_set_wins[1 - i]));
+  Emit("koth_set", Json()
+                       .Add("winner", winner.name)
+                       .Add("loser", loser.name)
+                       .Add("streak", streak)
+                       .Add("reason", reason)
+                       .AddRaw("wins", fmt::format("[{},{}]", m_set_wins[i], m_set_wins[1 - i])));
+}
+
+// "Step down": to the back of the line. One of the two fighting forfeits the set (the other
+// wins it; the line then rotates as after any set: this player to the back).
+void NetPlaySession::KothStepDowns()
+{
+  std::vector<NetPlay::PlayerId> pids;
+  {
+    std::lock_guard lk(m_step_down_mutex);
+    pids.swap(m_step_down);
+  }
+  for (const NetPlay::PlayerId pid : pids)
+  {
+    const auto it = std::ranges::find_if(m_line, [&](const LineEntry& e) { return e.pid == pid; });
+    if (it == m_line.end())
+      continue;
+    const std::string name = it->name;
+    if (m_set_live)
+    {
+      const int slot = m_set_players[0].pid == pid ? 0 : m_set_players[1].pid == pid ? 1 : -1;
+      if (slot >= 0)
+      {
+        if (!m_set_decided)
+          DecideSet(1 - slot, "stepped_down");
+        Emit("koth_step_down", Json().Add("name", name).Add("forfeit", true));
+        SendControl(fmt::format("kothstep {} 1", static_cast<int>(pid)));
+        continue;
+      }
+    }
+    const LineEntry entry = *it;
+    m_line.erase(it);
+    m_line.push_back(entry);
+    if (!m_set_live && m_champion == pid)
+    {
+      m_champion = 0;
+      m_streak = 0;
+    }
+    m_players_dirty = true;
+    Emit("koth_step_down", Json().Add("name", name).Add("forfeit", false));
+    SendControl(fmt::format("kothstep {} 0", static_cast<int>(pid)));
+  }
+  if (!pids.empty())
+    BroadcastKoth(true);
 }
 
 void NetPlaySession::OnSetEnded()

@@ -903,6 +903,12 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .choices({"single", "team", "any"})
       .metavar("MODE")
       .help("Matchmaking: join an open public lobby of this mode, or host one and wait");
+  parser.add_option("--account")
+      .dest("account")
+      .action("store")
+      .metavar("USERNAME")
+      .help("Netplay: the DRAGON NET account logged in on this PC, told to the other players (a "
+            "friend joining the lobby is announced)");
   parser.add_option("--link")
       .dest("link")
       .action("store")
@@ -1432,6 +1438,8 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
   np.state_dir = s_state_dir;
   if (std::string link = static_cast<const char*>(options.get("link")); link != "auto")
     np.link = std::move(link);
+  if (options.is_set("account"))
+    np.account = static_cast<const char*>(options.get("account"));
   np.gecko_defaults =
       std::string_view(static_cast<const char*>(options.get("netplay_gecko_defaults"))) != "off";
   if (options.is_set("netplay_gecko"))
