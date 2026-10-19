@@ -447,8 +447,9 @@ writes those two unchanged, keeping both codes the same length). BT2 US / PAL ha
 no removers yet (their addresses differ; the launcher asks for the codes by name, and a missing
 one is skipped).
 
-RDBJAF's other codes: `16:9 Widescreen Patch` and `Remove Bugged Fog/Shadow` are on by default
-(solo and netplay). `Ground & Pound Infinite Combo Fix` and `English Dub` are off; in a netplay
+RDBJAF's other codes: `16:9 Widescreen Patch`, `Remove Bugged Fog/Shadow` and `Widescreen HUD
+(life bars at the screen edges)` (BT2's own HUD engine, `Tools/gecko/widescreen_hud_bt2.py`; see
+`Tools/gecko/README.md`) are on by default (solo and netplay). `Ground & Pound Infinite Combo Fix` and `English Dub` are off; in a netplay
 lobby the host may switch them on for both players (`[Sparking.LobbyCodes]`). `Japanese Dub` is
 for solo only (it brings the Japanese voices back to a save that was played with `English Dub`);
 the two dubs are an exclusive group. The NTSC-J netplay save goes in

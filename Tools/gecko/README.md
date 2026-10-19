@@ -7,6 +7,7 @@ notes needed to port them to another build of BT3 (NTSC-U, the Japanese release,
 |---|---|
 | `asm.py` | A tiny PowerPC assembler, just enough for Gecko `C2` (insert-asm) codes. |
 | `widescreen_hud.py` | **Widescreen HUD (life bars at the screen edges).** Tested and working on RDSPAF. |
+| `widescreen_hud_bt2.py` | The same for **Budokai Tenkaichi 2 NTSC-J (RDBJAF)**, whose HUD engine is different (see below). |
 | `find_hud_sites.py` | Finds everything `widescreen_hud.py` needs in a memory dump of another build. |
 | `widescreen_css.py` | Widescreen character select (1P strip left, COM/2P strip right). First version, **not tested yet**. |
 
@@ -88,3 +89,29 @@ character select is up (its work pointer `r13-0x6c48` is set; cleared at `0x8006
 Top strip (y < 128, 1P) goes left, bottom strip (y > 384, COM/2P) goes right, the rest by half.
 The big character pictures are drawn by a tiled-image function (`0x80026ab4`) and are not
 covered yet.
+
+## Budokai Tenkaichi 2 NTSC-J (`widescreen_hud_bt2.py`, RDBJAF)
+
+BT2's HUD isn't BT3's sprite library, so `find_hud_sites.py` doesn't apply. Found from a battle
+MEM1 + MEM2 dump (the CPU's GX FIFO in MEM1 still held the last frame's HUD draws, which showed
+what each draw looks like; the HUD's piece lists are in MEM2):
+
+- The battle HUD module (`0x800f0000-0x800fa300`) draws each element (a life bar, a ki gauge, a
+  portrait, the timer...) with **one call** of `0x800f5e9c` (through `0x800f732c`): a list of
+  0x60-byte pieces (`r23`), all after one `C_MTXOrtho(t=0, b=448, l=0, r=640)`. Positions are
+  in PS2 units, 512 wide; the game multiplies x by 1.25 when it sends them (`f30` = 1.25).
+- A piece: `+0` flags (`0x1` shown, `0x2` end of the list, `0x80` the bar's masking piece,
+  `0x80000000` corners given), `+4 / +8` x0 / x1 halfwords (no corners), `+0x20 / +0x30 /
+  +0x40 / +0x50` the corners' x words. Per-player HUD data: `[r13-0x7490] + 0x1390 + player *
+  0x3e40` (in MEM2).
+- `0x800f7ec4` draws one untextured piece (`r31`; corners when `r28` != 0), the bars' second
+  pass, with the same projection.
+
+Hooks: the `lfs f4, -0x5d10(r2)` (640.0) of each projection, `0x800f5f58` and `0x800f7f28`.
+Because one call is one element, the grouping BT3 needed comes for free; the element is placed by
+its **last** shown piece (a bar's list is [masking piece, fill]: the masking piece comes first and
+pokes across the middle). The decisions are made in 512 units, with integers only: full-width
+(320+ units = 400+ px) as is, middle within 13 units (~16 px) of 256 centred, else left / right.
+
+To check: both bars dropping from the first hit on each side, the timer, ki gauges, portraits,
+"First Attack!" and the combo counter, and the pause menu.
