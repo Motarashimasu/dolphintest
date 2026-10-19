@@ -15,7 +15,7 @@ func screen_title() -> String:
 func build_rows() -> Array:
 	return [
 		{"type": "action", "key": "copies", "label": "Game Copies", "value": _copies_summary(),
-			"desc": "Where each game's disc images are: NTSC-U, PAL and NTSC-J,\nand which one Play Offline uses."},
+			"desc": "Where each game's disc images are: PAL and NTSC-J (NTSC-U later),\nand which one Play Offline uses."},
 		{"type": "choice", "key": "aspect", "label": "Aspect ratio", "values": ["16:9", "21:9", "4:3"],
 			"value": Settings.get_value("options", "aspect"),
 			"desc": "16:9 and 21:9 fill your screen (21:9 widens the view on ultrawide screens;\nthe HUD is stretched). F3 switches to 4:3 and back during a game (not online)."},

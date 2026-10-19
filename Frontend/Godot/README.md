@@ -1,7 +1,11 @@
 # DRAGON BALL Sparking! Collection — Godot frontend (test build)
 
-A test frontend for **Budokai Tenkaichi 3** and **Budokai Tenkaichi 2** (Wii), each in any of
-its versions: NTSC-U (RDSE70 / RDBE70), PAL (RDSPAF / RDBPAF) and NTSC-J (RDSJAF / RDBJAF).
+A test frontend for **Budokai Tenkaichi 3** and **Budokai Tenkaichi 2** (Wii), each in its PAL
+(RDSPAF / RDBPAF) and NTSC-J (RDSJAF / RDBJAF) versions. NTSC-U (RDSE70 / RDBE70) is locked for
+now (`Settings.LOCKED_VERSIONS`): Game Copies shows it as "Not supported yet", an NTSC-U disc is
+turned away, and a copy set before is never played. Tenkaichi 2 calls its 2-vs-2 mode **Tag
+Battle**: `scripts/game_terms.gd` puts each game's own word for it into every text, in every
+language (the scripts and tables say "Team Battle").
 Tenkaichi 3 is the one being tested; Tenkaichi 2's menus are in place for its battle states and
 codes (NEOcode stays Tenkaichi 3's for now). It drives the
 Dolphin-Sparking build (`DolphinNoGUI.exe`) through its `[SPARKING]` stdin/stdout protocol

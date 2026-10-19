@@ -18,7 +18,12 @@ const OLD_CONFIG := "user://sparking.cfg"   # before settings moved into Sparkin
 const DOLPHIN_NAMES := ["DolphinNoGUI.exe", "dolphin-emu-nogui"]
 
 ## The games, and per game what the launcher needs. Versions: disc IDs.
-const VERSIONS := ["NTSC-U", "PAL", "NTSC-J"]
+const ALL_VERSIONS := ["NTSC-U", "PAL", "NTSC-J"]
+## Not supported yet (both games): shown in Game Copies as locked, never played. Take a version
+## out of here to unlock it.
+const LOCKED_VERSIONS := ["NTSC-U"]
+## The versions that can be played (ALL_VERSIONS minus the locked ones).
+const VERSIONS := ["PAL", "NTSC-J"]
 const GAMES := {
 	"bt3": {
 		"title": "Budokai Tenkaichi 3",
@@ -269,6 +274,8 @@ func copy_path(key: String, ver: String) -> String:
 
 
 func has_copy(key: String, ver: String) -> bool:
+	if not ver in VERSIONS:
+		return false   # a locked version (NTSC-U for now) is never played, even if it's set
 	var p := copy_path(key, ver)
 	return p != "" and FileAccess.file_exists(p)
 
@@ -291,7 +298,7 @@ func offline_version(key: String) -> String:
 	if has_copy(key, v):
 		return v
 	var owned := owned_versions(key)
-	return owned[0] if not owned.is_empty() else (v if v != "" else "PAL")
+	return owned[0] if not owned.is_empty() else (v if v in VERSIONS else "PAL")
 
 
 func set_offline_version(key: String, ver: String) -> void:
@@ -301,7 +308,7 @@ func set_offline_version(key: String, ver: String) -> void:
 ## The game and version of a disc ID ("bt3", "PAL"), or [] if it's none of these games'.
 func game_of_id(id: String) -> Array:
 	for key in GAME_ORDER:
-		for v in VERSIONS:
+		for v in ALL_VERSIONS:
 			if String(GAMES[key]["versions"][v]) == id.left(6):
 				return [key, v]
 	return []

@@ -100,7 +100,9 @@ func _check_translations() -> void:
 						.replace("%d", "-?\\d+") + "$"
 				templates.append(RegEx.create_from_string(rx))
 		var missing: Array = []
-		for s in seen:
+		for s0 in seen:
+			# Tenkaichi 2's "Tag Battle" is the tables' "Team Battle" (game_terms.gd swaps it in).
+			var s: String = String(s0).replace("Tag Battle", "Team Battle")
 			if s in ignore or not RegEx.create_from_string("[A-Za-z]{2}").search(s):
 				continue
 			if JSON.stringify(s).trim_prefix("\"").trim_suffix("\"") in term_text:
@@ -316,22 +318,38 @@ func games_and_versions() -> void:
 	check("BT2 menus: their own music (none here: the main menu's)", app.music_for_stack() == "bt2_game_menu"
 			and Music.current_track() == "bt2_game_menu")
 	check("BT2's picture variants fall back within BT2", Style.track_parent("bt2_ranked", Style.BACKGROUND_PARENT) == "bt2_lobby")
+	check("BT2 calls its 2-vs-2 mode Tag Battle", Style.mode_name("team") == "Tag Battle"
+			and TranslationServer.translate("Single Battle FT2: first to 2 wins. Team Battle: one match.")
+			== "Single Battle FT2: first to 2 wins. Tag Battle: one match.")
+	var es_terms: Translation = Lang.load_table("es")
+	check("...and in Spanish (%s)" % es_terms.get_message("Team Battle"),
+			es_terms.get_message("Team Battle") == "Combate Tag"
+			and not "equipos" in String(es_terms.get_message("Single or Team Battle only joins lobbies of that mode.\nAny takes the first open lobby.")))
 	check("no BT2 copy yet: Play Offline says to add one", "Add your copy first" in app._desc.text)
 	await shot("bt2_game_menu")
 	# No BT2 copy yet: DRAGON NET says so and opens its Game Copies page.
 	await choose("DRAGON NET")
 	check("no BT2 copy: its Game Copies page", app._title.text == "Budokai Tenkaichi 2" and "list" in top()
-			and top().list.row("NTSC-U").get("value") == "Not set")
+			and top().list.row("PAL").get("value") == "Not set")
+	check("NTSC-U is locked for now", top().list.row("NTSC-U").get("disabled", false)
+			and top().list.row("NTSC-U").get("value") == "Not supported yet")
 	await shot("game_copies_bt2_empty")
 	# A copy picked for the wrong row lands under the version its disc says.
 	var gc: Control = top()
-	gc.store(gc, wbfs, "bt2", "NTSC-U", func(): gc.list.set_rows(gc.build_rows()))
+	gc.store(gc, wbfs, "bt2", "NTSC-J", func(): gc.list.set_rows(gc.build_rows()))
 	await frames(5)
-	check("picked for NTSC-U, it's PAL: saved as the PAL copy", Settings.copy_path("bt2", "PAL") == wbfs
-			and Settings.copy_path("bt2", "NTSC-U") == "" and Settings.offline_version("bt2") == "PAL")
-	gc.store(gc, ciso, "bt2", "NTSC-U", func(): gc.list.set_rows(gc.build_rows()))
+	check("picked for NTSC-J, it's PAL: saved as the PAL copy", Settings.copy_path("bt2", "PAL") == wbfs
+			and Settings.copy_path("bt2", "NTSC-J") == "" and Settings.offline_version("bt2") == "PAL")
+	gc.store(gc, ciso, "bt2", "", func(): gc.list.set_rows(gc.build_rows()))
 	await frames(5)
-	check("BT2 NTSC-U and PAL copies", Settings.owned_versions("bt2") == ["NTSC-U", "PAL"])
+	check("an NTSC-U disc is turned away", Settings.copy_path("bt2", "NTSC-U") == "")
+	Settings.set_value("games", "bt2_NTSC-U", ciso)
+	check("a set NTSC-U copy is never played", not Settings.has_copy("bt2", "NTSC-U")
+			and not "NTSC-U" in Settings.owned_versions("bt2"))
+	Settings.set_value("games", "bt2_NTSC-U", "")
+	gc.store(gc, named, "bt2", "", func(): gc.list.set_rows(gc.build_rows()))
+	await frames(5)
+	check("BT2 PAL and NTSC-J copies", Settings.owned_versions("bt2") == ["PAL", "NTSC-J"])
 	await shot("game_copies_bt2")
 	await back()
 	# Two copies: DRAGON NET asks which version first.
@@ -367,21 +385,25 @@ func games_and_versions() -> void:
 	check("BT3 copies page", app._title.text == "Budokai Tenkaichi 3" and g3.list.row("PAL").get("value") != "Not set")
 	g3.store(g3, iso, "bt3", "", func(): g3.list.set_rows(g3.build_rows()))
 	await frames(5)
-	check("a BT3 NTSC-U copy added", Settings.owned_versions("bt3") == ["NTSC-U", "PAL"]
+	check("a BT3 NTSC-U disc is turned away", Settings.owned_versions("bt3") == ["PAL"])
+	g3.store(g3, rvz, "bt3", "", func(): g3.list.set_rows(g3.build_rows()))
+	await frames(5)
+	check("a BT3 NTSC-J copy added", Settings.owned_versions("bt3") == ["PAL", "NTSC-J"]
 			and Settings.offline_version("bt3") == "PAL")
-	await pick("offline", g3.list)   # Accept on a choice = next value: PAL -> NTSC-U
-	check("Play Offline now uses NTSC-U", Settings.offline_version("bt3") == "NTSC-U")
+	await pick("offline", g3.list)   # Accept on a choice = next value: PAL -> NTSC-J
+	check("Play Offline now uses NTSC-J", Settings.offline_version("bt3") == "NTSC-J")
 	await shot("game_copies_bt3")
 	await pick("offline", g3.list)   # back to PAL
-	await pick("NTSC-U", g3.list)    # a set copy: change or remove
+	await pick("NTSC-J", g3.list)    # a set copy: change or remove
 	await shot("game_copy_change")
 	await choose("Remove")
-	check("NTSC-U copy removed", Settings.owned_versions("bt3") == ["PAL"])
+	check("NTSC-J copy removed", Settings.owned_versions("bt3") == ["PAL"])
 	await back()
 	await back()
 	await back()
 	check("back at the main menu", app._title.text == "Main Menu")
 	Settings.use_game("bt3")
+	check("Tenkaichi 3 keeps Team Battle", Style.mode_name("team") == "Team Battle")
 
 
 ## On a carousel screen: press Down until `label` is selected (wheel wraps), then Accept.

@@ -693,6 +693,9 @@ func _on_discord_join(target: String, koth := false, disc_id := "") -> void:
 	if where.is_empty():
 		toast(tr("That lobby is on a game this launcher doesn't have (%s).") % disc_id, 5.0)
 		return
+	if where[1] in Settings.LOCKED_VERSIONS:
+		toast(tr("That lobby plays the %s version, which isn't supported yet.") % where[1], 5.0)
+		return
 	if not Settings.has_copy(where[0], where[1]):
 		toast(tr("That lobby plays %s %s: add that copy in Options > Game Copies.") % [
 			Settings.GAMES[where[0]]["title"], where[1]], 5.0)

@@ -816,5 +816,11 @@
  "%s: on for this lobby's matches.": "%s: activado en las partidas de esta sala.",
  "Host option: switch it on for both players' games. Off by default.": "Opción del anfitrión: actívala para las partidas de ambos jugadores. Desactivada por defecto.",
  "Host option: the host switches it on for both players' games.": "Opción del anfitrión: el anfitrión la activa para las partidas de ambos jugadores.",
- "Online: off unless the lobby's host switches it on for everyone.": "En línea: desactivado salvo que el anfitrión de la sala lo active para todos."
+ "Online: off unless the lobby's host switches it on for everyone.": "En línea: desactivado salvo que el anfitrión de la sala lo active para todos.",
+ "Not supported yet": "Aún no compatible",
+ "That's the %s version, which isn't supported yet.": "Es la versión %s, que aún no es compatible.",
+ "The %s version isn't supported yet. It will be unlocked later.": "La versión %s aún no es compatible. Se desbloqueará más adelante.",
+ "That lobby plays the %s version, which isn't supported yet.": "Esa sala juega la versión %s, que aún no es compatible.",
+ "Where each game's disc images are: PAL and NTSC-J (NTSC-U later),\nand which one Play Offline uses.": "Dónde están las imágenes de disco de cada juego: PAL y NTSC-J (NTSC-U más adelante),\ny cuál usa Jugar sin conexión.",
+ "Tag Battle": "Combate Tag"
 }

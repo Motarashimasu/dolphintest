@@ -10,6 +10,7 @@ extends Node
 const LANGUAGES := ["en", "es", "it"]
 const NAMES := {"en": "English", "es": "Español", "it": "Italiano"}
 const DIR := "res://data/translations/"
+const GameTerms := preload("res://scripts/game_terms.gd")
 
 var _loaded := {}   # code -> Translation
 
@@ -17,6 +18,14 @@ var _loaded := {}   # code -> Translation
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	apply()
+
+
+# The tables are script-backed (game_terms.gd): take them out of the TranslationServer before the
+# script engine shuts down, or freeing them at exit aborts the app.
+func _exit_tree() -> void:
+	for code in _loaded:
+		TranslationServer.remove_translation(_loaded[code])
+	_loaded.clear()
 
 
 ## The chosen language ("" = not chosen yet: the first launch asks).
@@ -35,6 +44,12 @@ func set_language(code: String) -> void:
 
 func apply() -> void:
 	var code := current() if chosen() else "en"
+	if code == "en" and not _loaded.has(code):
+		# No table: only each game's own words for its modes (game_terms.gd, e.g. "Tag Battle").
+		var en := GameTerms.new()
+		en.locale = "en"
+		TranslationServer.add_translation(en)
+		_loaded[code] = en
 	if code != "en" and not _loaded.has(code):
 		var t := load_table(code)
 		if t:
@@ -51,14 +66,15 @@ static func load_table(code: String) -> Translation:
 	if not data is Dictionary:
 		push_warning("Bad translation file: " + path)
 		return null
-	var t := Translation.new()
+	# Looked up by game_terms.gd, which also swaps in each game's own words for its modes.
+	var t := GameTerms.new()
 	t.locale = code
 	for k in data:
 		if String(k).begins_with("_"):
 			continue   # "_comment" etc.
 		var v := String(data[k])
 		if v != "":
-			t.add_message(String(k), v)
+			t.table[String(k)] = v
 	return t
 
 

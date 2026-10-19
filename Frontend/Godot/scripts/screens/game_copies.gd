@@ -46,6 +46,10 @@ func build_rows() -> Array:
 		rows.append({"type": "action", "key": v, "label": v,
 			"value": file_text(Settings.copy_path(key, v)),
 			"desc": tr("Your %s %s disc image (%s).\nThe version is checked when you pick it.") % [g["title"], v, g["versions"][v]]})
+	# Locked versions after the playable ones (the cursor starts on a playable one).
+	for v in Settings.LOCKED_VERSIONS:
+		rows.append({"type": "action", "key": v, "label": v, "value": tr("Not supported yet"),
+			"disabled": true, "desc": tr("The %s version isn't supported yet. It will be unlocked later.") % v})
 	var owned := Settings.owned_versions(key)
 	if owned.is_empty():
 		rows.append({"type": "info", "key": "offline", "label": "Play Offline uses", "value": tr("No copy yet")})
@@ -106,6 +110,9 @@ static func store(screen: Control, path: String, game_key: String, ver: String, 
 			done.call()
 			return
 		_ask_version(app, path, game_key, done)
+		return
+	if where[1] in Settings.LOCKED_VERSIONS:
+		app.toast(TranslationServer.translate("That's the %s version, which isn't supported yet.") % where[1], 5.0)
 		return
 	if where[0] != game_key:
 		app.toast(TranslationServer.translate("That's %s (%s): saved as that game's copy.") % [

@@ -816,5 +816,11 @@
  "%s: on for this lobby's matches.": "%s: attivo nelle partite di questa lobby.",
  "Host option: switch it on for both players' games. Off by default.": "Opzione dell'host: attivala per le partite di entrambi i giocatori. Disattivata di default.",
  "Host option: the host switches it on for both players' games.": "Opzione dell'host: l'host la attiva per le partite di entrambi i giocatori.",
- "Online: off unless the lobby's host switches it on for everyone.": "Online: disattivato a meno che l'host della lobby non lo attivi per tutti."
+ "Online: off unless the lobby's host switches it on for everyone.": "Online: disattivato a meno che l'host della lobby non lo attivi per tutti.",
+ "Not supported yet": "Non ancora supportata",
+ "That's the %s version, which isn't supported yet.": "È la versione %s, non ancora supportata.",
+ "The %s version isn't supported yet. It will be unlocked later.": "La versione %s non è ancora supportata. Verrà sbloccata più avanti.",
+ "That lobby plays the %s version, which isn't supported yet.": "Quella stanza usa la versione %s, non ancora supportata.",
+ "Where each game's disc images are: PAL and NTSC-J (NTSC-U later),\nand which one Play Offline uses.": "Dove sono le immagini disco di ogni gioco: PAL e NTSC-J (NTSC-U più avanti),\ne quale usa Gioca offline.",
+ "Tag Battle": "Battaglia Tag"
 }
