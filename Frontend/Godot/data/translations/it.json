@@ -721,5 +721,8 @@
  "You're already friends.": "Siete già amici.",
  "Friends list full (200).": "Lista amici piena (200).",
  "That request is gone.": "Quella richiesta non c'è più.",
- "The Discord login isn't set up on the server.": "L'accesso con Discord non è configurato sul server."
+ "The Discord login isn't set up on the server.": "L'accesso con Discord non è configurato sul server.",
+ "Input history": "Cronologia input",
+ "Your inputs at the bottom of the game, like a fighting game's training mode:\nframes held, direction (dot = neutral), buttons. Buffer Training has its own switch.": "I tuoi input in fondo allo schermo, come nell'allenamento di un picchiaduro:\nframe tenuti, direzione (punto = neutro), tasti. Buffer Training ha un suo interruttore.",
+ "Your inputs at the bottom of the game: frames held, direction (dot = neutral), buttons.": "I tuoi input in fondo allo schermo: frame tenuti, direzione (punto = neutro), tasti."
 }

@@ -16,6 +16,7 @@
 
 #include "DolphinNoGUI/SparkingBlob.h"
 #include "DolphinNoGUI/SparkingIO.h"
+#include "DolphinNoGUI/SparkingInputDisplay.h"
 #include "DolphinNoGUI/SparkingReplay.h"
 #include "VideoCommon/Present.h"
 #include "VideoCommon/OnScreenDisplay.h"
@@ -331,7 +332,7 @@ void DrawWatermark()
   if (screen.x <= 0 || screen.y <= 0)
     return;
   static const std::string text = "PRE-ALPHA";
-  const float size = std::max(14.0f, screen.y * 0.035f);
+  const float size = std::max(17.0f, screen.y * 0.043f);
   const ImVec2 t = TextSize(font, size, text);
   const float margin = screen.y * 0.02f;
   const ImVec2 pos(screen.x - t.x - margin, screen.y - t.y - margin);
@@ -342,6 +343,7 @@ void DrawWatermark()
 void Draw()
 {
   DrawHud();
+  DrawInputDisplay();
   DrawWatermark();
 }
 }  // namespace
@@ -394,6 +396,11 @@ void SetHudNeoR(int frames)
 void SetHudLocalPort(int port)
 {
   s_local_port = port;
+}
+
+int HudLocalPort()
+{
+  return s_local_port;
 }
 
 int HudResultCount()

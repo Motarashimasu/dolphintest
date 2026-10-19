@@ -29,6 +29,8 @@ func build_rows() -> Array:
 			"desc": "Both fighters' health as a percentage, in the top corners."},
 		{"type": "toggle", "key": "hud", "label": "Match HUD offline", "value": Settings.get_value("options", "hud"),
 			"desc": "Round score with player names on top of the game in offline play.\nDRAGON NET matches always show it, with the connection info."},
+		{"type": "toggle", "key": "input_display", "label": "Input history", "value": Settings.get_value("options", "input_display"),
+			"desc": "Your inputs at the bottom of the game, like a fighting game's training mode:\nframes held, direction (dot = neutral), buttons. Buffer Training has its own switch."},
 		{"type": "toggle", "key": "show_fps", "label": "FPS counter", "value": Settings.get_value("options", "show_fps"),
 			"desc": "Show frames per second in the top-left corner."},
 		{"type": "toggle", "key": "minimize_while_playing", "label": "Hide menu while playing",

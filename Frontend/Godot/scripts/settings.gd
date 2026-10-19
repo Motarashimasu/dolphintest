@@ -95,6 +95,8 @@ var defaults := {
 	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9",
 		"hud": false,             # score bar offline (netplay always shows it)
 		"hud_health": true,       # health % in the corners
+		"input_display": false,   # input history bar (fighting-game style) in every game
+		"training_input_display": true,   # the same in Buffer Training (its own switch)
 		"show_fps": false, "minimize_while_playing": true, "music_volume": 7,
 		"discord": true, "sfx_volume": 7,
 		"language": ""},          # en / es / it ("" = ask at first launch)         # Discord Rich Presence (scripts/presence.gd)
@@ -435,6 +437,7 @@ func common_args() -> PackedStringArray:
 	a.append_array(["--window", get_value("video", "window")])
 	a.append_array(["--aspect", get_value("options", "aspect")])
 	a.append_array(["--hud-health", "on" if get_value("options", "hud_health") else "off"])
+	a.append_array(["--input-display", "on" if get_value("options", "input_display") else "off"])
 	a.append_array(["--textures-dir", data_path("textures")])
 	a.append_array(["--textures", "Graphics=" + get_value("options", "graphics")])
 	a.append_array(["--textures", "Buttons=" + get_value("options", "buttons")])
@@ -550,7 +553,15 @@ func ranked_nickname() -> String:
 
 ## Buffer Training: solo direct-IP host, never listed; Dolphin refuses anyone else who joins.
 func training_args() -> PackedStringArray:
-	return host_args("training", false, false)
+	var a := host_args("training", false, false)
+	# Its own input history switch (on by default): the later --input-display wins.
+	a.append_array(["--input-display", "on" if get_value("options", "training_input_display") else "off"])
+	return a
+
+
+## The settings key of the input history switch for a training session or any other game.
+static func input_display_key(training: bool) -> String:
+	return "training_input_display" if training else "input_display"
 
 
 func join_args(target: String, koth := false) -> PackedStringArray:

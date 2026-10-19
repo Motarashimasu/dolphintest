@@ -18,6 +18,10 @@ class MovieManager;
 // netplay handling. CPU thread. nullptr = off.
 using SparkingPadHook = void (*)(int device_number, GCPadStatus* status);
 extern SparkingPadHook g_sparking_pad_hook;
+// Dolphin-Sparking (input display): sees every GameCube pad poll after the hook above, read only.
+// CPU thread. nullptr = off.
+using SparkingPadObserver = void (*)(int device_number, const GCPadStatus& status);
+extern SparkingPadObserver g_sparking_pad_observer;
 
 namespace SerialInterface
 {

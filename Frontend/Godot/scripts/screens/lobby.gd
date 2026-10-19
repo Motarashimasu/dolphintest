@@ -560,6 +560,11 @@ func _action_rows(in_game_menu: bool) -> Array:
 	else:
 		rows.append({"type": "info", "key": "buffer", "label": "Pad buffer",
 			"value": str(_buffer) if _buffer > 0 else "?"})
+	if not is_spectating() and (in_game_menu or is_training()):
+		var setting := Settings.input_display_key(is_training())
+		rows.append({"type": "action", "key": "input_display", "label": "Input history",
+			"value": "On" if Settings.get_value("options", setting) else "Off",
+			"desc": "Your inputs at the bottom of the game: frames held, direction (dot = neutral), buttons."})
 	# A spectator's Stop only ends their own view; the match goes on for the players.
 	var stop_label := "Stop Watching" if is_spectating() else ("Stop Training" if is_training() else "Stop Match")
 	if ranked:
@@ -684,6 +689,13 @@ func _on_press(key: String) -> void:
 			app.close_ingame_menu(false)
 		"resume":
 			app.close_ingame_menu()
+		"input_display":
+			var setting := Settings.input_display_key(is_training())
+			var on := not bool(Settings.get_value("options", setting))
+			Settings.set_value("options", setting, on)
+			Dolphin.send("input_display " + ("on" if on else "off"))
+			_refresh_actions()
+			_refresh_panel()
 		"leave":
 			if ranked and _phase == "playing":
 				_report("forfeit", "You left the ranked match: it counts as a loss.")

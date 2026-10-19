@@ -20,6 +20,7 @@
 #include "InputCommon/GCPadStatus.h"
 
 SparkingPadHook g_sparking_pad_hook = nullptr;
+SparkingPadObserver g_sparking_pad_observer = nullptr;
 
 namespace SerialInterface
 {
@@ -154,6 +155,8 @@ GCPadStatus CSIDevice_GCController::GetPadStatus()
   HandleMoviePadStatus(m_system.GetMovie(), m_device_number, &pad_status);
   if (g_sparking_pad_hook)
     g_sparking_pad_hook(m_device_number, &pad_status);  // Dolphin-Sparking: rollback test
+  if (g_sparking_pad_observer)
+    g_sparking_pad_observer(m_device_number, pad_status);  // Dolphin-Sparking: input display
 
   // Our GCAdapter code sets PAD_GET_ORIGIN when a new device has been connected.
   // Watch for this to calibrate real controllers on connection.

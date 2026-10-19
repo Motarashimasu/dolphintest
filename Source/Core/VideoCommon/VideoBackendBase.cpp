@@ -373,6 +373,7 @@ void VideoBackendBase::ShutdownShared()
 {
   auto& system = Core::System::GetInstance();
   system.GetCustomResourceManager().Shutdown();
+  OSD::RunCustomShutdown();  // Dolphin-Sparking: textures of the custom HUD, while g_gfx exists
 
   g_frame_dumper.reset();
   g_presenter.reset();

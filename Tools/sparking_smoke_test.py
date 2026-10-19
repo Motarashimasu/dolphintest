@@ -1520,7 +1520,7 @@ def neocode_check(exe, work):
                     "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
         return u
     host = Instance("neo-host", [exe, *common, "-u", user("host"), "--netplay-host", dol, "--nickname", "Goku",
-                                 "--automap", "gc", "--netplay-direct", "--test-hooks",
+                                 "--automap", "gc", "--netplay-direct", "--test-hooks", "--input-display", "on",
                                  "--netplay-gecko", "1=Port Code P1", "--netplay-gecko", "2=Port Code P2"])
     joiner = None
     try:
@@ -1551,6 +1551,26 @@ def neocode_check(exe, work):
             inst.wait_for("neocode_check", timeout=120)
             inst.wait_for("neocode_check", timeout=120)
             inst.wait_for("neocode_check", timeout=120)
+        # Input history bar: the local player's inputs as the game got them, newest first.
+        host.send("input_display dump")
+        hist = host.wait_for("input_history")
+        ent = hist["entries"]
+        check(f"input history: on, records the local inputs ({len(ent)} entries, newest "
+              f"{ent[:1]})", hist["enabled"] and len(ent) >= 10
+              and all(e["frames"] >= 1 for e in ent) and len({(e["dir"], tuple(e["buttons"]), e["dpad"])
+                                                              for e in ent}) >= 5
+              and any(e["buttons"] for e in ent) and any(e["dir"] != 5 for e in ent))
+        check("input history: only buttons the pattern presses",
+              all(set(e["buttons"]) <= {"A", "B", "X", "Y"} for e in ent))
+        host.send("input_display off")
+        check("input_display off", host.wait_for("input_display")["enabled"] is False)
+        host.send("input_display toggle")
+        check("input_display toggle -> on", host.wait_for("input_display")["enabled"] is True)
+        host.send("input_display clear")
+        host.send("input_display dump")
+        check("input_display clear empties it", len(host.wait_for("input_history")["entries"]) <= 2)
+        host.send("input_display sideways")
+        check("bad input_display argument rejected", host.wait_for("error")["code"] == "bad_argument")
         seqs = {}
         for inst in (host, joiner):
             stats = [e for e in inst.history if e["event"] == "neocode" and "rollbacks" in e][-1]

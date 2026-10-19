@@ -480,3 +480,8 @@ private:
 };
 
 extern std::unique_ptr<TextureCacheBase> g_texture_cache;
+
+// Dolphin-Sparking (input display): called with every game texture decoded from memory, i.e. not
+// replaced by a texture pack (video thread). nullptr = off.
+using SparkingTextureHook = void (*)(const TextureInfo& info, const AbstractTexture& texture);
+extern SparkingTextureHook g_sparking_texture_decoded;

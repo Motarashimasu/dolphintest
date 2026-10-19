@@ -42,6 +42,7 @@
 #include "Core/State.h"
 #include "Core/System.h"
 #include "DolphinNoGUI/Platform.h"
+#include "DolphinNoGUI/SparkingInputDisplay.h"
 #include "Core/GeckoCode.h"
 #include "DolphinNoGUI/SparkingDisplay.h"
 #include "DolphinNoGUI/SparkingInput.h"
@@ -161,6 +162,7 @@ void OnCoreStateChanged(Core::State state)
                           .AddRaw("session", SessionSummary()));
     ResetHud();
     LoadWatches(sc.GetGameID(), sc.GetRevision());
+    LoadInputDisplay(sc.GetGameID(), sc.GetRevision());
     Emit("game_started");
   }
   else if (state == Core::State::Uninitialized)
@@ -168,6 +170,7 @@ void OnCoreStateChanged(Core::State state)
     s_game_started = false;
     ClearWatches();
     ResetHud();
+    ClearInputDisplay();
   }
   Emit("emulation_state", Json().Add("state", StateName(state)));
 }
@@ -334,6 +337,23 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
       SetAspect(*aspect);
     else if (cmd.arg.empty() || cmd.arg == "toggle")
       ToggleAspect();
+    else
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+    return;
+  }
+
+  // Input history bar: "input_display on|off|toggle"; "clear" empties it, "dump" sends it
+  // ("input_history" event).
+  if (cmd.name == "input_display")
+  {
+    if (cmd.arg == "on" || cmd.arg == "off")
+      SetInputDisplayEnabled(cmd.arg == "on");
+    else if (cmd.arg.empty() || cmd.arg == "toggle")
+      SetInputDisplayEnabled(!InputDisplayEnabled());
+    else if (cmd.arg == "clear")
+      ClearInputDisplay();
+    else if (cmd.arg == "dump")
+      EmitInputHistory();
     else
       Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
     return;
@@ -890,6 +910,13 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .choices({"on", "off"})
       .set_default("on")
       .help("Sparking mode: health % in the window's top corners");
+  parser.add_option("--input-display")
+      .dest("input_display")
+      .action("store")
+      .choices({"on", "off"})
+      .set_default("off")
+      .help("Sparking mode: input history bar at the bottom of the game (fighting-game style "
+            "frames + inputs of the local player)");
   parser.add_option("--osd-messages")
       .dest("osd_messages")
       .action("store")
@@ -1159,6 +1186,8 @@ void InitFromOptions(const optparse::Values& options)
     }
     InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off",
             std::string_view(static_cast<const char*>(options.get("hud_health"))) != "off");
+    InitInputDisplay(std::string_view(static_cast<const char*>(options.get("input_display"))) ==
+                     "on");
     {
       // XInput / SDL "Back" (Xbox View/Back), "Select", "Share" (PlayStation Create/Share)
       std::vector<std::string> buttons{"Back", "Select", "Share"};

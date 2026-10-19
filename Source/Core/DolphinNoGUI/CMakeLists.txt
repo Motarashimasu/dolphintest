@@ -16,6 +16,8 @@ add_executable(dolphin-nogui
   SparkingDiscord.h
   SparkingInput.cpp
   SparkingInput.h
+  SparkingInputDisplay.cpp
+  SparkingInputDisplay.h
   SparkingLobby.cpp
   SparkingLobby.h
   SparkingMenu.cpp

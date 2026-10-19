@@ -517,6 +517,11 @@ func _tour() -> void:
 	check("offline: match HUD off by default, health % on",
 			"--hud" in solo and solo[solo.find("--hud") + 1] == "off" and solo[solo.find("--hud-health") + 1] == "on")
 	check("netplay: match HUD on", host[host.find("--hud") + 1] == "on")
+	check("input history off by default (solo and matches)",
+			solo[solo.rfind("--input-display") + 1] == "off" and host[host.rfind("--input-display") + 1] == "off")
+	var tr_args := Settings.training_args()
+	check("Buffer Training: input history on by default (its own switch, given last)",
+			tr_args[tr_args.rfind("--input-display") + 1] == "on")
 
 	await choose("Budokai Tenkaichi 3")
 	check("game menu", app._title.text == "Tenkaichi 3")
@@ -863,6 +868,18 @@ func _tour() -> void:
 	app.open_ingame_menu()
 	await frames(10)
 	check("training menu open", app.is_ingame_menu_open())
+	check("training menu: input history row, on", app._compact.list.row("input_display").get("value") == "On")
+	await pick("input_display", app._compact.list)   # (pick presses it)
+	await wait_for("input history switched off live", func():
+		return "\n".join(Dolphin.log_lines).contains('"event":"input_display","enabled":false'), 10)
+	check("training's own switch saved, the general one untouched",
+			Settings.get_value("options", "training_input_display") == false
+			and Settings.get_value("options", "input_display") == false)
+	await shot("ingame_menu_training_input_off")
+	await press("ui_accept")
+	await wait_for("input history back on", func():
+		return "\n".join(Dolphin.log_lines).contains('"event":"input_display","enabled":true'), 10)
+	check("row says On again", app._compact.list.row("input_display").get("value") == "On")
 	var before: int = training._buffer
 	await pick("buffer", app._compact.list)
 	await press("ui_right")

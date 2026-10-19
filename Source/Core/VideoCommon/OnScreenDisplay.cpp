@@ -57,6 +57,7 @@ static std::multimap<MessageType, Message> s_messages;
 static std::mutex s_messages_mutex;
 static MessageObserver s_message_observer;  // set once at startup, before any message
 static std::function<void()> s_custom_draw;  // set once at startup
+static std::function<void()> s_custom_shutdown;  // set once at startup
 
 static ImVec4 ARGBToImVec4(const u32 argb)
 {
@@ -135,6 +136,17 @@ static float DrawMessage(int index, Message& msg, const ImVec2& position, int ti
 void SetCustomDrawCallback(std::function<void()> callback)
 {
   s_custom_draw = std::move(callback);
+}
+
+void SetCustomShutdownCallback(std::function<void()> callback)
+{
+  s_custom_shutdown = std::move(callback);
+}
+
+void RunCustomShutdown()
+{
+  if (s_custom_shutdown)
+    s_custom_shutdown();
 }
 
 void SetMessageObserver(MessageObserver observer)

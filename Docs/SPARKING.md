@@ -53,6 +53,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--link auto\|wired\|wireless\|unknown` | `auto` | Netplay: this PC's connection type, shown to everyone. `auto` asks the OS which adapter reaches the internet (Ethernet = wired, Wi-Fi/mobile = wireless, VPN/tunnel/virtual adapter = `virtual`). Only this PC's own adapter is visible: a cable into a Wi-Fi extender/powerline/mesh node reads as wired. Self-reported, so not for anything ranked. |
 | `--hud on\|off` | `on` | Temporary in-game HUD drawn by Dolphin: a score bar in the centre of BT3's top HUD (`Name1  W1 | W2  Name2`; long names shrink, then get cut with "..."), and in netplay the ping + pad buffer at the bottom centre. Needs the game's `p1/p2_health_pct` watches. The Godot frontend turns it on for netplay and leaves it to the player offline. |
 | `--hud-health on\|off` | `on` | Health % in the window's top corners (separate from `--hud`). |
+| `--input-display on\|off` | `off` | Input history bar at the bottom of the game picture, like a fighting game's training mode. See *Input history bar*. The launcher turns it on for Buffer Training (its own switch) and leaves it to the player elsewhere (Options > Input history). |
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
@@ -61,7 +62,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--window <W>x<H>\|borderless` | `1280x720` | Size of the game window, or `borderless`: a frameless window covering the whole monitor (Windows; X11 uses its fullscreen). Rendering stays at `--resolution` regardless. |
 | `--netplay-saves host-readonly\|keep` | `host-readonly` | Netplay: every player plays on the **host's** save, which is never written back. |
 
-Pre-alpha builds always draw a see-through "PRE-ALPHA" watermark in the game window's bottom-right corner.
+Pre-alpha builds always draw a see-through "PRE-ALPHA" watermark in the game window's bottom-right corner (4.3% of the window height).
 
 Dolphin's own Discord Rich Presence ("Playing on Dolphin") is always switched off in Sparking
 mode so it can't overwrite the frontend's presence.
@@ -202,6 +203,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `texture_path <tex1_name>` | any | Debug: which file a texture name is loaded from right now (`texture_path` event) |
 | `hud on\|off` | any | Show/hide the score bar (+ netplay ping/buffer) |
 | `hud_health on\|off` | any | Show/hide the health % in the corners |
+| `input_display on\|off\|toggle\|clear\|dump` | any | Show/hide the input history bar (`input_display` event); `clear` empties it; `dump` sends the recorded entries as an `input_history` event (newest first: `dir`, `c`, `dpad` in numpad notation, `buttons`, `frames`) |
 | `score reset` | any | Set the round score back to 0-0 |
 | `background_input on\|off` | any | Controllers work (`on`) or are ignored (`off`) while the game window isn't focused. The frontend turns it off while its in-game menu is open (`background_input` event confirms). |
 | `focus_game` | any | Brings the game window to the front with the keyboard focus (Windows). The frontend sends it when its in-game menu closes; `focus_game` event confirms. |
@@ -591,6 +593,42 @@ Notes for the Godot side:
 - *Option 2* (rejected for now): Dolphin rendering into Godot's window/scene. Embedding the game
   as a child window still can't be drawn over; sharing frames as a GPU texture is a large,
   backend-specific job; copying frames through RAM adds input lag.
+
+## Input history bar
+
+`--input-display on` (or the `input_display` command) draws a strip at the bottom centre of the
+game picture, above the netplay ping line, listing the local player's inputs like a fighting
+game's training mode, **newest on the left** (highlighted, its frame count in yellow), older ones
+fading to the right:
+
+- each cell is one input held for some frames (video fields, 60/s): the **frame count** on top,
+  then the **direction** of the main stick (an arrow, or a ring with a dot for **neutral**), then
+  the **buttons** held (A B X Y Z L R Start), then the C-stick and the D-pad if used.
+- recorded from the GameCube port the HUD says is local (`SetHudLocalPort`; port 1 offline;
+  spectators: none), at the moment the game reads it, i.e. after the netplay pad buffer: the
+  bar shows exactly what the game got and when. NEOcode re-runs aren't recorded twice.
+- recorded whether the bar is shown or not; emptied at each game start.
+
+Button pictures, first found wins:
+
+1. the selected `@Buttons` pack option's replacement of the game's own button texture
+   (PlayStation / Xbox ...);
+2. the game's own button texture: the first time the game draws one (while no pack option
+   replaces it, e.g. Vanilla), it is saved to `<User>/Sparking/ButtonIcons/<GameID>/<name>.png`
+   (`button_icon_saved` event) and used from then on;
+3. a drawn icon in the selected pack option's style (GameCube colours, PlayStation shapes, Xbox
+   letters; shoulders as L2/R2/R1 or LT/RT/RB following the launcher's controller presets).
+
+The texture names come from the game ini (Sys, overridable by the user's game ini):
+
+```ini
+[Sparking.ButtonIcons]
+# GameCube button = texture name (keys A B X Y Z L R Start; several names: first found wins)
+A = tex1_32x32_ce62786fc1170192_70b585e07941e91c_8
+```
+
+RDSPAF has A B X Y Z (the textures the button packs replace). Other versions/games: add theirs
+(dump textures, find the button prompts, copy the names).
 
 ## Memory watcher (match results, HUD data)
 

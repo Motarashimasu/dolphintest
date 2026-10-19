@@ -68,6 +68,7 @@ static const int TEXTURE_POOL_KILL_THRESHOLD = 3;
 static int xfb_count = 0;
 
 std::unique_ptr<TextureCacheBase> g_texture_cache;
+SparkingTextureHook g_sparking_texture_decoded = nullptr;
 
 TCacheEntry::TCacheEntry(std::unique_ptr<AbstractTexture> tex,
                          std::unique_ptr<AbstractFramebuffer> fb)
@@ -1792,6 +1793,9 @@ RcTcacheEntry TextureCacheBase::CreateTextureEntry(
     }
 
     entry->has_arbitrary_mips = arbitrary_mip_detector.HasArbitraryMipmaps(dst_buffer);
+
+    if (g_sparking_texture_decoded && !skip_texture_dump && texLevels > 0)
+      g_sparking_texture_decoded(texture_info, *entry->texture);
 
     if (g_ActiveConfig.bDumpTextures && !skip_texture_dump && texLevels > 0)
     {

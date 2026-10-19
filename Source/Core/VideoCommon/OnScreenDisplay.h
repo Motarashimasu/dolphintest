@@ -55,6 +55,10 @@ void SetMessageObserver(MessageObserver observer);
 // Dolphin-Sparking: extra ImGui drawing done every frame right after the messages (video thread,
 // inside the ImGui frame). Set once at startup.
 void SetCustomDrawCallback(std::function<void()> callback);
+// Dolphin-Sparking: runs when the video backend shuts down, while g_gfx still exists (to free
+// textures the custom draw made). Set once at startup.
+void SetCustomShutdownCallback(std::function<void()> callback);
+void RunCustomShutdown();
 
 // Draw the current messages on the screen. Only call once per frame.
 void DrawMessages();
