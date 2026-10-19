@@ -166,6 +166,12 @@ public:
   // Throttle the CPU to the specified target cycle.
   void Throttle(const s64 target_cycle);
 
+  // Dolphin-Sparking (NEOcode re-runs): run as fast as possible without touching the speed setting
+  // (changing it switches VSync off and on, a swap chain rebuild). The throttle's timeline is
+  // kept, so afterwards the emulation catches up to where it should be instead of slipping
+  // behind real time (and the other player). CPU thread.
+  void SetSparkingUnthrottled(bool unthrottled) { m_sparking_unthrottled = unthrottled; }
+
   // May be used from CPU or GPU thread.
   void SleepUntil(TimePoint time_point);
 
@@ -243,6 +249,7 @@ private:
 
   // Used to optionally minimize throttling for improving input latency.
   std::atomic_bool m_throttled_after_presentation = false;
+  bool m_sparking_unthrottled = false;
   DT m_max_throttle_skip_time{};
 };
 

@@ -6,11 +6,14 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <deque>
 #include <limits>
 #include <span>
 #include <vector>
 
+#include "AudioCommon/Mixer.h"
+#include "AudioCommon/SoundStream.h"
 #include "Common/Buffer.h"
 #include "Common/Hash.h"
 #include "Common/HookableEvent.h"
@@ -78,7 +81,7 @@ bool s_broken = false;  // a save / rewind failed: delay netplay from here on
 bool s_resim = false;
 bool s_finish_resim = false;
 u64 s_resim_target = 0;
-float s_saved_speed = 1.0f;
+Clock::time_point s_resim_start;
 std::deque<Record> s_records;      // oldest first
 std::vector<Record> s_spare;       // buffers to reuse
 u64 s_final_ticks = 0;
@@ -89,6 +92,7 @@ double s_save_total = 0, s_load_total = 0;
 int s_saves = 0, s_loads = 0;
 u64 s_next_stats = 0;
 std::array<u64, 4> s_stalled_at{};  // poll that last had to wait (counts each wait once)
+std::array<GCPadStatus, 4> s_stable{};  // Stabilize: each local pad's last output
 
 bool Same(const GCPadStatus& a, const GCPadStatus& b)
 {
@@ -136,12 +140,23 @@ void AtThisField(void (*job)(Core::System&))
 {
   auto& system = Core::System::GetInstance();
   system.GetCPU().AddCPUThreadJob([job, &system] { job(system); });
-  system.GetCPU().Break();
+  system.GetCPU().BreakForJob();  // (not Break: that pauses the sound stream and the GPU thread)
+}
+
+// Re-run mode on / off: as fast as possible (no throttle, no VSync change), not drawn, silent.
+void SetFastForward(Core::System& system, bool on)
+{
+  system.GetCoreTiming().SetSparkingUnthrottled(on);
+  if (SoundStream* stream = system.GetSoundStream())
+    stream->GetMixer()->SetSparkingDiscard(on);
+  VideoCommon::g_sparking_skip_draw = on;
+  if (!on)
+    VideoCommon::g_sparking_skip_present = false;
 }
 
 void Resume(Core::System& system)
 {
-  system.GetCPU().SetStepping(false);
+  system.GetCPU().ResumeAfterJob();
 }
 
 void Fail(const std::string& reason)
@@ -158,9 +173,8 @@ void FinishResim(Core::System& system)
 {
   // Let the GPU finish the re-run's commands (skipped), then draw and show again.
   system.GetFifo().SyncGPU(Fifo::SyncGPUReason::Other, false);
-  VideoCommon::g_sparking_skip_draw = false;
-  VideoCommon::g_sparking_skip_present = false;
-  Config::SetCurrent(Config::MAIN_EMULATION_SPEED, s_saved_speed);
+  SetFastForward(system, false);
+  s_stats.resim_ms = std::max(s_stats.resim_ms, Ms(s_resim_start, Clock::now()));
   s_resim = false;
   s_finish_resim = false;
 }
@@ -231,6 +245,7 @@ void EmitStats()
   if (s_cb.stats)
     s_cb.stats(s_stats);
   s_stats.rollback_fields = 0;
+  s_stats.resim_ms = 0;
   s_save_total = s_load_total = 0;
   s_saves = s_loads = 0;
 }
@@ -382,9 +397,8 @@ void JobRollback(Core::System& system)
     // Re-run to where we were as fast as possible, without drawing (nobody sees it).
     s_resim = true;
     s_resim_target = from_field;
-    s_saved_speed = Config::Get(Config::MAIN_EMULATION_SPEED);
-    Config::SetCurrent(Config::MAIN_EMULATION_SPEED, 0.0f);
-    VideoCommon::g_sparking_skip_draw = true;
+    s_resim_start = t0;
+    SetFastForward(system, true);
   }
   s_finish_resim = false;
   s_load_total += Ms(t0, Clock::now());
@@ -428,6 +442,7 @@ void Start(std::function<void()> drain, Callbacks callbacks)
   s_confirmed = {};
   s_wrong.fill(NONE);
   s_stalled_at = {};
+  s_stable.fill(GCPadStatus{});
   s_field = 0;
   s_armed = false;
   s_broken = false;
@@ -473,9 +488,7 @@ void Stop()
   s_field_hook.reset();
   if (s_resim)
   {
-    VideoCommon::g_sparking_skip_draw = false;
-    VideoCommon::g_sparking_skip_present = false;
-    Config::SetCurrent(Config::MAIN_EMULATION_SPEED, s_saved_speed);
+    SetFastForward(Core::System::GetInstance(), false);
     s_resim = false;
   }
   Core::System::GetInstance().GetMemory().SparkingSetHistory(0);
@@ -535,6 +548,47 @@ bool GetInput(int pad, GCPadStatus* status)
   *status = entry.value;
   ++s_poll[pad];
   return true;
+}
+
+namespace
+{
+// Keeps `prev` while `raw` stays within `tolerance` of it.
+u8 Hold(u8 raw, u8 prev, int tolerance)
+{
+  return std::abs(int(raw) - int(prev)) <= tolerance ? prev : raw;
+}
+
+u8 StableAxis(u8 raw, u8 prev, u8 center)
+{
+  if (std::abs(int(raw) - int(center)) <= 6)
+    return center;
+  return Hold(raw, prev, 3);
+}
+
+u8 StableAnalog(u8 raw, u8 prev)
+{
+  if (raw <= 12)
+    return 0;
+  if (raw >= 243)
+    return 255;
+  return Hold(raw, prev, 6);
+}
+}  // namespace
+
+void Stabilize(int pad, GCPadStatus* status)
+{
+  if (pad < 0 || pad >= 4)
+    return;
+  GCPadStatus& prev = s_stable[pad];
+  status->stickX = StableAxis(status->stickX, prev.stickX, GCPadStatus::MAIN_STICK_CENTER_X);
+  status->stickY = StableAxis(status->stickY, prev.stickY, GCPadStatus::MAIN_STICK_CENTER_Y);
+  status->substickX = StableAxis(status->substickX, prev.substickX, GCPadStatus::C_STICK_CENTER_X);
+  status->substickY = StableAxis(status->substickY, prev.substickY, GCPadStatus::C_STICK_CENTER_Y);
+  status->triggerLeft = StableAnalog(status->triggerLeft, prev.triggerLeft);
+  status->triggerRight = StableAnalog(status->triggerRight, prev.triggerRight);
+  status->analogA = StableAnalog(status->analogA, prev.analogA);
+  status->analogB = StableAnalog(status->analogB, prev.analogB);
+  prev = *status;
 }
 
 u64 Queued(int pad)

@@ -72,6 +72,13 @@ public:
   //   should not be used by the Host.
   void Break();
 
+  // Dolphin-Sparking (NEOcode): stop the CPU thread at the end of its current slice so a CPU
+  // thread job (AddCPUThreadJob) runs at a clean point, and carry on after it, WITHOUT pausing the
+  // GPU thread and the sound stream as Break / SetStepping do (stopping and restarting the audio
+  // stream every field popped the sound and stalled the game). Only while running normally.
+  void BreakForJob();
+  void ResumeAfterJob();
+
   // This should only be called from the CPU thread
   void Continue();
 
@@ -137,6 +144,7 @@ private:
   bool m_state_cpu_thread_active = false;
   bool m_state_paused_and_locked = false;
   bool m_state_system_request_stepping = false;
+  bool m_quiet_break = false;  // BreakForJob: running really, the adjacent systems still are
   bool m_state_cpu_step_instruction = false;
   Common::Event* m_state_cpu_step_instruction_sync = nullptr;
   std::queue<Common::MoveOnlyFunction<void()>> m_pending_jobs;

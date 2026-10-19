@@ -440,6 +440,9 @@ void CoreTimingManager::SleepUntil(TimePoint time_point)
 
 void CoreTimingManager::Throttle(const s64 target_cycle)
 {
+  if (m_sparking_unthrottled)
+    return;  // NEOcode re-run: no sleeping, the timeline stays (see SetSparkingUnthrottled)
+
   const TimePoint time = Clock::now();
 
   const bool already_throttled =

@@ -2252,6 +2252,10 @@ bool NetPlayClient::PollLocalPad(const int local_pad, sf::Packet& packet)
     pad_status = Pad::GetStatus(local_pad);
   }
 
+  // NEOcode: no analog wobble (each one would be a wrong guess, a rewind, on the other side).
+  if (m_neocode_active)
+    NeoCode::Stabilize(ingame_pad, &pad_status);
+
   // Automated tests: a changing pattern, a new value every few polls.
   if (const u32 seed = s_test_input_seed)
   {

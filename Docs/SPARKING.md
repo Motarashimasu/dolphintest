@@ -346,14 +346,29 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
 - Events: `{"event":"netcode","mode":"neocode|delay"}`;
   `{"event":"neocode","state":"on|waiting|failed|off",...}`: "on" at the start, then every ~60
   fields with `r` (the biggest re-run since the last one, in game frames: what "R n" shows),
-  `rollbacks`, `stalls`, `guesses`, `wrong_guesses`, `save_ms`, ...; "failed" with `reason`;
+  `rollbacks`, `stalls`, `guesses`, `wrong_guesses`, `save_ms`, `load_ms`, `resim_ms` (the
+  longest re-run since the last one, real time: how long the picture and sound stopped), ...;
+  "failed" with `reason`;
   `{"event":"neocode_check","field":n,"match":true|false}`.
 - Engine (`Core/NeoCode`): the pad buffer stays as a minimum delay; past it a missing remote input
   is guessed (the last one received). The state is saved at every field end (dirty memory pages,
   rest of the state, the frontend's watch/HUD state); a wrong guess rewinds to the latest field
-  before it and re-runs to the present unthrottled, without drawing. Guessing stops (the game
-  waits, as in delay netplay) once the oldest unconfirmed input is `MAX_ROLLBACK_FIELDS` (8 fields,
-  4 BT3 frames) old.
+  before it and re-runs to the present unthrottled, without drawing and without sound (what the
+  game plays then was already heard; queueing it again garbled the audio: pops, repeats). The
+  re-run doesn't touch the emulation speed setting (that switched VSync off and on twice per
+  rewind: a swap chain rebuild, a big hitch); the throttle's timeline is kept, so the game catches
+  up to real time right after instead of slipping behind the other player. Guessing stops (the
+  game waits, as in delay netplay) once the oldest unconfirmed input is `MAX_ROLLBACK_FIELDS`
+  (12 fields, 6 BT3 frames, 200 ms) old.
+- The per-field save and the rewind run as CPU-thread jobs at the end of the CPU's slice
+  (`CPUManager::BreakForJob` / `ResumeAfterJob`). Unlike `Break` / `SetStepping` these don't
+  pause the GPU thread and the sound stream: stopping and restarting the audio stream 60 times a
+  second popped the sound and stalled the game.
+- Local controllers are steadied before their input is sent (`NeoCode::Stabilize`): sticks within
+  6 of the centre snap to it and otherwise keep their value until they move by more than 3;
+  triggers / analog buttons within 12 of released / full snap to 0 / 255 and otherwise move in
+  steps of more than 6. A real stick wobbles by a step or two all the time, and every wobble was
+  a new input for the other side to guess wrong: a rewind every few frames while it was held.
 - Events the game "does" (results, watches) are held until final (every input before them
   confirmed) and dropped when a rewind takes them back, so both players emit the same sequence.
 - Every 120 fields the players exchange the MEM1 checksum (`neosum`); a mismatch shows
@@ -367,7 +382,7 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
   the resolution and anti-aliasing. A rewind keeps the texture cache as it is (emptying it lost
   the frame / effect copies that only live there: purple flashes and big stutters); an effect
   copy may be a few frames old right after a rewind. The game itself isn't affected.
-- With NEOcode the automatic pad buffer is lower (`max(1, buffer-6, (buffer+1)/2)`), ranked
+- With NEOcode the automatic pad buffer is lower (`max(1, buffer-10, (buffer+1)/2)`), ranked
   replays are off, spectators stay on delay netplay, and every player needs this build.
 - If saving / rewinding fails, the match goes on as delay netplay ("NEOcode stopped ...").
 - Test hooks (`--test-hooks`): `test_input <seed>` plays a pseudo-random pad pattern,

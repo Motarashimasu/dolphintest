@@ -215,6 +215,8 @@ std::size_t Mixer::MixSurround(float* samples, std::size_t num_samples)
 
 void Mixer::PushSamples(const s16* samples, std::size_t num_samples)
 {
+  if (m_sparking_discard.load(std::memory_order_relaxed))
+    return;
   if (IsOutputSampleRateValid())
   {
     // Big-endian RL-orderered stereo samples.
@@ -238,6 +240,8 @@ void Mixer::PushSamples(const s16* samples, std::size_t num_samples)
 
 void Mixer::PushStreamingSamples(const s16* samples, std::size_t num_samples)
 {
+  if (m_sparking_discard.load(std::memory_order_relaxed))
+    return;
   if (IsOutputSampleRateValid())
   {
     // Big-endian RL-orderered stereo samples.

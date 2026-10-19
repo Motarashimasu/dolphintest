@@ -1578,6 +1578,7 @@ def neocode_check(exe, work):
             queued = [e["queued"] for e in inst.history if e["event"] == "neocode" and "queued" in e]
             check(f"{inst.name}: inputs don't pile up (most queued per stats: {queued})",
                   len(queued) >= 3 and max(queued) <= 12)
+            check(f"{inst.name}: re-run time reported ({stats.get('resim_ms')} ms)", "resim_ms" in stats)
             check(f"{inst.name}: wrong guesses are rewound and re-run ({stats['wrong_guesses']} wrong of "
                   f"{stats['guesses']} guesses, {stats['rollbacks']} rewinds, R {stats['r']})",
                   stats["wrong_guesses"] > 0 and stats["rollbacks"] > 0)

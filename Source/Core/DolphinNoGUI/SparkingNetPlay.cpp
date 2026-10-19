@@ -1338,7 +1338,8 @@ NeoCode::Callbacks NetPlaySession::MakeNeoCodeCallbacks()
                         .Add("wrong_guesses", static_cast<int64_t>(stats.wrong_guesses))
                         .Add("queued", static_cast<int64_t>(stats.queued))
                         .AddRaw("save_ms", fmt::format("{:.2f}", stats.save_ms))
-                        .AddRaw("load_ms", fmt::format("{:.2f}", stats.load_ms)));
+                        .AddRaw("load_ms", fmt::format("{:.2f}", stats.load_ms))
+                        .AddRaw("resim_ms", fmt::format("{:.2f}", stats.resim_ms)));
   };
   cb.failed = [](const std::string& reason) {
     SetHudNeoR(-1);

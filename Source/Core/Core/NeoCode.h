@@ -35,7 +35,7 @@
 
 namespace NeoCode
 {
-constexpr int MAX_ROLLBACK_FIELDS = 8;   // 4 BT3 frames
+constexpr int MAX_ROLLBACK_FIELDS = 12;  // 6 BT3 frames, 200 ms
 constexpr int START_FIELDS = 60;          // fields after the start before guessing begins
 constexpr u64 CHECKSUM_FIELDS = 120;
 
@@ -48,6 +48,7 @@ struct Stats
   u64 stalls = 0;               // waits because the other side was too far behind
   double save_ms = 0;           // average of the saves since the last stats
   double load_ms = 0;
+  double resim_ms = 0;          // the longest re-run since the last stats (real time: the hitch)
   bool guessing = false;        // past the start, saves working
   u64 polls = 0;                // controller polls so far (all pads)
   u64 guesses = 0;              // inputs played with a guess
@@ -87,6 +88,11 @@ bool IsResimulating();
 void Confirm(int pad, const GCPadStatus& status);
 // The input for this poll of `pad`: confirmed, or a guess. False: too far ahead, wait for input.
 bool GetInput(int pad, GCPadStatus* status);
+// A local controller's input before it's sent / played: analog values that wobble by a few steps
+// (every real stick and trigger does) keep their last value, near-centre sticks snap to the
+// centre, near-released / near-full triggers to 0 / 255. Each wobble would otherwise be a new
+// input the other side guessed wrong: a rewind every few frames while a stick is held.
+void Stabilize(int pad, GCPadStatus* status);
 // Real inputs of `pad` received and not played yet (the local pad's: its pad buffer).
 u64 Queued(int pad);
 // For the frontend: the emulated time now (to stamp what the game does).

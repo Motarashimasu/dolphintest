@@ -342,6 +342,41 @@ void CPUManager::Break()
   RunAdjacentSystems(false);
 }
 
+void CPUManager::BreakForJob()
+{
+  {
+    std::lock_guard state_lock(m_state_change_lock);
+    if (m_state == State::Running && !m_state_paused_and_locked)
+    {
+      SetStateLocked(State::Stepping);
+      m_quiet_break = true;
+      return;
+    }
+  }
+  Break();
+}
+
+void CPUManager::ResumeAfterJob()
+{
+  {
+    std::lock_guard stepping_lock(m_stepping_lock);
+    std::lock_guard state_lock(m_state_change_lock);
+    if (m_quiet_break)
+    {
+      m_quiet_break = false;
+      if (m_state == State::Stepping && SetStateLocked(State::Running))
+      {
+        if (!Core::IsCPUThread())
+          m_state_cpu_cvar.notify_one();
+        return;
+      }
+      if (m_state != State::Stepping)
+        return;  // stopped / changed meanwhile: leave it to whoever did it
+    }
+  }
+  SetStepping(false);
+}
+
 void CPUManager::Continue()
 {
   SetStepping(false);

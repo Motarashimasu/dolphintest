@@ -35,6 +35,10 @@ public:
   void PushSkylanderPortalSamples(const u8* samples, std::size_t num_samples);
   void PushGBASamples(std::size_t device_number, const s16* samples, std::size_t num_samples);
 
+  // Dolphin-Sparking (NEOcode re-runs): drop what the game plays meanwhile. It was already heard
+  // the first time; queueing it again garbles the sound (repeats, skips). Any thread.
+  void SetSparkingDiscard(bool discard) { m_sparking_discard.store(discard, std::memory_order_relaxed); }
+
   u32 GetSampleRate() const { return m_output_sample_rate; }
   void SetSampleRate(u32 output_sample_rate) { m_output_sample_rate = output_sample_rate; }
 
@@ -193,6 +197,7 @@ private:
 
   bool m_log_dtk_audio = false;
   bool m_log_dsp_audio = false;
+  std::atomic<bool> m_sparking_discard{false};
 
   float m_config_emulation_speed;
   bool m_config_audio_preserve_pitch;
