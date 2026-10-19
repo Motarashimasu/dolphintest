@@ -799,6 +799,15 @@ Events: `ready` (`mode: "discord"`, `enabled`: false when built without Discord 
 side, after their request was accepted), `join_request` (`user_id`, `username`: the host's side),
 `error`.
 
+## Launcher settings (frontend.cfg) and installers
+
+The launcher keeps its settings in `SparkingData/frontend.cfg`. It remembers the PC it belongs
+to (`[paths] machine`, a hash of the OS's machine id): settings that come from another PC (a
+copied SparkingData, or one shipped inside an installer) lose that PC's disc image paths, its
+DRAGON NET login and located folders on first launch, and setup runs again; options, video and
+controls stay. **Don't ship your own frontend.cfg anyway** (it holds your DRAGON NET session):
+leave it out of installers (Inno Setup: `Excludes: "frontend.cfg"` on the SparkingData files).
+
 ## Godot side (sketch)
 
 ```gdscript

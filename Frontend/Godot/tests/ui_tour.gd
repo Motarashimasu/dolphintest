@@ -22,6 +22,7 @@ func _ready() -> void:
 	var cfg: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(config_path))
 	out_dir = cfg["out_dir"]
 	vegeta_token = String(cfg.get("vegeta_token", ""))
+	_settings_from_another_pc(String(cfg["settings_file"]).get_base_dir().path_join("other_pc.cfg"))
 	Settings.use_file(cfg["settings_file"])
 	for section in cfg.get("settings", {}):
 		for key in cfg["settings"][section]:
@@ -33,6 +34,32 @@ func _ready() -> void:
 	recorder.locale = "en"
 	TranslationServer.add_translation(recorder)
 	_run.call_deferred()
+
+
+## Settings copied from another PC (e.g. shipped inside an installer): its disc paths and its
+## DRAGON NET login are dropped, setup runs again, the options stay.
+func _settings_from_another_pc(path: String) -> void:
+	var f := ConfigFile.new()
+	f.set_value("paths", "machine", "someone-elses-pc")
+	f.set_value("paths", "setup_done", true)
+	f.set_value("games", "bt3_PAL", "E:/Their Stuff/BT3.iso")
+	f.set_value("games", "bt3_offline", "PAL")
+	f.set_value("ranked", "token", "f".repeat(64))
+	f.set_value("ranked", "name", "tecchan")
+	f.set_value("options", "graphics", "Legacy")
+	f.save(path)
+	Settings.use_file(path)
+	Settings._check_machine()
+	var mine := Settings.machine_id() != ""
+	check("settings from another PC: its game paths and login are forgotten, setup runs again", not mine or (
+		Settings.copy_path("bt3", "PAL") == "" and Settings.get_value("ranked", "token") == ""
+		and Settings.get_value("ranked", "name") == "" and Settings.get_value("paths", "setup_done") == false
+		and Settings.get_value("paths", "machine") == Settings.machine_id()))
+	check("...the options are kept", Settings.get_value("options", "graphics") == "Legacy")
+	Settings._check_machine()
+	check("this PC's own settings are left alone", Settings.get_value("options", "graphics") == "Legacy"
+		and Settings.get_value("paths", "machine") == Settings.machine_id())
+	DirAccess.remove_absolute(path)
 
 
 func _run() -> void:

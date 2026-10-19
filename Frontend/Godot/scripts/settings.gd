@@ -87,6 +87,7 @@ var defaults := {
 		"profile": "user",          # folder inside data: user (or user2 for LAN tests on one PC)
 		"extra_args": "",           # advanced/testing, e.g. "-p headless -v Null"
 		"setup_done": false,        # first-run setup finished
+		"machine": "",              # the PC these settings belong to (Settings._check_machine)
 	},
 	"player": {"nickname": "Player", "region": "NA"},
 	"video": {"renderer": "Vulkan", "resolution": 3, "window": "1280x720", "borderless": false,
@@ -147,8 +148,45 @@ func _ready() -> void:
 		if not FileAccess.file_exists(_path) and FileAccess.file_exists(OLD_CONFIG):
 			DirAccess.copy_absolute(ProjectSettings.globalize_path(OLD_CONFIG), _path)
 	_cfg.load(_path)  # missing file = defaults
+	_check_machine()
 	_migrate_game_path()
 	prepare_netplay_saves()
+
+
+## Settings made on another PC (a SparkingData folder copied over, or shipped inside an installer)
+## hold that PC's disc image paths and its DRAGON NET login: those are forgotten here (setup runs
+## again), the rest (options, video, controls) is kept. The settings remember the PC they're
+## from ([paths] machine).
+func _check_machine() -> void:
+	var here := machine_id()
+	if here == "":
+		return
+	var saved := String(_cfg.get_value("paths", "machine", ""))
+	if saved == here:
+		return
+	if saved != "":
+		forget_this_pc_only()
+	_cfg.set_value("paths", "machine", here)
+	_cfg.save(_path)
+
+
+## This PC (a hash of the OS's machine id; "" if there's none).
+static func machine_id() -> String:
+	var raw := OS.get_unique_id()
+	return raw.sha256_text().left(16) if raw != "" else ""
+
+
+## What belongs to one PC only: the disc image paths, the DRAGON NET session, located folders.
+func forget_this_pc_only() -> void:
+	if _cfg.has_section("games"):
+		_cfg.erase_section("games")
+	for k in ["token", "name"]:
+		if _cfg.has_section_key("ranked", k):
+			_cfg.erase_section_key("ranked", k)
+	for k in ["dolphin", "data", "game"]:
+		if _cfg.has_section_key("paths", k):
+			_cfg.erase_section_key("paths", k)
+	_cfg.set_value("paths", "setup_done", false)
 
 
 ## The folder the launcher runs from (the project folder when run from the editor).
