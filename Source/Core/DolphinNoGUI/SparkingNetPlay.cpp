@@ -203,6 +203,7 @@ NetPlaySession::~NetPlaySession()
   StopAutoTicker();
   *m_alive = false;
   Shutdown();
+  SetPresentationLocked(false);
 }
 
 bool NetPlaySession::Start(const NetPlayOptions& options)
@@ -213,6 +214,8 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
   Emit("link", Json().Add("type", m_local_link));
   SetHudNetplayStats(-2, static_cast<int>(Config::Get(Config::NETPLAY_BUFFER_SIZE)));
   m_mode = IsValidLobbyMode(options.mode) ? options.mode : "any";
+  // No F1-F3 switching in netplay battles (Buffer Training is solo: allowed there).
+  SetPresentationLocked(m_mode != "training");
   // Buffer Training is a solo session: never listed, nobody else gets in.
   m_public = options.is_public && options.host_game_path.has_value() && m_mode != "training";
   m_region = options.region.empty() ? "NA" : options.region;

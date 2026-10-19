@@ -641,7 +641,6 @@
  "no copy": "nessuna copia",
  "%s %s (%s). Game defaults: the codes this build turns on\nfor this version. Custom: exactly the codes ticked below.": "%s %s (%s). Predefiniti del gioco: i codici che questa build attiva\nper questa versione. Personalizzato: esattamente i codici selezionati sotto.",
  "No codes for this version yet": "Ancora nessun codice per questa versione",
- "16:9 and 21:9 fill your screen (21:9 widens the view on ultrawide screens;\nthe HUD is stretched). F3 switches to 4:3 and back during a game.": "16:9 e 21:9 riempiono lo schermo (21:9 allarga la visuale sugli schermi ultrawide;\nl'HUD viene allungato). F3 passa a 4:3 e ritorno durante la partita.",
  "Switch between widescreen and 4:3 (F3).": "Passa tra panoramico e 4:3 (F3).",
  "Pick a %s controller preset with Left / Right.\nIt's used offline and on DRAGON NET.": "Scegli un preset del controller di %s con Sinistra / Destra.\nViene usato offline e su DRAGON NET.",
  "SparkingData\\controllers\\%s: drop Dolphin GameCube pad profiles (.ini) here\nto add them to this game's list.": "SparkingData\\controllers\\%s: metti qui i profili controller GameCube di Dolphin (.ini)\nper aggiungerli all'elenco di questo gioco.",
@@ -810,5 +809,6 @@
  "You declined the match.": "Hai rifiutato la partita.",
  "Step down": "Cedi il posto",
  "Forfeit this set and go to the back of the line.": "Abbandona questo set e vai in fondo alla fila.",
- "Go to the back of the line.": "Vai in fondo alla fila."
+ "Go to the back of the line.": "Vai in fondo alla fila.",
+ "16:9 and 21:9 fill your screen (21:9 widens the view on ultrawide screens;\nthe HUD is stretched). F3 switches to 4:3 and back during a game (not online).": "16:9 e 21:9 riempiono lo schermo (21:9 allarga la visuale sugli schermi ultrawide;\nl'HUD viene allungato). F3 passa a 4:3 e ritorno durante la partita (non online)."
 }

@@ -304,12 +304,21 @@ bool CycleTextureVariant(const std::string& group)
 }
 
 // Game window only: F1 = next @Graphics option, F2 = next @Buttons option, F3 = 16:9 / 4:3.
+// Locked in netplay battles (SetPresentationLocked): a "locked" event instead.
 void StartSparkingHotkeys()
 {
+  const auto unless_locked = [](const char* key, void (*action)()) {
+    return [key, action] {
+      if (PresentationLocked())
+        Emit("locked", Json().Add("what", key));
+      else
+        action();
+    };
+  };
   StartHotkeys({
-      {HotkeyKey::F1, [] { CycleTextureVariant("Graphics"); }},
-      {HotkeyKey::F2, [] { CycleTextureVariant("Buttons"); }},
-      {HotkeyKey::F3, [] { ToggleAspect(); }},
+      {HotkeyKey::F1, unless_locked("F1", [] { CycleTextureVariant("Graphics"); })},
+      {HotkeyKey::F2, unless_locked("F2", [] { CycleTextureVariant("Buttons"); })},
+      {HotkeyKey::F3, unless_locked("F3", [] { ToggleAspect(); })},
   });
 }
 
@@ -330,7 +339,13 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     return;
   }
 
-  // Presentation only, so allowed in netplay too (each player picks their own).
+  // Presentation only, but locked in netplay battles all the same (no F1-F3 switching there).
+  if ((cmd.name == "aspect" || cmd.name == "textures" || cmd.name == "textures_cycle") &&
+      PresentationLocked())
+  {
+    Emit("error", Json().Add("code", "not_allowed_in_netplay").Add("command", cmd.name));
+    return;
+  }
   if (cmd.name == "aspect")
   {
     if (const auto aspect = AspectFromString(cmd.arg))

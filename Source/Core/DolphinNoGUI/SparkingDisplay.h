@@ -48,6 +48,12 @@ struct Hotkey
   HotkeyKey key;
   std::function<void()> action;  // runs on the host thread
 };
+// Netplay battles: the F1-F3 switches (graphics, buttons, aspect ratio) are locked for the whole
+// session (the hotkeys and the "textures", "textures_cycle" and "aspect" commands). Buffer
+// Training (solo) isn't locked. Any thread.
+void SetPresentationLocked(bool locked);
+bool PresentationLocked();
+
 // Watches the keys while one of this process's windows (the game window) has focus. Windows
 // only; the first call wins, later calls do nothing.
 void StartHotkeys(std::vector<Hotkey> hotkeys);

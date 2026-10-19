@@ -29,6 +29,7 @@ namespace Sparking
 namespace
 {
 std::atomic<Aspect> s_aspect{Aspect::Wide};
+std::atomic<bool> s_presentation_locked{false};
 std::atomic<Aspect> s_last_wide{Aspect::Wide};  // what F3 goes back to from 4:3
 
 void Apply(Aspect aspect)
@@ -80,6 +81,16 @@ void SetAspect(Aspect aspect)
 {
   SetDefaultAspect(aspect);
   Apply(aspect);
+}
+
+void SetPresentationLocked(bool locked)
+{
+  s_presentation_locked = locked;
+}
+
+bool PresentationLocked()
+{
+  return s_presentation_locked;
 }
 
 void ToggleAspect()

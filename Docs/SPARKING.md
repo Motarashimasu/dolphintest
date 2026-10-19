@@ -59,7 +59,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--osd-messages on\|off` | `off` | Draw Dolphin's own on-screen messages. Off: they are sent as `osd` events for the frontend's overlay instead. (The FPS counter, `Graphics.Settings.ShowFPS`, is separate.) |
 | `--background-input on\|off` | `on` | Controllers keep working while another window, e.g. the overlay, has focus. |
 | `--stats-interval <ms>` | `0` | Emit a `stats` event every `<ms>` in game (0 = off). Same as the `stats` command. |
-| `--aspect 16:9\|21:9\|4:3` | `16:9` | Starting aspect ratio. **F3** in the game window (or the `aspect` command) flips between 4:3 and the wide one. See *Display*. |
+| `--aspect 16:9\|21:9\|4:3` | `16:9` | Starting aspect ratio. **F3** in the game window (or the `aspect` command) flips between 4:3 and the wide one. See *Display*. In netplay battles F1-F3 and the `aspect` / `textures` / `textures_cycle` commands are locked (a `locked` event / `not_allowed_in_netplay` error); Buffer Training (solo) isn't. |
 | `--resolution <n>` | `3` | Internal resolution as a multiple of native: `3` = 1080p, `2` = 720p, `4` = 1440p, `6` = 4K. |
 | `--window <W>x<H>\|borderless` | `1280x720` | Size of the game window, or `borderless`: a frameless window covering the whole monitor (Windows; X11 uses its fullscreen). Rendering stays at `--resolution` regardless. |
 | `--netplay-saves host-readonly\|keep` | `host-readonly` | Netplay: every player plays on the **host's** save, which is never written back. |

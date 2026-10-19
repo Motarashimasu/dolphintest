@@ -1590,6 +1590,11 @@ def neocode_check(exe, work):
         joiner.send("input_display_other on")
         check("online: switching the opponent's history on is refused",
               joiner.wait_for("error")["code"] == "not_allowed_online")
+        for cmd in ("aspect toggle", "textures_cycle Buttons", "textures Graphics=Legacy"):
+            host.send(cmd)
+            err = host.wait_for("error")
+            check(f"netplay battle: '{cmd}' locked (no F1-F3 switching) {err['code']}",
+                  err["code"] == "not_allowed_in_netplay")
         host.send("input_display sideways")
         check("bad input_display argument rejected", host.wait_for("error")["code"] == "bad_argument")
         seqs = {}
@@ -1962,6 +1967,9 @@ def training_check(exe, dol, work, game_id, battle_sst):
         host.wait_for("game_started", timeout=40)
         host.send("buffer 12")
         check("buffer changed live while training", bool(host.seen("buffer_changed", lambda e: e["buffer"] == 12)))
+        host.send("aspect 4:3")
+        check("Buffer Training (solo): the aspect switch still works",
+              host.wait_for("aspect", lambda e: e["mode"] == "4:3", timeout=10)["mode"] == "4:3")
         host.send("input_display_other on")
         ev = host.wait_for("input_display", lambda e: e["other"], timeout=10)
         check(f"training: the other port's input history can be shown {ev}", ev["other_allowed"] is True)
