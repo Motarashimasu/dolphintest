@@ -80,6 +80,14 @@ Values used from the small-data areas (r2 = `0x806338c0`, r13 = `0x80631320` on 
 5. Test: both players taking hits, each bar layer dropping from the first hit, the timer, the
    combo counters, and the pause menu (should be untouched).
 
+### Ported: BT3 NTSC-J (RDSJAF)
+
+`find_hud_sites.py` on a battle MEM1 dump finds the same two functions (flat `0x801076d0`, hook
+`0x8010771c`, sprite r31, slot `0x90`; textured `0x80107cbc`, hook `0x80107d20`, r28, `0xd0`),
+`matrix_r13 -0x6e7c`, `magic_r2 -0x6268`, `ortho_r2 -0x6258`, and battle callers up to
+`0x8010ef9c` (RDSPAF: `0x8010fd34`). `battle_hi` set to `0x80110000` (the same margin as RDSPAF's
+`0x80111000`). The generator still prints RDSPAF's shipped code byte for byte without `--params`.
+
 ## Character select (`widescreen_css.py`, untested)
 
 The character select is drawn by the menu layout system instead (640 x 512 menu screen, centre
