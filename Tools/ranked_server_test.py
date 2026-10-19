@@ -124,6 +124,7 @@ class RankedServer:
             "discord_authorize": f"{self.discord.url}/oauth2/authorize",
             "discord_api": f"{self.discord.url}/api",
             "replay_dir": os.path.join(os.path.dirname(self.db), "replay_files"),
+            "pic_dir": os.path.join(os.path.dirname(self.db), "pics"),
         }
         cfg.update(extra)
         items = ",\n".join(f"    {json.dumps(k)} => {json.dumps(v)}" for k, v in cfg.items())
@@ -317,6 +318,48 @@ def replay_checks(server, check, G, V):
           again3.get("ok") and again3["id"] != cut["id"] and gone.get("error") == "no_such_replay")
 
 
+def png(w, h, color=(200, 60, 40, 255)):
+    """A plain w x h PNG (no PIL needed)."""
+    import struct
+    import zlib
+    raw = b"".join(b"\0" + bytes(color) * w for _ in range(h))
+
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def picture_checks(server, check, G, V):
+    """account.php > picture: 128 x 128 only, shown in the profile, to friends and on the boards."""
+    import base64
+    b64 = lambda b: base64.b64encode(b).decode()
+    _, r = call(server, "account.php", G, action="picture", data=b64(png(300, 200)))
+    check("a picture that isn't 128 x 128 is refused", r.get("error") == "bad_picture_size" and r.get("size") == 128)
+    _, r = call(server, "account.php", G, action="picture", data=b64(b"<?php echo 1; ?>" * 10))
+    check("not a picture: refused", r.get("error") == "bad_picture")
+    _, r = call(server, "account.php", action="picture", data=b64(png(128, 128)))
+    check("needs a login", r.get("error") == "login_required")
+    _, r = call(server, "account.php", G, action="picture", data=b64(png(128, 128)))
+    url = r.get("picture") or ""
+    check(f"picture saved {url}", r.get("ok") and "pic.php?id=" in url and "&v=" in url)
+    with urllib.request.urlopen(url, timeout=10) as resp:
+        body = resp.read()
+        ctype = resp.headers.get("Content-Type")
+    check(f"served as a PNG ({len(body)} bytes, {ctype})", body.startswith(b"\x89PNG") and ctype == "image/png")
+    _, me = call(server, "me.php", G)
+    check("profile has it", me["player"]["picture"] == url)
+    _, p = call(server, "social.php", V, action="poll")
+    goku = [f for f in p["friends"] if f["name"] == "Goku"]
+    check("friends see it", goku and goku[0]["pic"] == url)
+    _, r2 = call(server, "account.php", G, action="picture", data=b64(png(128, 128, (10, 200, 90, 255))))
+    check("a new picture gets a new address (no stale cache)", r2.get("picture") and r2["picture"] != url)
+    _, rm = call(server, "account.php", G, action="picture_remove")
+    _, me = call(server, "me.php", G)
+    check("removed", rm.get("ok") and me["player"]["picture"] is None)
+    call(server, "account.php", G, action="picture", data=b64(png(128, 128)))   # keep one for the boards
+
+
 def admin_checks(server, check, tokens):
     """admin.php: sign in, edit stats, void a match, ban / unban, new season, log."""
     import http.cookiejar
@@ -476,6 +519,7 @@ def main():
         # Friends, who's online, and the admin's messages.
         social_checks(server, check, G, V, K)
         replay_checks(server, check, G, V)
+        picture_checks(server, check, G, V)
         _, me = call(server, "me.php", G)
         check(f"profile: 1000 in both modes {me.get('ratings')}",
               me["ratings"]["single"]["rating"] == 1000 and me["ratings"]["team"]["rating"] == 1000)

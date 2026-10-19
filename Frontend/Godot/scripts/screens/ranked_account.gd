@@ -97,7 +97,11 @@ func build_rows() -> Array:
 		])
 		return rows
 	var p: Dictionary = Ranked.profile.get("player", {})
-	rows.append({"type": "info", "key": "name", "label": "Account", "value": String(p.get("name", Ranked.display_name()))})
+	rows.append({"type": "info", "key": "name", "label": "Account", "value": String(p.get("name", Ranked.display_name())),
+		"pic": Ranked.picture(), "pic_name": String(p.get("name", Ranked.display_name()))})
+	rows.append({"type": "action", "key": "picture", "label": "Profile picture",
+		"value": tr("Change") if Ranked.picture() != "" else tr("Add"),
+		"desc": tr("A picture for your account: friends and the leaderboard show it.\nPick any picture, then crop it to a square (%d x %d).") % [Pictures.SIZE, Pictures.SIZE]})
 	if p.get("banned", false):
 		rows.append({"type": "info", "key": "banned", "label": "Your ranked profile is suspended.",
 			"value": String(p.get("ban_reason", "")), "desc": "You can't play ranked matches until an admin lifts it."})
@@ -121,6 +125,9 @@ func build_rows() -> Array:
 
 
 var _discord := false   # the login running is the Discord one
+
+const Pictures := preload("res://scripts/pictures.gd")
+const PICTURE_FILTERS := ["*.png, *.jpg, *.jpeg, *.webp, *.bmp, *.tga ; Pictures"]
 
 
 func on_value(key: String, value: Variant) -> void:
@@ -193,6 +200,8 @@ func on_press(key: String) -> void:
 			_password = ""
 			app.set_title(screen_title())
 			list.set_rows(build_rows(), "username" if Ranked.needs_account else "discord")
+		"picture":
+			_picture_menu()
 		"cancel":
 			Ranked.cancel_login()
 		"continue":
@@ -206,3 +215,57 @@ func on_press(key: String) -> void:
 				list.set_rows(build_rows())
 		_:
 			super(key)
+
+
+func _picture_menu() -> void:
+	var items: Array = [{"label": "Choose a picture", "glyph": "P", "color": "#3fbf6b",
+		"desc": tr("Pick a picture on this PC (PNG, JPEG, WebP...).\nBigger than %d x %d or not square: crop it next.") % [Pictures.SIZE, Pictures.SIZE],
+		"action": func():
+			app.pop()
+			pick_path(false, PackedStringArray(PICTURE_FILTERS), OS.get_system_dir(OS.SYSTEM_DIR_PICTURES),
+				tr("Profile picture"), _picked)}]
+	if Ranked.picture() != "":
+		items.append({"label": "Remove picture", "glyph": "R", "color": "#e8663d", "desc": "Back to no picture.",
+			"action": func():
+				app.pop()
+				_save_picture(null)})
+	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true, "desc": "Back to your account."})
+	var m: Control = app.menu("Profile picture", items, "netplay")
+	m.notices = false
+	app.push(m)
+
+
+## A picture file was picked: exactly the right size goes up as it is, anything else is cropped.
+func _picked(path: String) -> void:
+	var img := Image.load_from_file(path)
+	if img == null or img.is_empty():
+		_set_status(Ranked.error_text("bad_picture"))
+		return
+	open_picture(img)
+
+
+## (Also the tests' way in: an Image instead of a file.)
+func open_picture(img: Image) -> void:
+	if mini(img.get_width(), img.get_height()) < 32:
+		_set_status(Ranked.error_text("picture_too_small"))
+		return
+	if img.get_width() == Pictures.SIZE and img.get_height() == Pictures.SIZE:
+		img.convert(Image.FORMAT_RGBA8)
+		_save_picture(img)
+		return
+	app.push(load("res://scripts/screens/picture_crop.gd").new().setup(img, _save_picture))
+
+
+func _save_picture(img: Image) -> void:
+	_set_status(tr("Saving your picture...") if img else tr("Removing your picture..."))
+	var res: Dictionary = await Ranked.set_picture(img)
+	if not is_inside_tree():
+		return
+	_set_status(("" if img == null else tr("Picture saved.")) if res.get("ok", false)
+			else Ranked.error_text(String(res.get("error", ""))))
+
+
+func _set_status(text: String) -> void:
+	_status = text
+	if is_inside_tree():
+		list.set_rows(build_rows(), "picture")

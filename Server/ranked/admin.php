@@ -1,6 +1,7 @@
 <?php
 // DRAGON NET Ranked admin panel (browser). Sign in with the admin_key from config.php.
-//   Players: search, edit this season's rating / wins / losses per mode, ban / unban.
+//   Players: search, edit this season's rating / wins / losses per mode, ban / unban, remove a
+//            profile picture.
 //   Matches: recent matches; Void undoes a counted match (ratings and records).
 //   Seasons: start a new season (final standings archived, everyone back to 1000 and 0-0; the
 //            all-time record keeps counting), and see past seasons' final standings.
@@ -144,6 +145,12 @@ try {
                 admin_log('unban', $name_of($pid));
                 back("p=player&id=$pid", $name_of($pid) . ' can play ranked again.');
 
+            case 'pic_remove':
+                @unlink(pic_path($pid));
+                $db->prepare('UPDATE players SET pic = 0 WHERE id = ?')->execute([$pid]);
+                admin_log('pic_remove', $name_of($pid));
+                back("p=player&id=$pid", $name_of($pid) . "'s picture removed.");
+
             case 'void':
                 $m = get_match((int)($_POST['match'] ?? 0));
                 if (!$m) {
@@ -247,6 +254,11 @@ try {
             } else {
                 $body .= "<form method=post class=row onsubmit=\"return confirm('Ban this player from ranked?')\">$csrf<input type=hidden name=player value=$id>"
                     . "<input name=reason placeholder='reason (shown to them)' size=40><button class=bad name=a value=ban>Ban from ranked</button></form>";
+            }
+            if ((int)$pl['pic'] > 0) {
+                $body .= "<div class=row><img src='pic.php?id=$id&v=" . (int)$pl['pic'] . "' width=64 height=64 alt=''>"
+                    . "<form method=post class=inline>$csrf<input type=hidden name=player value=$id>"
+                    . "<button class=bad name=a value=pic_remove>Remove picture</button></form></div>";
             }
             $body .= '</div><h2>This season\'s stats</h2>';
             foreach (MODES as $mode) {

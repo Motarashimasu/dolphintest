@@ -23,4 +23,9 @@ return [
     // 'replay_dir' => __DIR__ . '/replay_files',
     // 'replay_max_mb' => 1500,
     // 'replay_daily' => 30,
+
+    // Profile pictures (account.php > picture): where they're kept, and this server's public
+    // address for their links (normally worked out from the request).
+    // 'pic_dir' => __DIR__ . '/pics',
+    // 'public_url' => 'https://tecshideout.ct.ws/sparking/',
 ];

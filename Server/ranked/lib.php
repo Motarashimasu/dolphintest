@@ -19,7 +19,7 @@
 // (the all-time record) never resets. Banned players can't play ranked and aren't listed.
 declare(strict_types=1);
 
-const SCHEMA_VERSION = '5';
+const SCHEMA_VERSION = '6';
 const MODES = ['single', 'team', 'b2single', 'b2team'];
 const GAME_MODES = ['bt3' => ['single', 'team'], 'bt2' => ['b2single', 'b2team']];
 const MODE_LABELS = ['single' => 'Single Battle FT2', 'team' => 'Team Battle',
@@ -35,6 +35,8 @@ const ONLINE_WINDOW = 75;     // s since the last request: still online (the lau
 const LOGIN_FAILS = 8;        // wrong passwords for one username before a pause
 const LOGIN_PAUSE = 300;      // s: that pause
 const FRIENDS_MAX = 200;
+const PIC_SIZE = 128;          // profile pictures: PIC_SIZE x PIC_SIZE (the launcher crops to it)
+const PIC_MAX_BYTES = 262144;
 
 function cfg(): array
 {
@@ -153,7 +155,9 @@ function migrate(PDO $db): void
               'players ADD COLUMN uname_key VARCHAR(24) NULL',
               'players ADD COLUMN pass_hash VARCHAR(255) NULL',
               // Version 5: when a player last came online (friends' "is online" pop-ups).
-              'players ADD COLUMN online_since INTEGER NOT NULL DEFAULT 0'] as $alter) {
+              'players ADD COLUMN online_since INTEGER NOT NULL DEFAULT 0',
+              // Version 6: profile pictures (account.php > picture). 0 = none, else its version.
+              'players ADD COLUMN pic INTEGER NOT NULL DEFAULT 0'] as $alter) {
         try {
             $db->exec("ALTER TABLE $alter");
         } catch (Throwable $e) {
@@ -614,6 +618,47 @@ function avatar_url($discord_id, $avatar): ?string
     return "https://cdn.discordapp.com/avatars/$discord_id/$avatar.png?size=64";
 }
 
+/** This server's own address, for links it hands out (config public_url, else the request's). */
+function base_url(): string
+{
+    $u = (string)(cfg()['public_url'] ?? '');
+    if ($u === '') {
+        $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'
+            || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+        $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+        $u = ($https ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $dir;
+    }
+    return rtrim($u, '/') . '/';
+}
+
+function pic_dir(): string
+{
+    $dir = cfg()['pic_dir'] ?? (__DIR__ . '/pics');
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    if (!is_file("$dir/.htaccess")) {
+        @file_put_contents("$dir/.htaccess", "Require all denied\nDeny from all\n");
+        @file_put_contents("$dir/index.html", '');
+    }
+    return $dir;
+}
+
+function pic_path(int $player_id): string
+{
+    return pic_dir() . "/$player_id.png";
+}
+
+/** A player's picture URL: their own (account.php > picture), else their Discord avatar, else null.
+ *  $r needs id, pic, discord_id, avatar. */
+function player_pic(array $r): ?string
+{
+    if ((int)($r['pic'] ?? 0) > 0) {
+        return base_url() . 'pic.php?id=' . (int)$r['id'] . '&v=' . (int)$r['pic'];
+    }
+    return avatar_url($r['discord_id'] ?? null, $r['avatar'] ?? null);
+}
+
 function leaderboard(string $mode, string $region, int $limit = 100, string $game = 'bt3'): array
 {
     $db = db();
@@ -624,20 +669,20 @@ function leaderboard(string $mode, string $region, int $limit = 100, string $gam
         $modes = GAME_MODES[valid_game($game)];
         $in = implode(',', array_fill(0, count($modes), '?'));
         $where = $global ? '' : 'AND r.region = ?';
-        $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, SUM(r.wins) AS wins, SUM(r.losses) AS losses
+        $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, p.pic, SUM(r.wins) AS wins, SUM(r.losses) AS losses
             FROM career r JOIN players p ON p.id = r.player_id WHERE p.banned = 0 AND r.mode IN ($in) $where
-            GROUP BY p.id, p.name, p.discord_id, p.avatar HAVING SUM(r.wins) + SUM(r.losses) > 0
+            GROUP BY p.id, p.name, p.discord_id, p.avatar, p.pic HAVING SUM(r.wins) + SUM(r.losses) > 0
             ORDER BY wins DESC, losses ASC, p.name ASC LIMIT $limit");
         $st->execute($global ? $modes : array_merge($modes, [$region]));
     } elseif ($global) {
-        $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, r.rating, r.wins, r.losses
+        $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, p.pic, r.rating, r.wins, r.losses
             FROM ratings r JOIN players p ON p.id = r.player_id
             WHERE r.mode = ? AND r.wins + r.losses > 0 AND p.banned = 0
             ORDER BY r.rating DESC, r.wins DESC, p.name ASC LIMIT $limit");
         $st->execute([$mode]);
     } else {
         // Players who played ranked lobbies in that region: their rating, their record there.
-        $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, r.rating, g.wins, g.losses
+        $st = $db->prepare("SELECT p.id, p.name, p.discord_id, p.avatar, p.pic, r.rating, g.wins, g.losses
             FROM region_records g JOIN players p ON p.id = g.player_id
             JOIN ratings r ON r.player_id = g.player_id AND r.mode = g.mode
             WHERE g.mode = ? AND g.region = ? AND g.wins + g.losses > 0 AND p.banned = 0
@@ -651,7 +696,7 @@ function leaderboard(string $mode, string $region, int $limit = 100, string $gam
         if (isset($r['rating'])) {
             $row['rating'] = (int)$r['rating'];
         }
-        $row['avatar'] = avatar_url($r['discord_id'] ?? null, $r['avatar'] ?? null);
+        $row['avatar'] = player_pic($r);
         $rows[] = $row;
     }
     return $rows;

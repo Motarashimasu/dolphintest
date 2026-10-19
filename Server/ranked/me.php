@@ -23,7 +23,7 @@ guard(function () {
     $st->execute(array_merge([(int)$p['id']], GAME_MODES[$game]));
     $life = $st->fetch();
     out(['ok' => true, 'player' => ['id' => (int)$p['id'], 'name' => $p['name'],
-         'discord_id' => $p['discord_id'], 'avatar' => $p['avatar'],
+         'discord_id' => $p['discord_id'], 'avatar' => $p['avatar'], 'picture' => player_pic($p),
          'banned' => (bool)(int)$p['banned'], 'ban_reason' => (string)($p['ban_reason'] ?? '')],
          'season' => season_info(),
          'game' => $game, 'ratings' => $modes, 'all_ratings' => $all, 'lifetime' => ['wins' => (int)$life['w'], 'losses' => (int)$life['l']]]);

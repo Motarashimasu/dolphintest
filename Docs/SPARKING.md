@@ -663,6 +663,14 @@ RDSPAF has A B X Y Z (the textures the button packs replace). Other versions/gam
   `Server/ranked/replay_files`, closed to browsers); `replay_max_mb` (default 1500: the oldest go
   first) and `replay_daily` (uploads per player per day, default 30). admin.php > Replays lists
   and deletes them.
+- Profile pictures: `account.php` `picture` takes a 128 x 128 PNG / JPEG / WebP (base64, 256 KB
+  at most; redrawn as a PNG by GD when the host has it, so only pixels are kept), `picture_remove`
+  drops it; `pic.php?id=&v=` serves it (a new picture gets a new `v`, so it's cached for long).
+  The URL is in `me.php` (`player.picture`), `social.php` (each friend's `pic`) and the
+  leaderboards (`avatar`, in place of the Discord one). In the launcher: Ranked Match > Profile >
+  Profile picture: any picture on the PC; one that isn't exactly 128 x 128 opens the cropper
+  (move a square frame with the stick / arrows / mouse, size it with LB RB / Q E / wheel, live
+  preview; A tears it off). admin.php > a player > Remove picture.
 - Friends "is online" pop-ups: the server keeps when each player came online (`online_since`: on
   their first request after being offline, or when their launcher starts: `poll` with
   `start`); `poll` returns each friend's `since`, and the launcher announces a friend whose `since`

@@ -17,6 +17,7 @@ signal focused(row: Dictionary)
 
 const Style := preload("res://scripts/ui/style.gd")
 const LinkIcon := preload("res://scripts/ui/link_icon.gd")
+const Pictures := preload("res://scripts/pictures.gd")
 
 var row_height := 52.0
 var row_gap := 6.0
@@ -238,8 +239,14 @@ func _rebuild() -> void:
 			icon = LinkIcon.new()
 			icon.link = String(r["icon"])
 			root.add_child(icon)
+		# Optional player picture before the label ("pic": its URL, "" = the initial only).
+		var pic: Control = null
+		if r.has("pic"):
+			pic = Pictures.Box.new()
+			root.add_child(pic)
+			pic.show_player(String(r["pic"]) if r["pic"] != null else "", String(r.get("pic_name", r.get("label", ""))))
 		_nodes.append({"root": root, "name": name_l, "value": value_l, "edit": edit, "icon": icon,
-				"arrows": arrows})
+				"arrows": arrows, "pic": pic})
 	_layout_rows()
 
 
@@ -255,7 +262,12 @@ func _layout_rows() -> void:
 	for n in _nodes:
 		Style.place(n.root, 0, y, w, row_height)
 		y += row_height + row_gap
-		Style.place(n.name, 18, 0, lw - 24, row_height)
+		var pic_w := 0.0
+		if n.pic:
+			var ps := row_height - 10
+			Style.place(n.pic, 12, 5, ps, ps)
+			pic_w = ps + 8
+		Style.place(n.name, 18 + pic_w, 0, lw - 24 - pic_w, row_height)
 		Style.place(n.value, lw, 0, w - lw - (56 if n.icon else 12), row_height)
 		if not n.arrows.is_empty():
 			var s := row_height * 0.62

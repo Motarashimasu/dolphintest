@@ -1,7 +1,8 @@
 <?php
 // Friends, who's online, and the admin's messages. Everything needs a login.
-//   poll {start?}       -> {friends: [{id, name, online, since}], incoming: [{id, name}],
-//                           outgoing: [{id, name}], messages: [{id, text, at}], now}
+//   poll {start?}       -> {friends: [{id, name, pic, online, since}], incoming: [{id, name, pic}],
+//                           outgoing: [{id, name, pic}], messages: [{id, text, at}], now}
+//                          pic = the picture's URL or null
 //                          since = when that friend came online (0 when offline): the launcher
 //                          announces a friend whose `since` is newer than the last it saw.
 //                          start=1: this launcher just started (a fresh "came online", even if
@@ -41,13 +42,14 @@ guard(function () {
             if (arg('start') === '1' || arg('start') === 'true') {
                 $db->prepare('UPDATE players SET online_since = ? WHERE id = ?')->execute([now(), $me]);
             }
-            $st = $db->prepare('SELECT f.*, p.id AS pid, p.name, p.last_seen, p.online_since, p.banned FROM friends f
+            $st = $db->prepare('SELECT f.*, p.id AS pid, p.name, p.last_seen, p.online_since, p.banned, p.pic, p.discord_id, p.avatar FROM friends f
                 JOIN players p ON p.id = (CASE WHEN f.a = ? THEN f.b ELSE f.a END)
                 WHERE f.a = ? OR f.b = ? ORDER BY p.name');
             $st->execute([$me, $me, $me]);
             $friends = $incoming = $outgoing = [];
             foreach ($st->fetchAll() as $r) {
-                $who = ['id' => (int)$r['pid'], 'name' => $r['name']];
+                $who = ['id' => (int)$r['pid'], 'name' => $r['name'],
+                        'pic' => player_pic(['id' => $r['pid']] + $r)];
                 if ($r['state'] === 'friends') {
                     $who['online'] = !(int)$r['banned'] && is_online($r);
                     $who['since'] = $who['online'] ? (int)$r['online_since'] : 0;

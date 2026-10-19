@@ -47,7 +47,7 @@ func build_rows() -> Array:
 	rows.append({"type": "text", "key": "add", "label": "Add a friend", "value": _add, "max_length": 20,
 		"placeholder": tr("Username"), "desc": "Type their DRAGON NET username: they get a friend request."})
 	for r in Social.incoming:
-		rows.append({"type": "action", "key": "in:%d" % int(r["id"]), "label": String(r["name"]),
+		rows.append({"type": "action", "key": "in:%d" % int(r["id"]), "label": String(r["name"]), "pic": _pic(r),
 			"value": tr("wants to be friends"), "color": "#f2b531",
 			"desc": tr("%s sent you a friend request. Accept or decline it.") % String(r["name"])})
 	var online: Array = Social.friends.filter(func(f): return f.get("online", false))
@@ -59,14 +59,18 @@ func build_rows() -> Array:
 		rows.append({"type": "info", "key": "count", "label": tr("Friends: %d online of %d") % [online.size(), Social.friends.size()], "value": ""})
 	for f in online + offline:
 		var on: bool = f.get("online", false)
-		rows.append({"type": "action", "key": "f:%d" % int(f["id"]), "label": String(f["name"]),
+		rows.append({"type": "action", "key": "f:%d" % int(f["id"]), "label": String(f["name"]), "pic": _pic(f),
 			"value": tr("Online") if on else tr("Offline"), "color": "#3fbf6b" if on else "",
 			"desc": tr("%s is online now.") % String(f["name"]) if on else tr("%s is offline.") % String(f["name"])})
 	for r in Social.outgoing:
-		rows.append({"type": "action", "key": "out:%d" % int(r["id"]), "label": String(r["name"]),
+		rows.append({"type": "action", "key": "out:%d" % int(r["id"]), "label": String(r["name"]), "pic": _pic(r),
 			"value": tr("request sent"), "desc": "Waiting for them to accept. Press to cancel the request."})
 	rows.append({"type": "action", "key": "back", "label": "Back", "desc": "Back to the main menu."})
 	return rows
+
+
+static func _pic(who: Dictionary) -> String:
+	return String(who["pic"]) if who.get("pic") is String else ""
 
 
 func on_value(key: String, value: Variant) -> void:

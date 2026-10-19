@@ -31,6 +31,7 @@ https://tecshideout.ct.ws/sparking/admin.php and sign in with it.
   Messages send a message (up to 500 characters) to every logged-in player: it pops up once on
            their launcher (outside games) until they close it with a button; players who log in
            while it's on (1-30 days) get it too. See how many closed it; Switch off stops it.
+  (a player's page also has Remove picture for their profile picture)
   Replays  the shared replays (newest first, size, downloads); Delete removes one
   Log      every admin action, with what changed
 Leave admin_key empty to switch the panel off.
@@ -40,7 +41,9 @@ What's in here
   admin.php        the admin panel (above)
   index.php        the leaderboard web page (mode, region, all-time record)
   leaderboard.php  the same as JSON for the launcher
-  account.php      DRAGON NET accounts: register / login (username + password) / claim
+  account.php      DRAGON NET accounts: register / login (username + password) / claim,
+                   profile picture (128 x 128; stored in pics/, closed to browsers)
+  pic.php          shows a profile picture
   social.php       friends (requests, who's online) and the admin's messages
   replays.php      shared replays: upload in pieces / search / download / delete. The files
                    go to replay_files/ (made by itself, closed to browsers). Optional limits in

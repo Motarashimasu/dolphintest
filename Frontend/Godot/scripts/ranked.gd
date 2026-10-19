@@ -182,6 +182,28 @@ func refresh() -> Dictionary:
 	return me
 
 
+## The account's profile picture: `img` must be Pictures.SIZE square (the crop screen makes it);
+## null removes it. -> {"ok", "picture": its URL or null}; the profile is refreshed.
+func set_picture(img: Image) -> Dictionary:
+	var res: Dictionary
+	if img == null:
+		res = await api("account.php", {"action": "picture_remove"})
+	else:
+		res = await api("account.php", {"action": "picture",
+			"data": Marshalls.raw_to_base64(img.save_png_to_buffer())})
+		if res.get("ok", false) and res.get("picture") is String:
+			load("res://scripts/pictures.gd").remember(String(res["picture"]), img)
+	if res.get("ok", false):
+		await refresh()
+	return res
+
+
+## The logged-in player's picture URL ("" = none).
+func picture() -> String:
+	var p = profile.get("player", {}).get("picture")
+	return String(p) if p is String else ""
+
+
 func logout() -> void:
 	if logged_in():
 		await api("auth.php", {"action": "logout"})
@@ -245,6 +267,9 @@ static func error_text(code: String) -> String:
 		"no_opponent": "Your opponent hasn't checked in with the ranked server yet.",
 		"database_error": "The ranked server had a problem. Try again in a moment.",
 		"banned": "Your ranked profile is suspended.",
+		"bad_picture": "That picture can't be used (PNG, JPEG or WebP only).",
+		"bad_picture_size": "The picture has to be cropped first.",
+		"picture_too_small": "That picture is too small (at least 32 x 32).",
 		"no_such_replay": "That replay isn't on DRAGON NET any more.",
 		"replay_missing": "The replay's files are missing.",
 		"replay_too_big": "That replay is too big to share.",

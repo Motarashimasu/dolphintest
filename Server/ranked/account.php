@@ -6,6 +6,9 @@
 //                                  Discord login, auth.php) gets its username + password; its
 //                                  ratings and records stay. Once: a profile with a username
 //                                  can't claim again.
+//   picture  {data}   (logged in) the profile picture: a PIC_SIZE x PIC_SIZE PNG / JPEG / WebP
+//                     (base64; the launcher crops and scales to it) -> {picture: url}
+//   picture_remove    (logged in) back to none
 // Logging out: auth.php action=logout.
 // Wrong passwords: after LOGIN_FAILS for one username, that username waits LOGIN_PAUSE seconds.
 require __DIR__ . '/lib.php';
@@ -85,6 +88,52 @@ guard(function () {
             $db->prepare('UPDATE players SET username = ?, uname_key = ?, pass_hash = ?, name = ? WHERE id = ?')
                 ->execute([$name, strtolower($name), password_hash($pass, PASSWORD_DEFAULT), $name, $p['id']]);
             out(['ok' => true, 'player' => account_json(find_by_username($name))]);
+
+        case 'picture':
+            $p = auth();
+            $bytes = base64_decode((string)arg('data', ''), true);
+            if ($bytes === false || $bytes === '' || strlen($bytes) > PIC_MAX_BYTES) {
+                fail('bad_picture');
+            }
+            $info = @getimagesizefromstring($bytes);
+            $types = [IMAGETYPE_PNG, IMAGETYPE_JPEG];
+            if (defined('IMAGETYPE_WEBP')) {
+                $types[] = IMAGETYPE_WEBP;
+            }
+            if (!$info || !in_array($info[2], $types, true)) {
+                fail('bad_picture');
+            }
+            if ((int)$info[0] !== PIC_SIZE || (int)$info[1] !== PIC_SIZE) {
+                fail('bad_picture_size', 400, ['size' => PIC_SIZE]);
+            }
+            // Drawn again from its pixels when GD is there: nothing but the picture is kept.
+            if (function_exists('imagecreatefromstring') && function_exists('imagepng')) {
+                $img = @imagecreatefromstring($bytes);
+                if (!$img) {
+                    fail('bad_picture');
+                }
+                imagesavealpha($img, true);
+                ob_start();
+                imagepng($img, null, 9);
+                $bytes = (string)ob_get_clean();
+                imagedestroy($img);
+            } elseif ($info[2] !== IMAGETYPE_PNG) {
+                fail('bad_picture');   // without GD only PNGs (stored as they are)
+            }
+            if (file_put_contents(pic_path((int)$p['id']), $bytes) === false) {
+                fail('database_error', 500);
+            }
+            $v = max(now(), (int)$p['pic'] + 1);
+            $db->prepare('UPDATE players SET pic = ? WHERE id = ?')->execute([$v, $p['id']]);
+            $p['pic'] = $v;
+            out(['ok' => true, 'picture' => player_pic($p)]);
+
+        case 'picture_remove':
+            $p = auth();
+            @unlink(pic_path((int)$p['id']));
+            $db->prepare('UPDATE players SET pic = 0 WHERE id = ?')->execute([$p['id']]);
+            $p['pic'] = 0;
+            out(['ok' => true, 'picture' => player_pic($p)]);
 
         default:
             fail('bad_action');
