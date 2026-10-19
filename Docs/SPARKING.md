@@ -233,8 +233,10 @@ select screen of Single Battle or Team Battle, so nobody navigates menus online.
      and some only take effect while the game sets itself up. BT3's PAL60 code (30 fps) is one:
      the video mode is chosen before the menus, so a state captured without it keeps every match
      at 25 fps.
-   - `Tools/sparking_state_check.py <state>` shows the build that saved a state and, for BT3,
-     whether PAL60 was on.
+   - `Tools/sparking_state_check.py <state>` shows the build that saved a state, whether the
+     version's default codes were on (RDSPAF: PAL60; RDSJAF: the widescreen HUD; RDBJAF: the 16:9
+     patch, the fog removal and the widescreen HUD) and that no splitscreen remover was (BT3:
+     its hooks; BT2: its nop writes).
 2. **Ship** the `.sst` files with the app so every player has identical bytes in `--state-dir`.
 3. **In the lobby** the host sends `battle_state BT3-SingleBattle.sst`. Dolphin hashes it (SHA-1)
    and tells every peer the name + hash; each peer checks its own copy and replies `ok`,

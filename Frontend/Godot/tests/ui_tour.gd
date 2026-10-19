@@ -1097,7 +1097,7 @@ func _tour() -> void:
 	await pick("custom", mods.list)
 	check("custom code selection on (BT3 PAL's)", Settings.gecko_custom("RDSPAF") == true)
 	await shot("modifications")
-	# Another version: its own codes (none in this build yet) and its own choice.
+	# Another version: its own codes and its own choice.
 	var shoulder := InputEventJoypadButton.new()
 	shoulder.button_index = JOY_BUTTON_RIGHT_SHOULDER
 	shoulder.pressed = true
@@ -1105,8 +1105,10 @@ func _tour() -> void:
 	await frames(3)
 	check("RB: the NTSC-J tab", mods._version == "NTSC-J")
 	await wait_for("NTSC-J codes looked up", func(): return mods._codes.has("RDSJAF"), 20)
-	check("NTSC-J: no codes yet, its own selection", not mods.list.row("none").is_empty()
-			and Settings.gecko_custom("RDSJAF") == false)
+	var jp_names: Array = mods._codes["RDSJAF"].map(func(c): return c["name"])
+	check("NTSC-J: its own codes and selection " + str(jp_names), jp_names == ["Widescreen HUD (life bars at the screen edges)",
+			"Player 1 Splitscreen Remover", "Player 2 Splitscreen Remover"]
+			and mods._codes["RDSJAF"][0]["default_enabled"] and Settings.gecko_custom("RDSJAF") == false)
 	await shot("modifications_ntsc_j")
 	var key_q := InputEventKey.new()
 	key_q.keycode = KEY_Q
@@ -1173,6 +1175,11 @@ func _tour() -> void:
 	var bt2_names: Array = pads.Controllers.list().map(func(p): return p["name"])
 	check("BT2 doesn't list Tenkaichi 3's presets", not "Tour Pad" in bt2_names
 			and not "Xbox One - Sparking Standard" in bt2_names)
+	check("BT2's own built-in presets " + str(bt2_names), "PlayStation 4-5 - Sparking Standard" in bt2_names
+			and "Xbox - Sparking Standard" in bt2_names)
+	var bt2_xbox: Dictionary = pads.Controllers.find("Xbox - Sparking Standard")
+	check("BT2 Xbox preset: its layout, picked by Auto for Xbox pads", bt2_xbox.get("device") == "XInput/0/Gamepad"
+			and "xbox" in bt2_xbox.get("match", []) and ["Buttons/B", "`Button Y`"] in bt2_xbox.get("keys", []))
 	check("BT2 has its own choice", pads.Controllers.choice() == pads.Controllers.AUTO)
 	pads.Controllers.set_choice(pads.Controllers.KEEP)
 	Settings.use_game("bt3")

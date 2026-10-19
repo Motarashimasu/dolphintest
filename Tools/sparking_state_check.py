@@ -3,16 +3,20 @@
 
     python Tools/sparking_state_check.py SparkingData/states/RDSPAF-SingleBattle.sav [...]
 
-Prints the game ID and the Dolphin build that saved it, and for BT3 PAL (RDSPAF) whether the
-"PAL60 Mode + Black Bar Removal" code was running when it was captured. A state captured
-without it keeps every DRAGON NET match at 25 fps (the game sets its video mode up before
-the menus, so the code can't change it after the state loads).
+Prints the game ID and the Dolphin build that saved it, and whether the version's default codes
+were running when it was captured (states are captured with the defaults on, like netplay runs
+them): BT3 PAL (RDSPAF) "PAL60 Mode + Black Bar Removal" (a state captured without it keeps every
+DRAGON NET match at 25 fps: the game sets its video mode up before the menus, so the code can't
+change it after the state loads), BT3 NTSC-J (RDSJAF) the widescreen HUD, BT2 NTSC-J (RDBJAF)
+the 16:9 patch, the fog removal and the widescreen HUD.
 
 Also: whether a splitscreen remover was running when it was captured. The removers are
 insert-ASM codes: they patch branches into the game's code that point into the Gecko code list.
 A state must be captured offline without them (they're netplay-only, per player); one captured
 with them keeps those branches, and the plain-write version of the removers (tried in Oct 2026)
-also left its patches in the game code (reported as "plain-write remover patches"). Pure Python, no packages.
+also left its patches in the game code (reported as "plain-write remover patches"). BT2's
+removers are plain writes too (they nop the "2 players" flag setters): a state with those nops
+was captured with a remover on. Pure Python, no packages.
 """
 import struct
 import sys
@@ -20,10 +24,19 @@ import sys
 STATE_COOKIE = 0xBAADBB7E
 MEM1_SIZE = 0x01800000
 
-# Game ID -> [(check name, MEM1 offset, bytes expected when the code is on)]
+# Game ID -> [(check name, MEM1 offset, bytes expected when the code is on)]. bytes = None: an
+# insert-ASM (C2) code, on when the game code there branches into the Gecko code area.
 CHECKS = {
     "RDSPAF": [
         ("PAL60 Mode + Black Bar Removal (30 fps)", 0x391AA8, bytes.fromhex("00000014")),
+    ],
+    "RDSJAF": [
+        ("Widescreen HUD", 0x10771C, None),
+    ],
+    "RDBJAF": [
+        ("16:9 Widescreen Patch", 0x5F5A94, bytes.fromhex("3F400000")),
+        ("Remove Bugged Fog/Shadow", 0x5F6064, bytes.fromhex("00000000")),
+        ("Widescreen HUD", 0x0F5F58, None),
     ],
 }
 
@@ -31,10 +44,13 @@ CHECKS = {
 # Gecko code area = captured while one was running).
 OLD_HOOKS = {
     "RDSPAF": [0x09136C, 0x015264, 0x015274],
+    "RDSJAF": [0x090B6C, 0x01529C, 0x0152AC],
 }
 GECKO_AREA = (0x80001800, 0x80003000)
 # The plain-write removers (04 codes, Oct 2026, rolled back): what they wrote at 0x8001528C.
 PLAIN_WRITE_REMOVER = {"RDSPAF": (0x01528C, bytes.fromhex("2C1F0000408200443860"))}
+# BT2 NTSC-J's removers nop these "2 players" flag setters (the game has `ori r0,r0,2` there).
+NOP_REMOVER = {"RDBJAF": [0x1530D4, 0x159064, 0x17B340, 0x204A98]}
 
 
 def branches_into_codes(word: int, address: int) -> bool:
@@ -145,6 +161,14 @@ def main() -> int:
             bad += 1
             continue
         for name, offset, expected in checks:
+            if expected is None:   # an insert-ASM code: its hook branch
+                (word,) = struct.unpack_from(">I", payload, mem1 + offset)
+                if branches_into_codes(word, 0x80000000 + offset):
+                    print(f"  OK   {name}: on")
+                else:
+                    print(f"  BAD  {name}: off when this was captured (no hook at 0x{0x80000000 + offset:08X})")
+                    bad += 1
+                continue
             actual = payload[mem1 + offset:mem1 + offset + len(expected)]
             if actual == expected:
                 print(f"  OK   {name}: on")
@@ -162,6 +186,14 @@ def main() -> int:
             bad += 1
         elif game_id in OLD_HOOKS:
             print("  OK   no splitscreen remover hooks")
+        nopped = [f"0x{0x80000000 + off:08X}" for off in NOP_REMOVER.get(game_id, [])
+                  if payload[mem1 + off:mem1 + off + 4] == bytes.fromhex("60000000")]
+        if nopped:
+            print(f"  BAD  splitscreen remover writes in the game code ({', '.join(nopped)}):"
+                  " recapture this state offline, without the removers")
+            bad += 1
+        elif game_id in NOP_REMOVER:
+            print("  OK   no splitscreen remover writes")
         plain = PLAIN_WRITE_REMOVER.get(game_id)
         if plain and payload[mem1 + plain[0]:mem1 + plain[0] + len(plain[1])] == plain[1]:
             print("  BAD  plain-write remover patches in the game code: recapture this state"
