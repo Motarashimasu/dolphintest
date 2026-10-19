@@ -5,6 +5,14 @@ extends RefCounted
 ## Every function is a coroutine (await it); results look like Ranked.api's: {"ok": ...}.
 
 
+## Ranked replays must be shared: errors after which trying again won't help (the replay is then
+## left alone, "share_error" in its .json).
+const FINAL_ERRORS := ["replay_missing", "replay_too_big", "bad_replay"]
+
+static var _pending_running := false
+static var _uploading := {}   # .dtm path -> true while it's being sent (never twice at once)
+
+
 static func online_folder() -> String:
 	return Settings.data_path("replays").path_join("online")
 
@@ -26,6 +34,16 @@ static func _sha1(path: String) -> String:
 static func upload(info: Dictionary, progress := Callable()) -> Dictionary:
 	if not Ranked.logged_in():
 		return {"ok": false, "error": "login_required"}
+	var dtm := String(info.get("path", ""))
+	while _uploading.has(dtm):   # already being sent (after the match / pending): wait for it
+		await Ranked.get_tree().create_timer(0.5).timeout
+	_uploading[dtm] = true
+	var res := await _upload(info, progress)
+	_uploading.erase(dtm)
+	return res
+
+
+static func _upload(info: Dictionary, progress: Callable) -> Dictionary:
 	var dtm := String(info.get("path", ""))
 	var sav := dtm + ".sav"
 	if not FileAccess.file_exists(dtm) or not FileAccess.file_exists(sav):
@@ -50,6 +68,9 @@ static func upload(info: Dictionary, progress := Callable()) -> Dictionary:
 				return {"ok": false, "error": "replay_missing"}
 			var offset := 0
 			while offset < sizes[which]:
+				# Never while a game runs: the upload would eat the netplay connection's bandwidth.
+				while Dolphin.in_game:
+					await Ranked.get_tree().create_timer(1.0).timeout
 				var piece := f.get_buffer(chunk)
 				var res := await Ranked.api("replays.php", {"action": "part", "id": id, "which": which,
 					"offset": offset, "data": Marshalls.raw_to_base64(piece)})
@@ -83,6 +104,33 @@ static func _remember(info: Dictionary, key: String, value: Variant) -> void:
 	var f := FileAccess.open(jp, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(data, "\t"))
+
+
+## Shares every ranked replay of this PC not shared yet (one that couldn't be sent after its
+## match: offline, server down...). At startup / login; one run at a time. -> how many were sent.
+static func upload_pending() -> int:
+	if _pending_running or not Ranked.logged_in() or Ranked.needs_account:
+		return 0
+	_pending_running = true
+	var sent := 0
+	var replays: Array = load("res://scripts/screens/replays.gd").load_all()
+	for info in replays:
+		if int(info.get("shared_id", 0)) > 0 or String(info.get("share_error", "")) != "":
+			continue
+		var res: Dictionary = await upload(info)
+		if res.get("ok", false):
+			sent += 1
+			continue
+		var err := String(res.get("error", ""))
+		if err == "upload_broken" and int(info.get("share_tries", 0)) == 0:
+			_remember(info, "share_tries", 1)   # once more next time
+			continue
+		if err in FINAL_ERRORS or err == "upload_broken":
+			_remember(info, "share_error", err)
+			continue
+		break   # server unreachable / busy / limits: try again next time
+	_pending_running = false
+	return sent
 
 
 ## {q, mode (single / team / ""), page} -> {"ok", "replays": [...], "more"}. The current game's.

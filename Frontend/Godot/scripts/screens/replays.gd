@@ -1,8 +1,9 @@
 extends "res://scripts/screens/form_screen.gd"
 ## Ranked > Replays: the ranked matches this PC played, newest first. Each one is recorded by
 ## Dolphin from the start of the first round to the end of the match (<SparkingData>/replays:
-## .dtm inputs + .dtm.sav start state + .json info). Pick one to watch it like a demo, share it
-## on DRAGON NET (everyone finds it in Replay Search) or delete it.
+## .dtm inputs + .dtm.sav start state + .json info). Every ranked replay is shared on DRAGON NET
+## (Replay Search) after the match, by rule; one that couldn't be sent then is sent later
+## (ReplayShare.upload_pending) or by hand here. Pick one to watch it, share it or delete it.
 
 const ReplayShare := preload("res://scripts/replay_share.gd")
 
@@ -73,9 +74,6 @@ func build_rows() -> Array:
 		rows.append({"type": "info", "key": "status", "label": _status, "value": ""})
 	rows.append({"type": "action", "key": "search", "label": "Replay Search",
 		"desc": "Everyone's shared replays: search by player name,\ndownload one and watch it."})
-	rows.append({"type": "toggle", "key": "auto_share", "label": "Share new replays",
-		"value": Settings.get_value("ranked", "auto_share"),
-		"desc": "Share every ranked match you finish on DRAGON NET right away,\nso anyone can find it in Replay Search."})
 	for i in _replays.size():
 		var r: Dictionary = _replays[i]
 		var mode := String(r.get("mode", ""))
@@ -94,11 +92,6 @@ func build_rows() -> Array:
 		"desc": "The replay files: .dtm (inputs), .dtm.sav (start of the match), .json (info)."})
 	rows.append({"type": "action", "key": "back", "label": "Back", "desc": "Back to the Ranked Match menu."})
 	return rows
-
-
-func on_value(key: String, value: Variant) -> void:
-	if key == "auto_share":
-		Settings.set_value("ranked", "auto_share", bool(value))
 
 
 func on_press(key: String) -> void:

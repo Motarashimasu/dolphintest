@@ -215,7 +215,8 @@ func _report(result: String, why := "") -> void:
 
 
 ## A ranked match's replay was saved: note which server match it is, and share it on DRAGON NET
-## (Replay Search) when the player wants that (Replays > Share new replays, on by default).
+## (Replay Search). Ranked replays are always shared; if it can't be sent now, it's sent later
+## (ReplayShare.upload_pending: at login, then every ~10 minutes).
 func _on_replay_saved(data: Dictionary) -> void:
 	var jp := String(data.get("json", ""))
 	var info = JSON.parse_string(FileAccess.get_file_as_string(jp)) if jp != "" else null
@@ -232,11 +233,15 @@ func _on_replay_saved(data: Dictionary) -> void:
 			keep.erase("json_path")
 			f.store_string(JSON.stringify(keep, "\t"))
 			f.close()
-	if not Settings.get_value("ranked", "auto_share") or not Ranked.logged_in() or Ranked.needs_account:
+	if not Ranked.logged_in() or Ranked.needs_account:
 		return
 	var res: Dictionary = await ReplayShare.upload(info)
-	if is_inside_tree() and res.get("ok", false):
+	if not is_inside_tree():
+		return
+	if res.get("ok", false):
 		_system("Replay shared on DRAGON NET (Replay Search).", "#cfe9ee")
+	else:
+		_system("Couldn't send the replay to DRAGON NET yet: it's sent automatically later.", "#e8663d")
 
 
 func _announce_result(m: Variant) -> void:

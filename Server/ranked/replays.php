@@ -142,6 +142,12 @@ guard(function () use ($action) {
             if (($old = $st->fetchColumn()) !== false) {
                 out(['ok' => true, 'id' => (int)$old, 'exists' => true]);
             }
+            // An unfinished upload of the same replay by this player (cut off): start over.
+            $st = $db->prepare("SELECT * FROM replays WHERE state = 'upload' AND uploader = ? AND dtm_sha = ?");
+            $st->execute([$me, $dtm_sha]);
+            foreach ($st->fetchAll() as $old_row) {
+                replay_remove($old_row);
+            }
             $st = $db->prepare('SELECT COUNT(*) FROM replays WHERE uploader = ? AND created > ?');
             $st->execute([$me, now() - 86400]);
             if ((int)$st->fetchColumn() >= (int)(cfg()['replay_daily'] ?? 30)) {

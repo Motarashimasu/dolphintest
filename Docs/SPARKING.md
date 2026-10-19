@@ -651,8 +651,10 @@ RDSPAF has A B X Y Z (the textures the button packs replace). Other versions/gam
 
 ## Shared replays and friends (DRAGON NET server)
 
-- `Server/ranked/replays.php`: ranked replays shared by players. The launcher shares each ranked
-  replay right after the match (Replays > Share new replays, on by default) or when asked
+- `Server/ranked/replays.php`: ranked replays shared by players. **Every ranked replay is
+  shared**, by rule (no switch): right after the match; one that couldn't be sent then (offline,
+  server down) is sent later by itself (`ReplayShare.upload_pending`: at login, then every ~10
+  minutes; never while a game runs, so it doesn't eat the netplay connection), or by hand
   (Replays > a replay > Share): `start` (info + sizes + SHA-1s; the same replay or the same
   ranked match already shared -> `exists`), the .dtm and .dtm.sav in 256 KB base64 pieces
   (`part`), `finish` (checks them). Replay Search (`search`: part of a player's name, mode, this

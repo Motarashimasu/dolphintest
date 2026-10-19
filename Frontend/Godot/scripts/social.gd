@@ -16,6 +16,8 @@ signal message(id: int, text: String)
 signal updated
 
 const POLL_EVERY := 20.0
+const PENDING_EVERY := 30   # polls (~10 min): send ranked replays that couldn't be sent yet
+const ReplayShare := preload("res://scripts/replay_share.gd")
 const RECENT := 40   # s
 
 var friends: Array = []      # [{id, name, online}]
@@ -30,6 +32,7 @@ var _first := true           # the next poll is the first for this login
 var _told := {}              # message ids already handed out this run
 var _timer := 0.0
 var _busy := false
+var _polls := 0
 
 
 func _ready() -> void:
@@ -46,6 +49,7 @@ func _on_login_changed() -> void:
 		_known.clear()
 		_first = true
 		_started = false
+		_polls = 0
 		polled = false
 		updated.emit()
 	elif not polled:
@@ -93,6 +97,9 @@ func poll() -> void:
 			friend_online.emit(String(f["name"]))
 	_since = now_since
 	_known = now_known
+	if _polls % PENDING_EVERY == 0:
+		ReplayShare.upload_pending()   # (ranked replays must be shared; runs on its own)
+	_polls += 1
 	_first = false
 	polled = true
 	for m in res.get("messages", []):

@@ -733,8 +733,6 @@
  "Replay Search": "Buscar repeticiones",
  "Everyone's shared replays: search by player name,\ndownload one and watch it.": "Las repeticiones compartidas de todos: busca por nombre de jugador,\ndescarga una y mírala.",
  "Everyone's shared ranked replays: search by player name,\ndownload one and watch it.": "Las repeticiones clasificatorias compartidas de todos: busca por nombre de jugador,\ndescarga una y mírala.",
- "Share new replays": "Compartir repeticiones nuevas",
- "Share every ranked match you finish on DRAGON NET right away,\nso anyone can find it in Replay Search.": "Comparte en DRAGON NET cada partida clasificatoria que termines,\npara que cualquiera la encuentre en Buscar repeticiones.",
  "%s, %s. Winner: %s. Shared on DRAGON NET.\nPress to watch or delete it.": "%s, %s. Ganador: %s. Compartida en DRAGON NET.\nPulsa para verla o borrarla.",
  "%s, %s. Winner: %s.\nPress to watch, share or delete it.": "%s, %s. Ganador: %s.\nPulsa para verla, compartirla o borrarla.",
  "Your ranked matches, newest first. Pick one to watch it,\nshare it on DRAGON NET or delete it.": "Tus partidas clasificatorias, las más recientes primero. Elige una para verla,\ncompartirla en DRAGON NET o borrarla.",
@@ -777,5 +775,6 @@
  "That replay is too big to share.": "Esa repetición es demasiado grande para compartirla.",
  "You've shared a lot of replays today: try again tomorrow.": "Has compartido muchas repeticiones hoy: inténtalo mañana.",
  "The upload got damaged on the way. Try again.": "La subida se dañó por el camino. Inténtalo de nuevo.",
- "Couldn't save the replay (is the folder read-only?).": "No se pudo guardar la repetición (¿la carpeta es de solo lectura?)."
+ "Couldn't save the replay (is the folder read-only?).": "No se pudo guardar la repetición (¿la carpeta es de solo lectura?).",
+ "Couldn't send the replay to DRAGON NET yet: it's sent automatically later.": "Aún no se pudo enviar la repetición a DRAGON NET: se enviará automáticamente más tarde."
 }

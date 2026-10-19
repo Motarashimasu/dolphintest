@@ -308,6 +308,13 @@ def replay_checks(server, check, G, V):
     send(G, broken["id"], "sav", sav[:-1] + b"X", chunk)
     _, fin2 = call(server, "replays.php", G, action="finish", id=broken["id"])
     check("a damaged upload is thrown away", fin2.get("error") == "upload_broken")
+    cut = start(G)
+    send(G, cut["id"], "dtm", dtm[:chunk], chunk)   # cut off half-way
+    again3 = start(G)
+    _, gone = call(server, "replays.php", G, action="part", id=cut["id"], which="dtm", offset=chunk,
+                   data=base64.b64encode(b"x").decode())
+    check("starting the same replay again replaces the cut-off upload",
+          again3.get("ok") and again3["id"] != cut["id"] and gone.get("error") == "no_such_replay")
 
 
 def admin_checks(server, check, tokens):
