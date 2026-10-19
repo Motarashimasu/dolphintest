@@ -156,6 +156,8 @@ func build_rows() -> Array:
 			desc += tr("  (by %s)") % by
 		if notes != "":
 			desc += "\n" + notes.replace("\n", " ").left(110)
+		if c.get("lobby_option", false):
+			desc += "\n" + tr("Online: off unless the lobby's host switches it on for everyone.")
 		rows.append({"type": "toggle", "key": "code:%d" % i, "label": name,
 			"value": (name in enabled) if custom else bool(c.get("default_enabled", false)),
 			"disabled": not custom, "desc": desc})
@@ -183,9 +185,18 @@ func on_value(key: String, value: Variant) -> void:
 		Settings.set_gecko(id, bool(value), enabled)
 		list.set_rows(build_rows(), "custom")
 	elif key.begins_with("code:"):
-		var name: String = codes[int(key.substr(5))]["name"]
+		var picked: Dictionary = codes[int(key.substr(5))]
+		var name: String = picked["name"]
 		var enabled := Settings.gecko_enabled(id).duplicate()
 		enabled.erase(name)
 		if value:
 			enabled.append(name)
+			# Codes of the same exclusive group ([Sparking.Exclusive], e.g. the two dubs) go off.
+			var group := String(picked.get("group", ""))
+			if group != "":
+				for c in codes:
+					if String(c.get("group", "")) == group and c["name"] != name and c["name"] in enabled:
+						enabled.erase(c["name"])
+						app.toast(tr("%s switched off (can't be on with %s).") % [c["name"], name])
 		Settings.set_gecko(id, Settings.gecko_custom(id), enabled)
+		list.set_rows(build_rows(), key)

@@ -33,11 +33,24 @@ std::vector<std::string> ActivateExclusiveGeckoCodes(const std::string& game_id,
 std::vector<std::string> DefaultEnabledGeckoNames(const std::string& game_id, u16 revision,
                                                   const std::vector<std::string>& exclude);
 
-// Fingerprint of a netplay Gecko setup: the default-on codes (if use_defaults) plus every per-port
-// code, by name and exact code lines. Peers with different fingerprints would run different code
-// and desync.
+// Fingerprint of a netplay Gecko setup: the default-on codes (if use_defaults), every per-port
+// code and every lobby option, by name and exact code lines, plus which lobby options the host
+// switched on (`lobby_on`). Peers with different fingerprints would run different code and desync.
 std::string HashNetplayGeckoSetup(const std::string& game_id, u16 revision, bool use_defaults,
-                                  const std::map<int, std::vector<std::string>>& port_gecko);
+                                  const std::map<int, std::vector<std::string>>& port_gecko,
+                                  const std::vector<std::string>& lobby_on);
+
+// [Sparking.LobbyCodes]: codes that are off by default and that a netplay host may switch on for
+// everyone in the lobby (never part of the default-on codes in netplay).
+std::vector<std::string> LobbyCodeNames(const std::string& game_id, std::optional<u16> revision);
+
+// [Sparking.Exclusive]: "<group> = Code A | Code B", codes that can't be on together.
+std::vector<std::pair<std::string, std::vector<std::string>>>
+ExclusiveCodeGroups(const std::string& game_id, std::optional<u16> revision);
+
+// The names in `names` that clash with an earlier one of the same exclusive group (first wins).
+std::vector<std::string> ExclusiveGroupConflicts(const std::string& game_id, u16 revision,
+                                                 const std::vector<std::string>& names);
 
 // The MEM1 bytes the per-port codes write ({offset, size}, physical): plain writes (00 / 02 /
 // 04 / 06) and insert-ASM hooks (C2 / C3) in the 0x80000000 range. Every player's port codes

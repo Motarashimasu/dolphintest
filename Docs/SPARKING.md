@@ -121,6 +121,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `state_saved` / `state_loaded` | `slot` | Solo only |
 | `gecko_codes` | `game_id`, `codes[]` | `--list-gecko` result |
 | `gecko_active` | `port` (0 = solo), `codes[]`, `missing[]` | Codes activated for this boot |
+| `lobby_codes` | `available[]`, `on[]` | Netplay: the game's optional codes the host may switch on, and the ones on (on game change and every switch) |
 | `aspect` | `mode` (`16:9`/`21:9`/`4:3`) | At every boot and after every toggle |
 | `peek` | `address`, `value` (hex) | Answer to `peek` |
 | `window` | `open`, `x`, `y`, `width`, `height`, `focused`, `minimized`, `handle` | Game window changed (Windows). `x/y/width/height` = the picture area in screen pixels; `open:false` when the window closes. See *Overlay*. |
@@ -193,6 +194,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `automap wii\|gc\|none` | host | Auto-assign joiners to Wii Remote / GC slots in join order |
 | `battle_state <file.sst>` / `battle_state none` | host | Select the state everyone boots into |
 | `save_check` | host | Re-verify that every player's netplay save matches the host's |
+| `codes <Name A>\|<Name B>` / `codes none` | host, not during a match | Switch on the game's optional lobby codes (`[Sparking.LobbyCodes]`) for everyone; the rest go off. Unknown names and a second code of an exclusive group are ignored. Everyone re-runs the save check (it fingerprints the choice), so `start` waits until every player has it |
 | `players` | any | Re-send the `players` event now |
 | `pause` / `resume` | solo | |
 | `save_state <1-10>` / `load_state <1-10>` | solo | Slot save states |
@@ -440,9 +442,17 @@ found in its own main.dol: battle setup sets a "2 human players" bit (0x2 of the
 `-0x74a8(r13)+0x4dc`), and the camera code splits the screen while it's set. Both codes nop its four
 setters (`0x801530D4`, `0x80159064`, `0x8017B340`, `0x80204A98`, one per battle menu), so the game
 draws one full-screen view (camera 0). Player 2's code also swaps the per-frame camera loop's
-player index (`0x80067488` / `0x800674A0`), so camera 0 follows port 2's fighter. BT2 US / PAL have
+player index (`0x80067488` / `0x800674A0`), so camera 0 follows port 2's fighter (player 1's
+writes those two unchanged, keeping both codes the same length). BT2 US / PAL have
 no removers yet (their addresses differ; the launcher asks for the codes by name, and a missing
 one is skipped).
+
+RDBJAF's other codes: `16:9 Widescreen Patch` and `Remove Bugged Fog/Shadow` are on by default
+(solo and netplay). `Ground & Pound Infinite Combo Fix` and `English Dub` are off; in a netplay
+lobby the host may switch them on for both players (`[Sparking.LobbyCodes]`). `Japanese Dub` is
+for solo only (it brings the Japanese voices back to a save that was played with `English Dub`);
+the two dubs are an exclusive group. The NTSC-J netplay save goes in
+`saves/netplay/RDBJAF/title/00010000/5244424a/data/` (`banner.bin` + `DBZSN`).
 
 Game IDs: BT3 = `RDSE70` (US) / `RDSPAF` (EU) / `RDSJAF` (Sparking! Meteor); BT2 = `RDBE70` (US) /
 `RDBPAF` (EU) / `RDBJAF` (Sparking! Neo). Dolphin ships no Gecko codes for these games; codes
@@ -450,15 +460,22 @@ come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
 
 - **Per-game code tab in Godot:** run `dolphin-emu-nogui --list-gecko RDSE70` once per game. It
   prints a `gecko_codes` event with every code from Dolphin's bundled and user `GameSettings`
-  (`name`, `creator`, `notes`, `default_enabled`, `user_defined`, `lines`). Godot stores the
-  player's toggles itself.
+  (`name`, `creator`, `notes`, `default_enabled`, `user_defined`, `lines`, `lobby_option`,
+  `group`). Godot stores the player's toggles itself; turning on a code of an exclusive `group`
+  turns the others of that group off.
+- **Game ini sections:** `[Sparking.LobbyCodes]` (one code name per line): codes that stay off
+  by default and that the netplay host may switch on for everyone (lobby rows "Host option";
+  Dolphin's `codes` command). They're never default-on in netplay, and every player must have the
+  same definitions (the save check covers them). `[Sparking.Exclusive]`: `group = Code A | Code B`,
+  codes that can't be on together (Tenkaichi 2 JP's English / Japanese Dub).
 - **Solo:** launch with one `--gecko "<name>"` per enabled code (or `--no-gecko`). Dolphin
   activates exactly those for that run; the game's ini is never edited.
 - **Netplay:** everyone runs the game's default-on codes (`[Gecko_Enabled]` in the Sys + user
   game inis; `--netplay-gecko-defaults off` disables that), plus only the codes mapped to the
   port each player lands on. Every other code is off. Per-port codes are never part of the
   defaults, even if an ini enables them. The lobby's save check also fingerprints this code
-  setup (code names + exact lines); a player whose codes differ shows
+  setup (code names + exact lines, every lobby option, and which ones the host switched on); a
+  player whose codes differ shows
   `save_status: codes_mismatch` and `start` is refused. Port mapping example:
   `--netplay-gecko "1=Splitscreen Remover P1" --netplay-gecko "2=Splitscreen Remover P2"`.
   Pass the same list to host and guests; each Dolphin picks its own port at boot (the host is

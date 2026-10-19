@@ -55,6 +55,8 @@ var _friends_told := {}      # DRAGON NET accounts already announced in this lob
 var _asking := false         # ranked host: waiting for the other player to approve the start
 var _ask_menu: Control = null   # ranked guest: the "start the match?" question on screen
 var _chat: PackedStringArray = []
+var _codes_available: Array = []   # this game's optional codes the host may switch on (Dolphin's "lobby_codes")
+var _codes_on: Array = []          # ...and the ones that are on, for everyone
 var _battle := {}
 var _logged_buffer := -1
 var _auto_started := false    # Buffer Training starts itself once the state is ready
@@ -650,6 +652,20 @@ func _action_rows(in_game_menu: bool) -> Array:
 	else:
 		rows.append({"type": "info", "key": "buffer", "label": "Pad buffer",
 			"value": str(_buffer) if _buffer > 0 else "?"})
+	# The game's optional codes ([Sparking.LobbyCodes], e.g. Tenkaichi 2 JP's Ground & Pound fix):
+	# off unless the host switches them on, then on for both players. Not during a match.
+	if not in_game_menu:
+		for i in _codes_available.size():
+			var code := String(_codes_available[i])
+			var on := code in _codes_on
+			if host:
+				rows.append({"type": "toggle", "key": "lc:%d" % i, "label": code, "value": on,
+					"disabled": _phase == "playing",
+					"desc": "Host option: switch it on for both players' games. Off by default."})
+			else:
+				rows.append({"type": "info", "key": "lc:%d" % i, "label": code,
+					"value": tr("On") if on else tr("Off"),
+					"desc": "Host option: the host switches it on for both players' games."})
 	if not is_spectating() and (in_game_menu or is_training()):
 		var setting := Settings.input_display_key(is_training())
 		rows.append({"type": "action", "key": "input_display", "label": "Input history",
@@ -867,6 +883,13 @@ func _on_value(key: String, value: Variant) -> void:
 		"buffer":
 			Settings.set_value("netplay", "buffer", int(value))
 			Dolphin.send("buffer %d" % int(value))
+		_ when key.begins_with("lc:"):
+			var code := String(_codes_available[int(key.substr(3))])
+			var on: Array = _codes_on.duplicate()
+			on.erase(code)
+			if value:
+				on.push_front(code)   # first: Dolphin keeps it over another of its exclusive group
+			Dolphin.send("codes " + ("|".join(on) if not on.is_empty() else "none"))
 		"buffer_mode":
 			Settings.set_value("netplay", "buffer_auto", bool(value))
 			_send_buffer_mode()
@@ -1030,6 +1053,17 @@ func _on_event(name: String, data: Dictionary) -> void:
 		"battle_state":
 			_battle = data
 			_maybe_auto_start()
+		"lobby_codes":
+			var was: Array = _codes_on
+			_codes_available = data.get("available", [])
+			_codes_on = data.get("on", [])
+			for code in _codes_on:
+				if not code in was:
+					_system(tr("%s: on for this lobby's matches.") % code, "#9be7ff")
+			for code in was:
+				if not code in _codes_on and code in _codes_available:
+					_system(tr("%s: off.") % code, "#9be7ff")
+			_refresh_actions()
 		"game_starting":
 			_reported = false
 			_status = "Match starting..."

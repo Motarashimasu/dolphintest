@@ -810,5 +810,11 @@
  "Step down": "Cedi il posto",
  "Forfeit this set and go to the back of the line.": "Abbandona questo set e vai in fondo alla fila.",
  "Go to the back of the line.": "Vai in fondo alla fila.",
- "16:9 and 21:9 fill your screen (21:9 widens the view on ultrawide screens;\nthe HUD is stretched). F3 switches to 4:3 and back during a game (not online).": "16:9 e 21:9 riempiono lo schermo (21:9 allarga la visuale sugli schermi ultrawide;\nl'HUD viene allungato). F3 passa a 4:3 e ritorno durante la partita (non online)."
+ "16:9 and 21:9 fill your screen (21:9 widens the view on ultrawide screens;\nthe HUD is stretched). F3 switches to 4:3 and back during a game (not online).": "16:9 e 21:9 riempiono lo schermo (21:9 allarga la visuale sugli schermi ultrawide;\nl'HUD viene allungato). F3 passa a 4:3 e ritorno durante la partita (non online).",
+ "%s switched off (can't be on with %s).": "%s disattivato (non può essere attivo insieme a %s).",
+ "%s: off.": "%s: disattivato.",
+ "%s: on for this lobby's matches.": "%s: attivo nelle partite di questa lobby.",
+ "Host option: switch it on for both players' games. Off by default.": "Opzione dell'host: attivala per le partite di entrambi i giocatori. Disattivata di default.",
+ "Host option: the host switches it on for both players' games.": "Opzione dell'host: l'host la attiva per le partite di entrambi i giocatori.",
+ "Online: off unless the lobby's host switches it on for everyone.": "Online: disattivato a meno che l'host della lobby non lo attivi per tutti."
 }

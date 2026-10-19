@@ -378,6 +378,8 @@ void NetPlaySession::Pump()
 
   EmitRoom();
 
+  if (m_server && m_rebroadcast_codes.exchange(false))
+    BroadcastLobbyCodes();  // (before the save check, whose fingerprint includes them)
   if (m_server && m_rebroadcast_state.exchange(false))
     BroadcastBattleState();
   if (m_server && m_rebroadcast_save.exchange(false))
@@ -778,6 +780,24 @@ bool NetPlaySession::HandleCommand(const Command& cmd)
         Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
     }
   }
+  else if (cmd.name == "codes")
+  {
+    // Host: the lobby's optional codes ([Sparking.LobbyCodes]) switched on for everyone:
+    // "codes Name A|Name B", or "codes" / "codes none" for none.
+    if (host_only())
+    {
+      if (m_game_running)
+      {
+        Emit("error", Json().Add("code", "game_running").Add("command", cmd.name));
+      }
+      else
+      {
+        SetLobbyCodes(cmd.arg == "none" ? std::string{} : cmd.arg);
+        m_rebroadcast_codes = true;
+        m_rebroadcast_save = true;  // everyone re-checks their setup (it includes these)
+      }
+    }
+  }
   else if (cmd.name == "kick")
   {
     if (host_only())
@@ -1166,8 +1186,19 @@ void NetPlaySession::BootGame(const std::string& filename,
     for (const auto& [p, n] : m_port_gecko)
       all_port_names.insert(all_port_names.end(), n.begin(), n.end());
     std::vector<std::string> names;
+    if (game)
+    {
+      const std::vector<std::string> lobby = LobbyCodeNames(game->GetGameID(), game->GetRevision());
+      all_port_names.insert(all_port_names.end(), lobby.begin(), lobby.end());
+    }
     if (game && m_gecko_defaults)
       names = DefaultEnabledGeckoNames(game->GetGameID(), game->GetRevision(), all_port_names);
+    // Everyone: the lobby's optional codes the host switched on.
+    if (game)
+    {
+      for (std::string& n : LobbyCodesFor(*game))
+        names.push_back(std::move(n));
+    }
     // Without a pad (watchers, the Battle Lounge line): pad 1's codes, so this game runs exactly
     // like that player's. (With neither splitscreen remover the game draws both views, which
     // changes its timing: it drifted away from the players' game, KOs went unseen.)
@@ -1322,6 +1353,7 @@ void NetPlaySession::OnMsgChangeGame(const NetPlay::SyncIdentifier& sync_identif
   NetPlay::SyncIdentifierComparison found;
   FindGameFile(sync_identifier, &found);
   m_rebroadcast_save = true;  // saves are per game
+  EmitLobbyCodes();           // ...and so are the optional codes
   Emit("game_changed", Json()
                            .Add("name", netplay_name)
                            .Add("game_id", sync_identifier.game_id)
@@ -1498,6 +1530,7 @@ void NetPlaySession::OnPlayerConnect(const std::string& player)
   m_rebroadcast_save = true;   // ...and must prove their save matches
   m_rebroadcast_link = true;   // ...and need to know everyone's wired/Wi-Fi status
   m_rebroadcast_netcode = true;  // ...and the netcode
+  m_rebroadcast_codes = true;    // ...and the lobby's optional codes
   Emit("player_joined", Json().Add("name", player));
 }
 
@@ -1614,7 +1647,7 @@ std::string NetPlaySession::LocalSetupFingerprint()
   const std::string save = HashWiiSave(game ? game->GetTitleID() : 0);
   const std::string codes =
       game ? HashNetplayGeckoSetup(game->GetGameID(), game->GetRevision(), m_gecko_defaults,
-                                   m_port_gecko) :
+                                   m_port_gecko, LobbyCodesFor(*game)) :
              "nogame";
   return save + "-" + codes;
 }
@@ -1714,6 +1747,71 @@ void NetPlaySession::CmdBattleState(const std::string& arg)
   EmitBattleState();
 }
 
+// --- The lobby's optional codes -------------------------------------------------------------
+
+void NetPlaySession::SetLobbyCodes(const std::string& list)
+{
+  std::vector<std::string> on;
+  std::string_view rest = list;
+  while (!rest.empty())
+  {
+    const size_t bar = rest.find('|');
+    std::string_view name = rest.substr(0, bar);
+    while (!name.empty() && name.front() == ' ')
+      name.remove_prefix(1);
+    while (!name.empty() && name.back() == ' ')
+      name.remove_suffix(1);
+    if (!name.empty() && std::ranges::find(on, name) == on.end())
+      on.emplace_back(name);
+    rest = bar == std::string_view::npos ? std::string_view{} : rest.substr(bar + 1);
+  }
+  {
+    std::lock_guard lk(m_game_mutex);
+    m_lobby_codes = std::move(on);
+  }
+  EmitLobbyCodes();
+}
+
+std::vector<std::string> NetPlaySession::LobbyCodesFor(const UICommon::GameFile& game)
+{
+  std::vector<std::string> on;
+  {
+    std::lock_guard lk(m_game_mutex);
+    on = m_lobby_codes;
+  }
+  // Only this game's lobby options, and never two of an exclusive group (the first one wins).
+  const std::vector<std::string> allowed = LobbyCodeNames(game.GetGameID(), game.GetRevision());
+  std::erase_if(on, [&](const std::string& n) { return std::ranges::find(allowed, n) == allowed.end(); });
+  const std::vector<std::string> clash = ExclusiveGroupConflicts(game.GetGameID(), game.GetRevision(), on);
+  std::erase_if(on, [&](const std::string& n) { return std::ranges::find(clash, n) != clash.end(); });
+  return on;
+}
+
+void NetPlaySession::BroadcastLobbyCodes()
+{
+  std::string list;
+  {
+    std::lock_guard lk(m_game_mutex);
+    for (const std::string& n : m_lobby_codes)
+      list += (list.empty() ? "" : "|") + n;
+  }
+  SendControl(list.empty() ? std::string("codes") : "codes " + list);
+}
+
+void NetPlaySession::EmitLobbyCodes()
+{
+  // available: this game's lobby options; on: the ones switched on (that this game has).
+  std::vector<std::string> available, on;
+  if (const auto game = CurrentGame())
+  {
+    for (const std::string& n : LobbyCodeNames(game->GetGameID(), game->GetRevision()))
+      available.push_back(Json::Escape(n));
+    for (const std::string& n : LobbyCodesFor(*game))
+      on.push_back(Json::Escape(n));
+  }
+  Emit("lobby_codes", Json().AddRaw("available", JsonArray(available)).AddRaw("on", JsonArray(on)));
+}
+
 void NetPlaySession::BroadcastBattleState()
 {
   std::optional<BattleState> state;
@@ -1763,6 +1861,13 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
     }
     SendControl(fmt::format("ack {} {}", wanted.sha1, status));
     EmitBattleState();
+  }
+  else if (parts[0] == "codes" && !m_server)
+  {
+    if (from != 1)
+      return;
+    SetLobbyCodes(body.size() > 6 ? body.substr(6) : std::string{});
+    return;
   }
   else if (parts[0] == "netcode" && parts.size() == 2 && !m_server)
   {

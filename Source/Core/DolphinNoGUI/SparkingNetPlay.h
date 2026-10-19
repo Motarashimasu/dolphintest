@@ -208,6 +208,10 @@ private:
   void BroadcastBattleState();
   void HandleControlMessage(NetPlay::PlayerId from, const std::string& body);  // host thread
   void EmitBattleState();
+  void SetLobbyCodes(const std::string& list);  // "Name A|Name B"
+  std::vector<std::string> LobbyCodesFor(const UICommon::GameFile& game);
+  void BroadcastLobbyCodes();
+  void EmitLobbyCodes();
   bool IsBattleStateReady();  // host: every current player verified the file
 
   // Save-data check: every player's netplay save must be byte-identical or the game desyncs.
@@ -252,6 +256,8 @@ private:
   bool m_battle_state_local_ok = false;            // guarded by m_game_mutex
   std::map<NetPlay::PlayerId, std::string> m_state_acks;  // host: pid -> ok|missing|mismatch
   std::atomic<bool> m_rebroadcast_state{false};
+  std::atomic<bool> m_rebroadcast_codes{false};
+  std::vector<std::string> m_lobby_codes;  // the host's optional codes switched on (m_game_mutex)
 
   std::string m_host_save_hash;                          // last hash the host announced
   std::string m_save_local_status;                       // client: ok|mismatch|missing

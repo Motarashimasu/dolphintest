@@ -132,7 +132,12 @@ def main():
                     "$Splitscreen Remover P1 [Sparking]\n04001000 00000001\n"
                     "$Splitscreen Remover P2 [Sparking]\n04001004 00000002\n"
                     "$Infinite Health [Sparking]\n04001008 00000003\n"
+                    "$Big Head [Sparking]\n04001010 00000004\n"
+                    "$Tiny Head [Sparking]\n04001014 00000005\n"
                     "[Gecko_Enabled]\n$Infinite Health\n"
+                    # host-optional codes, and two that can't be on together
+                    "[Sparking.LobbyCodes]\nBig Head\nTiny Head\n"
+                    "[Sparking.Exclusive]\nheads = Big Head | Tiny Head\n"
                     "[Sparking.Watch]\np1_marker = u32 0x8000310C\np2_marker = u32 0x8000310C\n"
                     # health, for round counting in netplay (automatic pad buffer test)
                     "p1_health_pct = f32 0x80001100\np2_health_pct = f32 0x80001104\n")
@@ -188,9 +193,12 @@ def main():
             write_gecko_ini(n, game_id)
         lister = Instance("list", [exe, "-u", user_dir("solo"), "--list-gecko", game_id])
         codes = lister.wait_for("gecko_codes")["codes"]
-        check("list-gecko returns the game's 3 codes " + str([c["name"] for c in codes]),
+        check("list-gecko returns the game's 5 codes " + str([c["name"] for c in codes]),
               [c["name"] for c in codes] == ["Splitscreen Remover P1", "Splitscreen Remover P2",
-                                             "Infinite Health"])
+                                             "Infinite Health", "Big Head", "Tiny Head"])
+        check("list-gecko marks the host's lobby options and exclusive groups",
+              [(c["lobby_option"], c["group"]) for c in codes] ==
+              [(False, ""), (False, ""), (False, ""), (True, "heads"), (True, "heads")])
         lister.proc.wait(timeout=20)
 
         def solo_gecko(extra):
@@ -591,6 +599,18 @@ def main():
         host.wait_for("save_data", lambda e: e.get("ready") is True)
         check("identical codes again -> ready", True)
 
+        print("netplay: the host's optional lobby codes")
+        joiner.send("codes Big Head")
+        check("only the host picks the lobby codes", joiner.wait_for("error")["code"] == "host_only")
+        host.send("codes Big Head|Tiny Head")
+        hl = host.wait_for("lobby_codes", lambda e: e["on"])
+        check(f"host: lobby codes on, exclusive group keeps the first {hl}",
+              hl["available"] == ["Big Head", "Tiny Head"] and hl["on"] == ["Big Head"])
+        check("joiner is told which lobby codes are on",
+              joiner.wait_for("lobby_codes", lambda e: e["on"])["on"] == ["Big Head"])
+        host.wait_for("save_data", lambda e: e.get("ready") is True)
+        check("everyone re-verified their setup with the lobby code -> ready", True)
+
         print("netplay: battle state sync")
         shutil.copy(battle, states["host"])
         with open(battle, "rb") as f:
@@ -643,12 +663,12 @@ def main():
                   "nand-solo" not in si["nand"])
         hg, jg = host.seen("gecko_active"), joiner.seen("gecko_active")
         check(f"host on port {hg['port']} runs defaults + own code {hg['codes']}",
-              hg["port"] == 1 and hg["codes"] == ["Infinite Health", "Splitscreen Remover P1"])
-        check(f"joiner on port {jg['port']} runs defaults + own code {jg['codes']}",
-              jg["port"] == 2 and jg["codes"] == ["Infinite Health", "Splitscreen Remover P2"])
+              hg["port"] == 1 and hg["codes"] == ["Infinite Health", "Big Head", "Splitscreen Remover P1"])
+        check(f"joiner on port {jg['port']} runs defaults + lobby + own code {jg['codes']}",
+              jg["port"] == 2 and jg["codes"] == ["Infinite Health", "Big Head", "Splitscreen Remover P2"])
         for inst in (host, joiner):
             n = inst.seen("game_info")["session"]["gecko_active_count"]
-            check(f"{inst.name}: exactly 2 codes live (default + own port), other port's off", n == 2)
+            check(f"{inst.name}: exactly 3 codes live (default + lobby + own port), other port's off", n == 3)
 
         print("netplay: automatic pad buffer (host, between rounds only)")
         FULL, ZERO = "42C80000", "00000000"   # 100.0, 0.0
