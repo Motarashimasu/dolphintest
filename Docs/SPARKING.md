@@ -434,6 +434,16 @@ BT3 PAL (`RDSPAF`) ships with its codes built in: `Data/Sys/GameSettings/RDSPAF.
 control layout, PAL60, outlines, 16:9, soft reset, World Tournament stages = on by default;
 `Player 1/2 Splitscreen Remover` = per-port netplay codes).
 
+BT2 NTSC-J (`RDBJAF`, Sparking! NEO) ships `Player 1/2 Splitscreen Remover` too, in
+`Data/Sys/GameSettings/RDBJAF.ini`. BT2's engine doesn't share BT3's hook sites, so these were
+found in its own main.dol: battle setup sets a "2 human players" bit (0x2 of the mode word at
+`-0x74a8(r13)+0x4dc`), and the camera code splits the screen while it's set. Both codes nop its four
+setters (`0x801530D4`, `0x80159064`, `0x8017B340`, `0x80204A98`, one per battle menu), so the game
+draws one full-screen view (camera 0). Player 2's code also swaps the per-frame camera loop's
+player index (`0x80067488` / `0x800674A0`), so camera 0 follows port 2's fighter. BT2 US / PAL have
+no removers yet (their addresses differ; the launcher asks for the codes by name, and a missing
+one is skipped).
+
 Game IDs: BT3 = `RDSE70` (US) / `RDSPAF` (EU) / `RDSJAF` (Sparking! Meteor); BT2 = `RDBE70` (US) /
 `RDBPAF` (EU) / `RDBJAF` (Sparking! Neo). Dolphin ships no Gecko codes for these games; codes
 come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
