@@ -978,10 +978,13 @@ std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget
     const size_t at = std::min(samples.size() - 1, (samples.size() * 9 + 9) / 10 - 1);
     const u32 high = samples[at];
     int buffer = std::clamp(static_cast<int>((high + std::max(jitter, 0) + 11) / 12), 2, 20);
-    // NEOcode covers the rest: keep about half as a minimum delay (fewer, shorter rewinds), and
-    // never more than its rewind window short of the full delay.
+    // NEOcode: BT3 reads the pads 120 times a second, so a buffer step is ~8 ms. Measured in
+    // matches (50 ms ping, clashes): with the delay well short of the ping, nearly every guess of
+    // the other side's mashing is wrong (8-19 rewinds a second, each freezing the picture 24-75
+    // ms); a delay ~2 steps short of it leaves only spikes to rewind. So: (ping + jitter) / 8,
+    // minus 2 steps (well inside the rewind window).
     if (m_neocode)
-      buffer = std::max({1, buffer - (NeoCode::MAX_ROLLBACK_FIELDS - 2), (buffer + 1) / 2});
+      buffer = std::clamp(static_cast<int>((high + std::max(jitter, 0) + 7) / 8) - 2, 2, 20);
     if (!worst || buffer > worst->buffer)
       worst = AutoBufferChoice{buffer, high, std::max(jitter, 0)};
   }
@@ -1455,6 +1458,7 @@ NeoCode::Callbacks NetPlaySession::MakeNeoCodeCallbacks()
                         .Add("guesses", static_cast<int64_t>(stats.guesses))
                         .Add("wrong_guesses", static_cast<int64_t>(stats.wrong_guesses))
                         .Add("queued", static_cast<int64_t>(stats.queued))
+                        .Add("saves_skipped", static_cast<int64_t>(stats.saves_skipped))
                         .AddRaw("save_ms", fmt::format("{:.2f}", stats.save_ms))
                         .AddRaw("load_ms", fmt::format("{:.2f}", stats.load_ms))
                         .AddRaw("resim_ms", fmt::format("{:.2f}", stats.resim_ms)));

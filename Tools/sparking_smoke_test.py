@@ -1634,6 +1634,9 @@ def neocode_check(exe, work):
             check(f"{inst.name}: inputs don't pile up (most queued per stats: {queued})",
                   len(queued) >= 3 and max(queued) <= 12)
             check(f"{inst.name}: re-run time reported ({stats.get('resim_ms')} ms)", "resim_ms" in stats)
+            check(f"{inst.name}: re-runs skip the saves nothing can rewind to "
+                  f"({stats.get('saves_skipped')} skipped, {stats['rollback_fields']} fields re-run)",
+                  stats.get("saves_skipped", 0) > 0)
             check(f"{inst.name}: wrong guesses are rewound and re-run ({stats['wrong_guesses']} wrong of "
                   f"{stats['guesses']} guesses, {stats['rollbacks']} rewinds, R {stats['r']})",
                   stats["wrong_guesses"] > 0 and stats["rollbacks"] > 0)

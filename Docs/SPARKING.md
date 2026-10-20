@@ -356,7 +356,7 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
 - Events: `{"event":"netcode","mode":"neocode|delay"}`;
   `{"event":"neocode","state":"on|waiting|failed|off",...}`: "on" at the start, then every ~60
   fields with `r` (the biggest re-run since the last one, in game frames: what "R n" shows),
-  `rollbacks`, `stalls`, `guesses`, `wrong_guesses`, `save_ms`, `load_ms`, `resim_ms` (the
+  `rollbacks`, `stalls`, `polls`, `guesses`, `wrong_guesses`, `saves_skipped`, `save_ms`, `load_ms`, `resim_ms` (the
   longest re-run since the last one, real time: how long the picture and sound stopped), ...;
   "failed" with `reason`;
   `{"event":"neocode_check","field":n,"match":true|false}`.
@@ -392,7 +392,16 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
   the resolution and anti-aliasing. A rewind keeps the texture cache as it is (emptying it lost
   the frame / effect copies that only live there: purple flashes and big stutters); an effect
   copy may be a few frames old right after a rewind. The game itself isn't affected.
-- With NEOcode the automatic pad buffer is lower (`max(1, buffer-10, (buffer+1)/2)`), ranked
+- BT3 reads the pads 120 times a second (2 polls per field per pad: `polls` grows by 240 per 60
+  fields in a 2-player match), so one pad-buffer step is ~8 ms. Measured in matches (50 ms ping,
+  clashes): at buffer 2 nearly every guess of the other side's mashing was wrong, 8-19 rewinds a
+  second each freezing the picture 24-75 ms; at buffer 6, about one 16 ms rewind every few
+  seconds. With NEOcode the automatic pad buffer is `(ping + jitter) / 8 - 2` (2-20), so only
+  spikes are left to rewind.
+- A re-run doesn't save the fields nothing could rewind to (all of its inputs and the next
+  field's are real: the next field's save replaces it), about half of them: each save is ~2 ms of
+  a ~10 ms re-run field. `saves_skipped` in the stats counts them.
+- With NEOcode, ranked
   replays are off, spectators stay on delay netplay, and every player needs this build.
 - If saving / rewinding fails, the match goes on as delay netplay ("NEOcode stopped ...").
 - Test hooks (`--test-hooks`): `test_input <seed>` plays a pseudo-random pad pattern,

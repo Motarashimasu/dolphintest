@@ -93,6 +93,7 @@ int s_saves = 0, s_loads = 0;
 u64 s_next_stats = 0;
 std::array<u64, 4> s_stalled_at{};  // poll that last had to wait (counts each wait once)
 std::array<GCPadStatus, 4> s_stable{};  // Stabilize: each local pad's last output
+std::array<u64, 4> s_field_start_poll{};  // each pad's poll index when this field started
 
 bool Same(const GCPadStatus& a, const GCPadStatus& b)
 {
@@ -250,10 +251,35 @@ void EmitStats()
   s_saves = s_loads = 0;
 }
 
+// During a re-run, a field whose inputs are all real AND the next field's too (as many real ones
+// are already in for every pad as this field used) would be saved only to be dropped at the next
+// field end: a newer final save replaces it, and no rewind goes back to anything older than the
+// newest final save. Skipping it makes each re-run frame cheaper (the save is a quarter of it).
+bool SaveNotNeeded()
+{
+  if (!s_resim || s_finish_resim || s_field % CHECKSUM_FIELDS == 0)
+    return false;
+  for (int p = 0; p < 4; ++p)
+  {
+    const u64 used = s_poll[p] - s_field_start_poll[p];
+    if (s_confirmed[p] < s_poll[p] + used)
+      return false;
+  }
+  return true;
+}
+
 void JobSnapshot(Core::System& system)
 {
   if (s_finish_resim)
     FinishResim(system);
+  if (SaveNotNeeded())
+  {
+    ++s_stats.saves_skipped;
+    s_field_start_poll = s_poll;
+    Resume(system);
+    return;
+  }
+  s_field_start_poll = s_poll;
   const auto t0 = Clock::now();
   Record record;
   if (!s_spare.empty())
@@ -376,6 +402,7 @@ void JobRollback(Core::System& system)
   if (s_cb.load_side)
     s_cb.load_side(target->side);
   s_poll = target->poll;
+  s_field_start_poll = s_poll;
   s_field = target->field;
   s_wrong.fill(NONE);
   // Later saves and checksums are of a past that didn't happen.
@@ -442,6 +469,7 @@ void Start(std::function<void()> drain, Callbacks callbacks)
   s_confirmed = {};
   s_wrong.fill(NONE);
   s_stalled_at = {};
+  s_field_start_poll = {};
   s_stable.fill(GCPadStatus{});
   s_field = 0;
   s_armed = false;

@@ -54,6 +54,7 @@ struct Stats
   u64 guesses = 0;              // inputs played with a guess
   u64 wrong_guesses = 0;
   u64 queued = 0;               // most inputs any pad has received and not played yet
+  u64 saves_skipped = 0;        // re-run fields not saved (nothing could rewind to them)
 };
 
 struct Callbacks
