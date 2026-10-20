@@ -1664,6 +1664,10 @@ def neocode_check(exe, work):
             time.sleep(0.1)
         bad = joiner.wait_for("neocode_check", lambda e: not e["match"], timeout=120)
         check(f"a desync shows up in the checksums (field {bad['field']})", True)
+        for inst in (joiner, host):
+            diff = inst.wait_for("neocode_diff", timeout=60)
+            check(f"{inst.name}: the mismatch is narrowed to the 64 KiB piece that differs {diff}",
+                  diff["blocks"] == ["80100000"] and diff["block_size"] == 65536)
         for inst in (host, joiner):
             inst.send("quit")
         for inst in (host, joiner):

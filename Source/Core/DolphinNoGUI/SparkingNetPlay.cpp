@@ -1391,6 +1391,9 @@ void NetPlaySession::OnMsgStartGame()
             std::lock_guard lk(m_sums_mutex);
             m_own_sums.clear();
             m_peer_sums.clear();
+            m_own_blocks.clear();
+            m_peer_blocks.clear();
+            m_blocks_sent = false;
           }
           m_client->StartGame(game->GetFilePath());
           m_neocode_running = m_client->IsNeoCodeActive();
@@ -1437,10 +1440,13 @@ NeoCode::Callbacks NetPlaySession::MakeNeoCodeCallbacks()
     std::lock_guard lk(m_held_mutex);
     std::erase_if(m_held, [ticks](const HeldEvent& e) { return e.ticks > ticks; });
   };
-  cb.checksum = [this](u64 field, u64 checksum) {
+  cb.checksum = [this](u64 field, u64 checksum, const std::vector<u64>& blocks) {
     SendControl(fmt::format("neosum {} {:x}", field, checksum));
     std::lock_guard lk(m_sums_mutex);
     m_own_sums[field] = checksum;
+    m_own_blocks[field] = blocks;
+    while (m_own_blocks.size() > 16)
+      m_own_blocks.erase(m_own_blocks.begin());
     CompareSums();
   };
   cb.stats = [](const NeoCode::Stats& stats) {
@@ -1508,6 +1514,12 @@ void NetPlaySession::CompareSums()
                                 .Add("field", static_cast<int64_t>(it->first))
                                 .Add("player", static_cast<int>(pid))
                                 .Add("match", same));
+      // The first mismatch: tell the others where our memory is what (they do the same).
+      if (!same && !m_blocks_sent)
+      {
+        m_blocks_sent = true;
+        SendBlocks(it->first);
+      }
     }
     it = m_peer_sums.erase(it);
   }
@@ -1516,6 +1528,46 @@ void NetPlaySession::CompareSums()
     m_own_sums.erase(m_own_sums.begin());
   while (m_peer_sums.size() > 64)
     m_peer_sums.erase(m_peer_sums.begin());
+}
+
+constexpr size_t BLOCKS_PER_MESSAGE = 48;  // "neoblk" parts: ~0.8 KB each
+
+void NetPlaySession::SendBlocks(u64 field)
+{
+  const auto own = m_own_blocks.find(field);
+  if (own == m_own_blocks.end())
+    return;
+  const std::vector<u64>& blocks = own->second;
+  for (size_t first = 0; first < blocks.size(); first += BLOCKS_PER_MESSAGE)
+  {
+    std::string list;
+    for (size_t i = first; i < std::min(blocks.size(), first + BLOCKS_PER_MESSAGE); ++i)
+      list += fmt::format("{}{:x}", i == first ? "" : ",", blocks[i]);
+    SendControl(fmt::format("neoblk {} {} {} {}", field, first, blocks.size(), list));
+  }
+}
+
+void NetPlaySession::CompareBlocks(u64 field, NetPlay::PlayerId pid)
+{
+  const auto own = m_own_blocks.find(field);
+  const auto peer = m_peer_blocks.find({field, pid});
+  if (own == m_own_blocks.end() || peer == m_peer_blocks.end() ||
+      peer->second.size() != own->second.size())
+  {
+    return;
+  }
+  std::vector<std::string> differ;
+  for (size_t i = 0; i < own->second.size(); ++i)
+  {
+    if (own->second[i] != peer->second[i])
+      differ.push_back(Json::Escape(fmt::format("{:08X}", 0x80000000u + i * NeoCode::CHECKSUM_BLOCK)));
+  }
+  Emit("neocode_diff", Json()
+                           .Add("field", static_cast<int64_t>(field))
+                           .Add("player", static_cast<int>(pid))
+                           .Add("block_size", static_cast<int>(NeoCode::CHECKSUM_BLOCK))
+                           .AddRaw("blocks", JsonArray(differ)));
+  m_peer_blocks.erase(peer);
 }
 
 void NetPlaySession::OnMsgStopGame()
@@ -1880,6 +1932,32 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
     const bool neocode = parts[1] == "neocode";
     if (neocode != m_neocode.exchange(neocode))
       Emit("netcode", Json().Add("mode", neocode ? "neocode" : "delay"));
+    return;
+  }
+  else if (parts[0] == "neoblk" && parts.size() == 5)
+  {
+    // "neoblk <field> <first> <total> h,h,...": a part of another player's checksum pieces.
+    u64 field = 0, first = 0, total = 0;
+    std::from_chars(parts[1].data(), parts[1].data() + parts[1].size(), field);
+    std::from_chars(parts[2].data(), parts[2].data() + parts[2].size(), first);
+    std::from_chars(parts[3].data(), parts[3].data() + parts[3].size(), total);
+    if (total == 0 || total > 4096 || first >= total)
+      return;
+    std::lock_guard lk(m_sums_mutex);
+    std::vector<u64>& blocks = m_peer_blocks[{field, from}];
+    blocks.resize(total, ~0ull);
+    std::string_view rest = parts[4];
+    for (u64 i = first; i < total && !rest.empty(); ++i)
+    {
+      const size_t comma = rest.find(',');
+      const std::string_view hex = rest.substr(0, comma);
+      std::from_chars(hex.data(), hex.data() + hex.size(), blocks[i], 16);
+      rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+    }
+    if (first + BLOCKS_PER_MESSAGE >= total)   // the last part: compare
+      CompareBlocks(field, from);
+    while (m_peer_blocks.size() > 8)
+      m_peer_blocks.erase(m_peer_blocks.begin());
     return;
   }
   else if (parts[0] == "neosum" && parts.size() == 3)

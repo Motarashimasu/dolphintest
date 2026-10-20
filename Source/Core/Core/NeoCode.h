@@ -38,6 +38,7 @@ namespace NeoCode
 constexpr int MAX_ROLLBACK_FIELDS = 12;  // 6 BT3 frames, 200 ms
 constexpr int START_FIELDS = 60;          // fields after the start before guessing begins
 constexpr u64 CHECKSUM_FIELDS = 120;
+constexpr u32 CHECKSUM_BLOCK = 0x10000;  // 64 KiB: the pieces a checksum mismatch is narrowed to
 
 struct Stats
 {
@@ -66,8 +67,9 @@ struct Callbacks
   // `ticks` (what happened after it didn't happen).
   std::function<void(u64 ticks)> final_until;
   std::function<void(u64 ticks)> rewound_to;
-  // The memory checksum at the start of `field`, now final.
-  std::function<void(u64 field, u64 checksum)> checksum;
+  // The memory checksum at the start of `field`, now final, and its CHECKSUM_BLOCK pieces' hashes
+  // (MEM1 in order), to find where two players' memories differ.
+  std::function<void(u64 field, u64 checksum, const std::vector<u64>& blocks)> checksum;
   // Every ~60 fields.
   std::function<void(const Stats&)> stats;
   // Something broke (can't save / rewind): the match goes on as delay netplay.

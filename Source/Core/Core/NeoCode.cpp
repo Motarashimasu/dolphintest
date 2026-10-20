@@ -61,6 +61,7 @@ struct PendingChecksum
   u64 field = 0;
   u64 ticks = 0;
   u64 checksum = 0;
+  std::vector<u64> blocks;  // each CHECKSUM_BLOCK of MEM1's
 };
 
 std::atomic<bool> s_active{false};
@@ -201,7 +202,7 @@ void UpdateFinal()
         if (c->ticks <= s_final_ticks)
         {
           if (s_cb.checksum)
-            s_cb.checksum(c->field, c->checksum);
+            s_cb.checksum(c->field, c->checksum, c->blocks);
           c = s_checksums.erase(c);
         }
         else
@@ -326,20 +327,33 @@ void JobSnapshot(Core::System& system)
   {
     // Not the Gecko code area, nor what the per-port codes write: each player runs their own
     // port's codes (the splitscreen removers), so those differ between players by design.
+    // Hashed in CHECKSUM_BLOCK pieces: when the players' checksums differ, the pieces' hashes
+    // show where (Callbacks::checksum).
     const u8* ram = memory.GetRAM();
     const u32 ram_size = memory.GetRamSizeReal();
-    u64 checksum = 0;
-    u32 pos = 0;
-    u64 part = 1;
-    for (const auto& [begin, end] : s_checksum_skip)
+    PendingChecksum pending{s_field, s_records.back().ticks, 0, {}};
+    pending.blocks.reserve(ram_size / CHECKSUM_BLOCK + 1);
+    auto skip = s_checksum_skip.begin();
+    for (u32 block = 0; block < ram_size; block += CHECKSUM_BLOCK)
     {
-      if (begin > pos && pos < ram_size)
-        checksum ^= Common::GetHash64(ram + pos, std::min(begin, ram_size) - pos, 0) * (2 * part++ + 1);
-      pos = std::max(pos, end);
+      const u32 block_end = std::min(ram_size, block + CHECKSUM_BLOCK);
+      u64 hash = 0;
+      u64 part = 1;
+      u32 pos = block;
+      while (skip != s_checksum_skip.end() && skip->second <= block)
+        ++skip;
+      for (auto it = skip; it != s_checksum_skip.end() && it->first < block_end; ++it)
+      {
+        if (it->first > pos)
+          hash ^= Common::GetHash64(ram + pos, it->first - pos, 0) * (2 * part++ + 1);
+        pos = std::max(pos, std::min(it->second, block_end));
+      }
+      if (pos < block_end)
+        hash ^= Common::GetHash64(ram + pos, block_end - pos, 0) * (2 * part + 1);
+      pending.blocks.push_back(hash);
+      pending.checksum = pending.checksum * 0x100000001B3ull ^ hash;
     }
-    if (pos < ram_size)
-      checksum ^= Common::GetHash64(ram + pos, ram_size - pos, 0) * (2 * part + 1);
-    s_checksums.push_back({s_field, s_records.back().ticks, checksum});
+    s_checksums.push_back(std::move(pending));
   }
   s_save_total += Ms(t0, Clock::now());
   ++s_saves;

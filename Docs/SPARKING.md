@@ -359,7 +359,10 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
   `rollbacks`, `stalls`, `polls`, `guesses`, `wrong_guesses`, `saves_skipped`, `save_ms`, `load_ms`, `resim_ms` (the
   longest re-run since the last one, real time: how long the picture and sound stopped), ...;
   "failed" with `reason`;
-  `{"event":"neocode_check","field":n,"match":true|false}`.
+  `{"event":"neocode_check","field":n,"match":true|false}`;
+  `{"event":"neocode_diff","field":n,"player":pid,"block_size":65536,"blocks":["80xx0000",...]}`
+  after the first mismatch of a match: which 64 KiB pieces of MEM1 differ (the checksum is taken
+  per piece; both players send theirs once, `neoblk` control messages, ~8 KB).
 - Engine (`Core/NeoCode`): the pad buffer stays as a minimum delay; past it a missing remote input
   is guessed (the last one received). The state is saved at every field end (dirty memory pages,
   rest of the state, the frontend's watch/HUD state); a wrong guess rewinds to the latest field
@@ -383,7 +386,9 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
   confirmed) and dropped when a rewind takes them back, so both players emit the same sequence.
 - Every 120 fields the players exchange the MEM1 checksum (`neosum`); a mismatch shows
   "NEOcode: the players' games are out of sync." once per match. It's only a notice: the match
-  goes on. The Gecko code area (0x80001800-0x80003000) isn't in the checksum, nor the memory the
+  goes on. BT3 PAL matches showed it every time (Oct 2026); the cameras aren't the cause (they
+  live in MEM2, around `0x9233F000`, and the check covers MEM1 only), and neither the GPU command
+  buffer nor a copy of the camera is in MEM1: `neocode_diff` is there to find what is. The Gecko code area (0x80001800-0x80003000) isn't in the checksum, nor the memory the
   per-port codes write (their 00 / 02 / 04 / 06 writes and C2 hooks, every port's): each player
   runs only their own port's splitscreen remover. Dolphin's own desync warning (from the
   timebase) is off with NEOcode.

@@ -337,6 +337,13 @@ private:
   std::map<u64, u64> m_own_sums;                                     // guarded by m_sums_mutex
   std::map<u64, std::map<NetPlay::PlayerId, u64>> m_peer_sums;       // guarded by m_sums_mutex
   void CompareSums();                                                // with m_sums_mutex held
+  // Each checksum's 64 KiB pieces (NeoCode::CHECKSUM_BLOCK): on the first mismatch of a match the
+  // players send theirs ("neoblk") and each emits "neocode_diff": which pieces differ.
+  std::map<u64, std::vector<u64>> m_own_blocks;                      // guarded by m_sums_mutex
+  std::map<std::pair<u64, NetPlay::PlayerId>, std::vector<u64>> m_peer_blocks;  // m_sums_mutex
+  bool m_blocks_sent = false;                                        // guarded by m_sums_mutex
+  void SendBlocks(u64 field);                                        // with m_sums_mutex held
+  void CompareBlocks(u64 field, NetPlay::PlayerId pid);              // with m_sums_mutex held
   int m_seen_results = 0;
   std::optional<std::chrono::steady_clock::time_point> m_auto_due, m_auto_deadline;
   // While a match runs the lobby loop is parked: a ticker hands PumpAutoBuffer to the host
