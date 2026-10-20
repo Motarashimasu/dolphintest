@@ -1,5 +1,5 @@
 extends Node
-## Languages: English (the text in the scripts), Spanish and Italian.
+## Languages: English (the text in the scripts), Spanish, Italian and Japanese.
 ##
 ## Every text the menus show is written in English in the scripts; Godot looks it up in the
 ## current language's table when it draws a label (Labels translate their text automatically),
@@ -7,8 +7,8 @@ extends Node
 ## The tables are data/translations/<code>.json: { "English text": "translated text", ... }.
 ## A text missing from a table is simply shown in English. Edit them with any text editor.
 
-const LANGUAGES := ["en", "es", "it"]
-const NAMES := {"en": "English", "es": "Español", "it": "Italiano"}
+const LANGUAGES := ["en", "es", "it", "ja"]
+const NAMES := {"en": "English", "es": "Español", "it": "Italiano", "ja": "日本語"}
 const DIR := "res://data/translations/"
 const GameTerms := preload("res://scripts/game_terms.gd")
 

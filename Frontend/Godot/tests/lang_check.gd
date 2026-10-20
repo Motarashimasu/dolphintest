@@ -11,7 +11,7 @@ func _run() -> void:
 	for i in 20:
 		await get_tree().process_frame
 	var main := get_tree().current_scene
-	print("LANG_CHECK picker shown: ", main.top().screen_title() == "Language / Idioma / Lingua")
+	print("LANG_CHECK picker shown: ", main.top().screen_title() == "Language / Idioma / Lingua / 言語")
 	for d in ["ui_down"]:   # English -> Español
 		_press(d)
 		await get_tree().process_frame

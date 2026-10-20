@@ -176,30 +176,55 @@ static func track_parent(track: String, parents: Dictionary) -> String:
 static func title_font() -> Font:
 	_ensure()
 	if _title_font == null:
-		_title_font = look.title_font if look.title_font else menu_font()
+		_title_font = _with_japanese(look.title_font, 700) if look.title_font else menu_font()
 	return _title_font
 
 
 static func menu_font() -> Font:
 	_ensure()
 	if _menu_font == null:
-		_menu_font = look.menu_font if look.menu_font else _load_font("menu", 0.9)
+		_menu_font = _with_japanese(look.menu_font if look.menu_font else _load_font("menu", 0.9), 700)
 	return _menu_font
 
 
 static func body_font() -> Font:
 	_ensure()
 	if _body_font == null:
-		_body_font = look.body_font if look.body_font else _load_font("body", 0.4, ["Tahoma", "Verdana"])
+		_body_font = _with_japanese(look.body_font if look.body_font else _load_font("body", 0.4, ["Tahoma", "Verdana"]), 400)
 	return _body_font
 
 
 static func button_font() -> Font:
 	_ensure()
 	if _button_font == null:
-		_button_font = look.button_font if look.button_font \
-				else _load_font("button", 0.6, ["Impact", "Haettenschweiler"])
+		_button_font = _with_japanese(look.button_font if look.button_font \
+				else _load_font("button", 0.6, ["Impact", "Haettenschweiler"]), 700)
 	return _button_font
+
+
+## Japanese text (the Japanese menus, players' names): the menu fonts have no Japanese letters, so
+## each gets the PC's Japanese font as a fallback (Windows: Yu Gothic UI / Meiryo / MS Gothic),
+## bold for titles and buttons. Godot's own default font (plain labels, text fields) too.
+const JAPANESE_FONTS := ["Yu Gothic UI", "Yu Gothic", "Meiryo UI", "Meiryo", "MS UI Gothic",
+	"MS Gothic", "Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN"]
+static var _japanese := {}   # weight -> SystemFont
+
+
+static func _with_japanese(font: Font, weight: int) -> Font:
+	if font == null:
+		return font
+	if not _japanese.has(weight):
+		var jp := SystemFont.new()
+		jp.font_names = PackedStringArray(JAPANESE_FONTS)
+		jp.font_weight = weight
+		_japanese[weight] = jp
+		if weight == 400:
+			_with_japanese(ThemeDB.fallback_font, 400)
+	var list: Array[Font] = font.fallbacks
+	if not list.has(_japanese[weight]):
+		list.append(_japanese[weight])
+		font.fallbacks = list
+	return font
 
 
 static func _load_font(base: String, fallback_bold: float, system: Array = []) -> Font:

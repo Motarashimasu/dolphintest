@@ -18,7 +18,7 @@ Dolphin-Sparking build (`DolphinNoGUI.exe`) through its `[SPARKING]` stdin/stdou
    "controller paused while the menu is open" need the new `DolphinNoGUI.exe`.
 3. In Godot, use **Import** and pick `Frontend/Godot/project.godot`, then press **Run** (F5).
    - A newer Godot asks to convert the project once; say yes.
-4. The first time only, the launcher asks for the menus' language (English, Español, Italiano),
+4. The first time only, the launcher asks for the menus' language (English, Español, Italiano, 日本語),
    then **Welcome** asks for one game file of each game (any version; Tenkaichi 2 can wait),
    your DRAGON NET name and region.
 
@@ -214,14 +214,20 @@ tutorial open it on A.
 The menus take controller and keyboard only: the mouse is hidden and ignored, so it can't
 steal the selection.
 
-**Languages.** English, Spanish and Italian. Picked at the first launch; Options > Language
+**Languages.** English, Spanish, Italian and Japanese. Picked at the first launch; Options > Language
 changes it any time. Netplay is called **DRAGON NET** in the menus and on Discord.
 - Every menu text is written in English in the scripts. The translations are
-  `data/translations/es.json` and `it.json`: `"English text": "translated text"`. Edit them in any
+  `data/translations/es.json`, `it.json` and `ja.json`: `"English text": "translated text"`. Edit them in any
   text editor; a missing or empty entry shows in English. Keep `%s` / `%d` in the same order.
 - Not translated: Tenkaichi Terminology (it comes from the community doc), Gecko code names,
-  player and controller names.
-- The UI tour records every text it shows and fails if one is missing from either table.
+  player and controller names. In Japanese the "Tenkaichi Terminology" / "Terminology" menu
+  names stay in English too, for now.
+- Japanese: the games are called by their Japanese releases' names, Sparking! METEOR
+  (Tenkaichi 3) and Sparking! NEO (Tenkaichi 2), with "ドラゴンボールZ" in front for the full
+  title: `scripts/game_terms.gd` (LANG_SWAPS) swaps them into every text shown, so the table
+  never names the games. Text uses the PC's Japanese font (Yu Gothic UI / Meiryo on Windows) as a
+  fallback of the menu fonts (`scripts/ui/style.gd`).
+- The UI tour records every text it shows and fails if one is missing from any table.
 
 **Sound effects.** Seven sounds, all empty for now (silent until you add them):
 

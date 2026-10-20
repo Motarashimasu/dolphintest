@@ -108,11 +108,12 @@ func _language_menu(first_launch := false) -> Control:
 		"en": "Menus in English.\nYou can change this later in Options.",
 		"es": "Menús en español.\nPuedes cambiarlo más tarde en Opciones.",
 		"it": "Menu in italiano.\nPuoi cambiarlo più tardi in Opzioni.",
+		"ja": "メニューを日本語で表示します。\n後からオプションで変更できます。",
 	}
 	for code in Lang.LANGUAGES:
 		items.append({"label": Lang.NAMES[code], "glyph": code.to_upper(), "color": "#f2b531",
 			"desc": desc[code], "action": func(): choose_language(code)})
-	var s := _menu("Language / Idioma / Lingua", items)
+	var s := _menu("Language / Idioma / Lingua / 言語", items)
 	s.set_meta("first_launch", first_launch)
 	return s
 
@@ -255,8 +256,9 @@ func set_desc(text: String) -> void:
 	# Long definitions get a smaller font so they fit the bar.
 	var ls := _desc.label_settings
 	var size := 28
+	var shown := _desc.atr(text)   # what the label shows: the translation (Japanese is wider)
 	while size > 17:
-		var h := ls.font.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, _desc.size.x, size).y
+		var h := ls.font.get_multiline_string_size(shown, HORIZONTAL_ALIGNMENT_LEFT, _desc.size.x, size).y
 		if h * 1.2 <= _desc.size.y:
 			break
 		size -= 1
@@ -320,7 +322,10 @@ func _main_menu() -> Control:
 	for key in Settings.GAME_ORDER:
 		var g: Dictionary = Settings.GAMES[key]
 		items.append({"label": g["title"], "glyph": g["glyph"], "color": g["color"],
-			"desc": tr("%s (%s).\nPlay offline or online, set up controllers and codes.") % [g["full_title"], g["jp"]],
+			# (In Japanese the title already is the Japanese one: game_terms.gd.)
+			"desc": tr("%s.\nPlay offline or online, set up controllers and codes.") % g["full_title"]
+					if Lang.current() == "ja" else
+					tr("%s (%s).\nPlay offline or online, set up controllers and codes.") % [g["full_title"], g["jp"]],
 			"action": func():
 				Settings.use_game(key)
 				push(_game_menu(key))})

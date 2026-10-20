@@ -90,7 +90,7 @@ func _check_translations() -> void:
 	var ignore: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/untranslated_ok.json"))["texts"]
 	# Terminology content comes from the community doc and stays in English.
 	var term_text := FileAccess.get_file_as_string("res://data/terminology.json")
-	for code in ["es", "it"]:
+	for code in ["es", "it", "ja"]:
 		var table: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/translations/%s.json" % code))
 		# Text built from a translated template ("Pad buffer: 5" from "Pad buffer: %d") is fine.
 		var templates: Array[RegEx] = []
@@ -1339,9 +1339,9 @@ func _tour() -> void:
 	app.push(app._language_menu(true))
 	await frames(5)
 	await shot("language_picker")
-	check("language picker lists three", top().carousel.items.size() == 3)
+	check("language picker lists four", top().carousel.items.size() == 4)
 	app.pop()
-	for code in ["es", "it"]:
+	for code in ["es", "it", "ja"]:
 		Lang.set_language(code)
 		app.push(app._main_menu())
 		await frames(5)
@@ -1360,5 +1360,19 @@ func _tour() -> void:
 		app.pop()
 		app.pop()
 		app.pop()
+	# Japanese: the games are called by their Japanese releases' names; BT2's mode is Tag Battle.
+	Lang.set_language("ja")
+	var was_game := Settings.game
+	Settings.game = "bt3"
+	check("ja: Tenkaichi 3 is Sparking! METEOR", TranslationServer.translate("Tenkaichi 3") == "Sparking! METEOR"
+			and TranslationServer.translate("Dragon Ball Z: Budokai Tenkaichi 3") == "ドラゴンボールZ Sparking! METEOR"
+			and TranslationServer.translate("Your Budokai Tenkaichi 3 PAL copy") == "Your Sparking! METEOR PAL copy"
+			and TranslationServer.translate("Team Battle") == "チームバトル")
+	Settings.game = "bt2"
+	check("ja: Tenkaichi 2 is Sparking! NEO, Tag Battle", TranslationServer.translate("Budokai Tenkaichi 2") == "Sparking! NEO"
+			and TranslationServer.translate("Team Battle") == "タッグバトル"
+			and TranslationServer.translate("Single Battle FT2: first to 2 wins. Team Battle: one match.") \
+				== "シングルバトル FT2：2本先取。タッグバトル：1試合。")
+	Settings.game = was_game
 	Lang.set_language("en")
 	check("the shown title is translated", TranslationServer.translate("Main Menu") == "Main Menu")
