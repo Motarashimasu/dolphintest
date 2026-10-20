@@ -458,7 +458,8 @@ edges)` (on by default; RDSPAF's code ported with `Tools/gecko/find_hud_sites.py
 Splitscreen Remover` (`0x80090B6C`, `0x8001529C`, `0x800152AC`), plus `[Sparking.Modes]` pointing at
 `RDSJAF-SingleBattle.sst` / `RDSJAF-TeamBattle.sst` / `RDSJAF-BufferTraining.sst` (to capture).
 Its netplay save: `saves/netplay/RDSJAF/title/00010000/5244534a/data/` (`banner.bin`, `DBZSM`,
-`nocopy/DBZSM_WIFI`).
+`nocopy/DBZSM_WIFI`). Its `[Sparking.Watch]` (`p1/p2_health_pct`, see Memory watcher) turns on the
+HUD's score bar, ping / buffer line and KO detection.
 
 BT2 NTSC-J (`RDBJAF`, Sparking! NEO) ships `Player 1/2 Splitscreen Remover` too, in
 `Data/Sys/GameSettings/RDBJAF.ini`. BT2's engine doesn't share BT3's hook sites, so these were
@@ -788,6 +789,11 @@ p1_ko = p1_health_pct <= 0
   P1 94.125 with 37650/40000 HP; P2 0 when dead; team totals in Team Battle.
 - Triggers `p1_defeated` / `p2_defeated`: that side's health reached 0 = that side lost the
   match (Single and Team Battle alike). Winner = the other side.
+
+**BT3 NTSC-J (RDSJAF)**: the same values in the same battle struct, at `0x803CF924` /
+`0x803CF928` (PAL's struct is at `0x803CF6C0`, JP's at `0x803CDFC0`; both cleared `0x1a00` bytes
+at battle setup, `0x8008eb4c` / `0x8008e360`; the percentages are at +0x1964 / +0x1968). Checked
+in a JP battle dump (100.0 / 92.47). Same triggers.
 
 - Round counting (temporary HUD score bar + `round_result`): a round is live once both sides are
   at 100%. When a side reaches 0%, the result waits ~0.75 s: if the other side is still alive
