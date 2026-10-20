@@ -174,10 +174,41 @@ static func selected() -> Dictionary:
 	return p if not p.is_empty() else auto_pick()
 
 
+## GCPadNew.ini is shared by every game, but each game has its own buttons. [GCPad1] remembers
+## whose mapping it holds (Settings controller/gcpad_game); before another game's mapping goes in,
+## the one there is kept as that game's last mapping (<SparkingData>/controllers/<game>/
+## last_used.gcpad), so going back to a game with nothing to apply (Keep, or Auto finding no
+## preset for the pad) gives it its own buttons back, never the other game's.
+static func _last_used_path(game_key: String) -> String:
+	return Settings.data_path("controllers").path_join(game_key).path_join("last_used.gcpad")
+
+
+static func _keep_previous_game_mapping() -> void:
+	var owner := String(Settings.get_value("controller", "gcpad_game"))
+	if owner == "" or owner == game():
+		return
+	var keys := current_keys()
+	if keys.is_empty():
+		return
+	DirAccess.make_dir_recursive_absolute(_last_used_path(owner).get_base_dir())
+	var f := FileAccess.open(_last_used_path(owner), FileAccess.WRITE)
+	if f:
+		f.store_string(write_ini({"GCPad1": keys}))
+
+
+## The current game's last mapping (see above), or [].
+static func last_used_keys() -> Array:
+	var path := _last_used_path(game())
+	if not FileAccess.file_exists(path):
+		return []
+	return parse_ini(FileAccess.get_file_as_string(path)).get("GCPad1", [])
+
+
 ## Writes a preset into GCPadNew.ini as [GCPad1]; other sections (ports 2-4) are kept.
 static func apply(preset: Dictionary) -> bool:
 	if preset.is_empty():
 		return false
+	_keep_previous_game_mapping()
 	var path := gcpad_path()
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var ini := parse_ini(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else {}
@@ -189,12 +220,22 @@ static func apply(preset: Dictionary) -> bool:
 	if f == null:
 		return false
 	f.store_string(write_ini(sections))
+	Settings.set_value("controller", "gcpad_game", game())
 	return true
 
 
-## Called before every game launch.
+## Called before every game launch: the game's preset, else (Keep, or no preset for the pad) the
+## mapping it last used if [GCPad1] holds another game's, else what's there.
 static func apply_selected() -> void:
-	apply(selected())
+	if apply(selected()):
+		return
+	var owner := String(Settings.get_value("controller", "gcpad_game"))
+	if owner != "" and owner != game():
+		var last := last_used_keys()
+		if not last.is_empty():
+			apply({"name": "last used", "keys": last})
+			return
+	Settings.set_value("controller", "gcpad_game", game())
 
 
 ## The mapping currently in GCPadNew.ini's [GCPad1].

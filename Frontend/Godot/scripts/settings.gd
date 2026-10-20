@@ -122,7 +122,8 @@ var defaults := {
 		"b2last_single": 0, "b2last_team": 0},   # (Budokai Tenkaichi 2's)
 	# Per game: "<game>_preset" = auto, keep, or a preset name (scripts/controllers.gd); "" = not
 	# chosen yet. ("preset": the one choice before per-game ones, now Tenkaichi 3's.)
-	"controller": {"preset": "auto", "bt3_preset": "", "bt2_preset": ""},
+	# "gcpad_game": whose mapping GCPadNew.ini's [GCPad1] holds now (scripts/controllers.gd).
+	"controller": {"preset": "auto", "bt3_preset": "", "bt2_preset": "", "gcpad_game": ""},
 	# Game copies: "<game>_<version>" = disc image path, "<game>_offline" = the version Play
 	# Offline uses, "<game>_netplay" = the version last picked for DRAGON NET.
 	"games": {},

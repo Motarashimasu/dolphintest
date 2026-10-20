@@ -1184,8 +1184,30 @@ func _tour() -> void:
 			and pads.Controllers.find("PlayStation 5 (Windows Gaming Input) - Recovery Fix").get("match", []).is_empty()
 			and pads.Controllers.find("PlayStation 4-5 (DirectInput) - Recovery Fix").get("match", []).is_empty())
 	check("BT2 has its own choice", pads.Controllers.choice() == pads.Controllers.AUTO)
+	# One GCPadNew.ini for both games: switching games never leaves the other game's buttons.
+	Settings.use_game("bt3")
+	pads.Controllers.apply_selected()                       # Tenkaichi 3: Tour Pad
+	Settings.use_game("bt2")
+	pads.Controllers.set_choice("Xbox - Recovery Fix")
+	pads.Controllers.apply_selected()
+	var gp1 := func(k: String) -> String:
+		for kv in pads.Controllers.current_keys():
+			if kv[0] == k:
+				return kv[1]
+		return ""
+	check("BT2's preset in, owned by BT2", gp1.call("Buttons/A") == "`Button A`"
+			and Settings.get_value("controller", "gcpad_game") == "bt2")
 	pads.Controllers.set_choice(pads.Controllers.KEEP)
 	Settings.use_game("bt3")
+	pads.Controllers.set_choice(pads.Controllers.KEEP)
+	pads.Controllers.apply_selected()
+	check("back to Tenkaichi 3 on Keep: its own last buttons, not BT2's", gp1.call("Buttons/A") == "`Button X`"
+			and Settings.get_value("controller", "gcpad_game") == "bt3")
+	Settings.use_game("bt2")
+	pads.Controllers.apply_selected()
+	check("and back to BT2 on Keep: BT2's own again", gp1.call("Buttons/A") == "`Button A`")
+	Settings.use_game("bt3")
+	pads.Controllers.set_choice("Tour Pad")
 	check("Tenkaichi 3's choice untouched", pads.Controllers.choice() == "Tour Pad")
 	await back()
 
