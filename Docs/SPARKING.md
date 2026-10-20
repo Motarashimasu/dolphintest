@@ -480,7 +480,10 @@ RDBJAF's other codes: `16:9 Widescreen Patch`, `Remove Bugged Fog/Shadow` and `W
 lobby the host may switch them on for both players (`[Sparking.LobbyCodes]`). `Japanese Dub` is
 for solo only (it brings the Japanese voices back to a save that was played with `English Dub`);
 the two dubs are an exclusive group. The NTSC-J netplay save goes in
-`saves/netplay/RDBJAF/title/00010000/5244424a/data/` (`banner.bin` + `DBZSN`).
+`saves/netplay/RDBJAF/title/00010000/5244424a/data/` (`banner.bin` + `DBZSN`). Its `[Sparking.Modes]` boots
+DRAGON NET lobbies into `RDBJAF-SingleBattle.sst` / `RDBJAF-TeamBattle.sst` (Tag Battle) /
+`RDBJAF-BufferTraining.sst` (captured with `3_capture_battle_states.bat`, version RDBJAF); without
+that section (before Oct 20 2026) BT2 lobbies booted to the game's menus.
 
 Game IDs: BT3 = `RDSE70` (US) / `RDSPAF` (EU) / `RDSJAF` (Sparking! Meteor); BT2 = `RDBE70` (US) /
 `RDBPAF` (EU) / `RDBJAF` (Sparking! Neo). Dolphin ships no Gecko codes for these games; codes
