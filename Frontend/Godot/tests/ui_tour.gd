@@ -1106,7 +1106,9 @@ func _tour() -> void:
 	check("RB: the NTSC-J tab", mods._version == "NTSC-J")
 	await wait_for("NTSC-J codes looked up", func(): return mods._codes.has("RDSJAF"), 20)
 	var jp_names: Array = mods._codes["RDSJAF"].map(func(c): return c["name"])
-	check("NTSC-J: its own codes and selection " + str(jp_names), jp_names == ["Widescreen HUD (life bars at the screen edges)",
+	check("NTSC-J: its own codes and selection " + str(jp_names), jp_names == ["In-Game Controls Fix To Match Playstation 2 Layout",
+			"Menu Controls Fix To Match Playstation 2 Layout", "WFC Wiilink24",
+			"Widescreen HUD (life bars at the screen edges)",
 			"Player 1 Splitscreen Remover", "Player 2 Splitscreen Remover"]
 			and mods._codes["RDSJAF"][0]["default_enabled"] and Settings.gecko_custom("RDSJAF") == false)
 	await shot("modifications_ntsc_j")

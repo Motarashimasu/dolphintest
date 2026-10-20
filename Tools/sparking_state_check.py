@@ -7,7 +7,8 @@ Prints the game ID and the Dolphin build that saved it, and whether the version'
 were running when it was captured (states are captured with the defaults on, like netplay runs
 them): BT3 PAL (RDSPAF) "PAL60 Mode + Black Bar Removal" (a state captured without it keeps every
 DRAGON NET match at 25 fps: the game sets its video mode up before the menus, so the code can't
-change it after the state loads), BT3 NTSC-J (RDSJAF) the widescreen HUD, BT2 NTSC-J (RDBJAF)
+change it after the state loads), BT3 NTSC-J (RDSJAF) the widescreen HUD, the PS2
+layout controls fixes and WFC Wiilink24, BT2 NTSC-J (RDBJAF)
 the 16:9 patch, the fog removal and the widescreen HUD.
 
 Also: whether a splitscreen remover was running when it was captured. The removers are
@@ -32,6 +33,9 @@ CHECKS = {
     ],
     "RDSJAF": [
         ("Widescreen HUD", 0x10771C, None),
+        ("In-Game Controls Fix", 0x21FCA8, None),
+        ("Menu Controls Fix", 0x21FCA4, None),
+        ("WFC Wiilink24", 0x2D6C94, bytes.fromhex("4800007C")),
     ],
     "RDBJAF": [
         ("16:9 Widescreen Patch", 0x5F5A94, bytes.fromhex("3F400000")),

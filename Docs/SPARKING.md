@@ -452,8 +452,10 @@ BT3 PAL (`RDSPAF`) ships with its codes built in: `Data/Sys/GameSettings/RDSPAF.
 control layout, PAL60, outlines, 16:9, soft reset, World Tournament stages = on by default;
 `Player 1/2 Splitscreen Remover` = per-port netplay codes).
 
-BT3 NTSC-J (`RDSJAF`, Sparking! METEOR) ships only `Widescreen HUD (life bars at the screen
-edges)` (on by default; RDSPAF's code ported with `Tools/gecko/find_hud_sites.py`: hooks
+BT3 NTSC-J (`RDSJAF`, Sparking! METEOR) ships the user's Rev1 codes `In-Game Controls Fix To Match
+Playstation 2 Layout`, `Menu Controls Fix To Match Playstation 2 Layout` (Confirm = B, Back = Y)
+and `WFC Wiilink24`, and `Widescreen HUD (life bars at the screen edges)`, all on by default (the
+HUD: RDSPAF's code ported with `Tools/gecko/find_hud_sites.py`: hooks
 `0x8010771c` / `0x80107d20`, battle 2D callers `0x80100000-0x80110000`) and `Player 1/2
 Splitscreen Remover` (`0x80090B6C`, `0x8001529C`, `0x800152AC`), plus `[Sparking.Modes]` pointing at
 `RDSJAF-SingleBattle.sst` / `RDSJAF-TeamBattle.sst` / `RDSJAF-BufferTraining.sst` (to capture).
