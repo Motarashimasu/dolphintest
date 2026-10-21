@@ -13,7 +13,8 @@ extends Node
 ## Only files listed in a manifest are touched: saves, settings, controller profiles, replays...
 ## are never in one. A file the previous update installed that the new one no longer lists is
 ## deleted. SparkingData/update/installed.json remembers each managed file's size, time and
-## hash, so unchanged files aren't hashed again on every start.
+## hash; SparkingData/update/hashes.json caches every managed file's hash by size and time, so
+## unchanged files aren't hashed again on every start.
 
 signal changed   # state / progress
 signal found     # a newer build is available (check() found one): Main opens the update screen
@@ -114,7 +115,7 @@ func check(apply := true) -> String:
 	_manifest = m
 	version = String(m.get("version", ""))
 	notes = String(m.get("notes", ""))
-	var need := _outdated(m)
+	var need: Array = await _outdated(m)
 	if need.is_empty() and _removed(m).is_empty():
 		_save_installed(m, {})
 		_to_state("up_to_date")
@@ -184,17 +185,39 @@ func _installed() -> Dictionary:
 	return d if d is Dictionary else {"files": {}}
 
 
-## The local file's SHA-256, from installed.json while its size and time haven't changed.
-func _local_sha(rel: String, known: Dictionary) -> String:
+## The local file's SHA-256: from the cache (hashes.json) while its size and time haven't
+## changed, else hashed again, in pieces, giving the menus a frame now and then (the first check
+## of a 1.6 GB texture pack must not freeze them).
+func _local_sha(rel: String, cache: Dictionary) -> String:
 	var path := root().path_join(rel)
 	if not FileAccess.file_exists(path):
+		cache.erase(rel)
 		return ""
 	var size := _size(path)
 	var mtime := FileAccess.get_modified_time(path)
-	var k: Dictionary = known.get(rel, {})
+	var k: Dictionary = cache.get(rel, {})
 	if int(k.get("size", -1)) == size and int(k.get("mtime", -1)) == mtime and String(k.get("sha256", "")) != "":
 		return String(k["sha256"])
-	return FileAccess.get_sha256(path)
+	var sha: String = await _hash_file(path)
+	cache[rel] = {"size": size, "mtime": mtime, "sha256": sha}
+	return sha
+
+
+var _frame_start := 0
+
+## SHA-256 of a file, 1 MB at a time, letting a frame through every ~12 ms of work.
+func _hash_file(path: String) -> String:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return ""
+	var hc := HashingContext.new()
+	hc.start(HashingContext.HASH_SHA256)
+	while f.get_position() < f.get_length():
+		hc.update(f.get_buffer(1048576))
+		if Time.get_ticks_msec() - _frame_start > 12:
+			await get_tree().process_frame
+			_frame_start = Time.get_ticks_msec()
+	return hc.finish().hex_encode()
 
 
 static func _size(path: String) -> int:
@@ -202,12 +225,31 @@ static func _size(path: String) -> int:
 	return f.get_length() if f else -1
 
 
+func _hashes_path() -> String:
+	return root().path_join("SparkingData/update/hashes.json")
+
+
+func _load_hashes() -> Dictionary:
+	var d = JSON.parse_string(FileAccess.get_file_as_string(_hashes_path())) \
+			if FileAccess.file_exists(_hashes_path()) else null
+	return d if d is Dictionary else {}
+
+
+func _save_hashes(cache: Dictionary) -> void:
+	DirAccess.make_dir_recursive_absolute(_hashes_path().get_base_dir())
+	var out := FileAccess.open(_hashes_path(), FileAccess.WRITE)
+	if out:
+		out.store_string(JSON.stringify(cache))
+
+
 func _outdated(m: Dictionary) -> Array:
-	var known: Dictionary = _installed().get("files", {})
+	var cache := _load_hashes()
+	_frame_start = Time.get_ticks_msec()
 	var out := []
 	for f in m["files"]:
-		if _local_sha(String(f["path"]), known) != String(f["sha256"]):
+		if await _local_sha(String(f["path"]), cache) != String(f["sha256"]):
 			out.append(f)
+	_save_hashes(cache)   # (a "Later" doesn't hash it all again next start)
 	return out
 
 
@@ -231,6 +273,10 @@ func _save_installed(m: Dictionary, pending: Dictionary) -> void:
 		# A file still waiting for the restart script: hashed again next time.
 		files[rel] = {"sha256": String(f["sha256"]), "size": int(f["size"]),
 			"mtime": -1 if pending.has(rel) else FileAccess.get_modified_time(path)}
+	var cache := _load_hashes()
+	for rel in files:
+		cache[rel] = files[rel]
+	_save_hashes(cache)
 	DirAccess.make_dir_recursive_absolute(_installed_path().get_base_dir())
 	var out := FileAccess.open(_installed_path(), FileAccess.WRITE)
 	if out:

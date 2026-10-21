@@ -208,6 +208,7 @@ def main():
         write(os.path.join(b1, "Dolphin/Sys/GameSettings/RDSPAF.ini"), b"[Gecko]\nv1\n")
         write(os.path.join(b1, "Dolphin/Sys/GameSettings/OLD.ini"), b"goes away in v2")
         write(os.path.join(b1, "SparkingData/states/RDSPAF-SingleBattle.sav"), os.urandom(300000))
+        write(os.path.join(b1, "SparkingData/textures/RDSPAF/big.png"), os.urandom(3 * 1048576 + 123))   # hashed in pieces
         write(os.path.join(b1, "SparkingData/settings.bat"), b"the developer's own: not shipped")
         out = publish(b1, "205")
         check("publish build 205", out.returncode == 0 and "Published version 205" in out.stdout)
