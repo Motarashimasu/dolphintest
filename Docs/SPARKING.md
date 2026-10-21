@@ -452,6 +452,12 @@ BT3 PAL (`RDSPAF`) ships with its codes built in: `Data/Sys/GameSettings/RDSPAF.
 control layout, PAL60, outlines, 16:9, soft reset, World Tournament stages = on by default;
 `Player 1/2 Splitscreen Remover` = per-port netplay codes).
 
+BT3 PAL (`RDSPAF`) also ships `English Dub`, off by default and a host lobby option
+(`[Sparking.LobbyCodes]`): DRAGON NET's PAL battle states have the Japanese voices. It sets bit
+0x1 of the options word at `[0x8062A6E0]+0x1608` (the game's Voice option: the menu flips it at
+`0x800edaf0`, the voice loaders pick their files by it, e.g. `0x8000c320`), every frame, leaving
+the other option bits alone. BT2 NTSC-J's `English Dub` is the same bit.
+
 BT3 NTSC-J (`RDSJAF`, Sparking! METEOR) ships the user's Rev1 codes `In-Game Controls Fix To Match
 Playstation 2 Layout`, `Menu Controls Fix To Match Playstation 2 Layout` (Confirm = B, Back = Y)
 and `WFC Wiilink24`, and `Widescreen HUD (life bars at the screen edges)`, all on by default (the

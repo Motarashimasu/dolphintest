@@ -822,5 +822,6 @@
  "The %s version isn't supported yet. It will be unlocked later.": "%s 版はまだ対応していません。後で使えるようになります。",
  "That lobby plays the %s version, which isn't supported yet.": "そのロビーは %s 版で、まだ対応していません。",
  "Where each game's disc images are: PAL and NTSC-J (NTSC-U later),\nand which one Play Offline uses.": "各ゲームのディスクイメージの場所：PAL と NTSC-J（NTSC-U は後日）、\nそして「オフラインで遊ぶ」で使うもの。",
- "Tag Battle": "タッグバトル"
+ "Tag Battle": "タッグバトル",
+ "English Dub": "英語音声"
 }

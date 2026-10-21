@@ -822,5 +822,6 @@
  "The %s version isn't supported yet. It will be unlocked later.": "La versión %s aún no es compatible. Se desbloqueará más adelante.",
  "That lobby plays the %s version, which isn't supported yet.": "Esa sala juega la versión %s, que aún no es compatible.",
  "Where each game's disc images are: PAL and NTSC-J (NTSC-U later),\nand which one Play Offline uses.": "Dónde están las imágenes de disco de cada juego: PAL y NTSC-J (NTSC-U más adelante),\ny cuál usa Jugar sin conexión.",
- "Tag Battle": "Combate Tag"
+ "Tag Battle": "Combate Tag",
+ "English Dub": "Doblaje en inglés"
 }
