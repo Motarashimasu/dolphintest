@@ -46,6 +46,8 @@ func build_rows() -> Array:
 		{"type": "choice", "key": "profile", "label": "Profile", "values": ["user", "user2"],
 			"names": ["user (primary)", "user2 (secondary)"], "value": Settings.get_value("paths", "profile"),
 			"desc": "Primary and secondary user profiles for online play.\nOnly change to user2 for LAN testing."},
+		{"type": "action", "key": "updates", "label": "Updates", "value": Updater.summary(),
+			"desc": "Check for a newer build now (it also checks at every start).\nUpdates need a DRAGON NET login."},
 		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the main menu."},
 	]
 
@@ -60,6 +62,17 @@ func _copies_summary() -> String:
 
 
 func on_press(key: String) -> void:
+	if key == "updates":
+		if Updater.state == "available":
+			app.push(load("res://scripts/screens/update.gd").new())
+			return
+		list.update_row("updates", {"value": tr("Checking...")})
+		await Updater.check(false)   # found -> Main opens the update screen
+		if is_inside_tree():
+			list.update_row("updates", {"value": Updater.summary()})
+			if Updater.state != "available":
+				app.toast(Updater.result_text(), 4.0)
+		return
 	if key == "copies":
 		var items: Array = []
 		for k in Settings.GAME_ORDER:

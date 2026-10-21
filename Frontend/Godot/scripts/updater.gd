@@ -1,0 +1,490 @@
+extends Node
+## Automatic updates (Docs/UPDATES.md). The release script (Tools/sparking_release.py) uploads a
+## build to Cloudflare R2: every file under its SHA-256, and a signed list of the build's files
+## (the manifest). Here:
+##   1. the ranked server's update.php gives logged-in DRAGON NET players a short-lived link to
+##      the manifest; its signature is checked against data/update_key.pem (the release key's
+##      public half), so only builds you signed are ever installed;
+##   2. the files that differ from this install are downloaded (links from update.php again)
+##      into SparkingData/update/download and each one's SHA-256 is checked;
+##   3. they're put in place. The launcher's own files (its .exe, its .pck) can't be replaced
+##      while it runs: a small PowerShell script waits for the launcher to close, moves them in
+##      and starts it again.
+## Only files listed in a manifest are touched: saves, settings, controller profiles, replays...
+## are never in one. A file the previous update installed that the new one no longer lists is
+## deleted. SparkingData/update/installed.json remembers each managed file's size, time and
+## hash, so unchanged files aren't hashed again on every start.
+
+signal changed   # state / progress
+signal found     # a newer build is available (check() found one): Main opens the update screen
+
+const KEY_PATH := "res://data/update_key.pem"   # the release key's public half (keygen)
+const BATCH := 400             # links per update.php call
+const STALL_SECONDS := 30.0    # a download that gets nothing for this long has failed
+
+## idle, checking, available, up_to_date, downloading, applying, restarting, failed, no_login, off
+var state := "idle"
+var error := ""                # what went wrong (failed), in English: shown through tr()
+var version := ""              # the newest build's version (once known)
+var notes := ""
+var done_bytes := 0
+var total_bytes := 0
+var file_count := 0
+var cancelled := false
+## Tests: called instead of starting the restart script and quitting (the test runs the script).
+var restart_hook: Callable
+
+var _manifest := {}
+var _need: Array = []
+## Tests: the launcher's own files (relative paths), instead of the running .exe / .pck.
+var own_files_override: Array = []
+var _checked := false          # checked once this session (start, or right after a login)
+
+
+func _ready() -> void:
+	# Logged in for the first time this session: check then (the start-up check needed a login).
+	Ranked.changed.connect(func():
+		if Ranked.logged_in() and not _checked and enabled() and not busy():
+			check(false))
+
+
+## Updates work in the exported launcher (or with [update] root set, for tests) once the
+## release key is in data/update_key.pem.
+func enabled() -> bool:
+	return FileAccess.file_exists(key_path()) and (root() != "")
+
+
+## The public key ([update] key: tests only, never a shipped build's).
+func key_path() -> String:
+	var forced := String(Settings.get_value("update", "key"))
+	return forced if forced != "" else KEY_PATH
+
+
+## The install folder: the launcher's own (or [update] root).
+func root() -> String:
+	var forced := String(Settings.get_value("update", "root"))
+	if forced != "":
+		return forced
+	if OS.has_feature("template") and not OS.has_feature("editor"):
+		return OS.get_executable_path().get_base_dir()
+	return ""
+
+
+func busy() -> bool:
+	return state in ["checking", "downloading", "applying", "restarting"]
+
+
+func _to_state(s: String, err := "") -> void:
+	state = s
+	error = err
+	changed.emit()
+
+
+## Checks for a newer build and, when there is one, downloads and installs it. Returns the final
+## state. `apply` false: only find out whether there's one (state "available").
+func check(apply := true) -> String:
+	if busy():
+		return state
+	_checked = true
+	cancelled = false
+	if not enabled():
+		_to_state("off")
+		return state
+	if not Ranked.logged_in():
+		_to_state("no_login")
+		return state
+	_to_state("checking")
+	var r: Dictionary = await Ranked.api("update.php", {"action": "check"})
+	if not r.get("ok", false):
+		_to_state("failed", "updates_not_set_up" if r.get("error") == "updates_not_set_up" else "Couldn't reach the update server.")
+		return state
+	var got := await _get_bytes(String(r["manifest_url"]))
+	if got.is_empty():
+		_to_state("failed", "Couldn't download the update list.")
+		return state
+	var m := _verified(got)
+	if m.is_empty():
+		_to_state("failed", "The update list isn't signed by the release key: not installed.")
+		return state
+	# Never back to an older build than the one installed (an old signed list put back).
+	if int(m.get("build", 0)) < int(_installed().get("build", 0)):
+		version = String(_installed().get("version", ""))
+		_to_state("up_to_date")
+		return state
+	_manifest = m
+	version = String(m.get("version", ""))
+	notes = String(m.get("notes", ""))
+	var need := _outdated(m)
+	if need.is_empty() and _removed(m).is_empty():
+		_save_installed(m, {})
+		_to_state("up_to_date")
+		return state
+	_need = need
+	file_count = need.size()
+	total_bytes = 0
+	for f in need:
+		total_bytes += int(f["size"])
+	done_bytes = 0
+	_to_state("available")
+	if apply:
+		return await install()
+	found.emit()
+	return state
+
+
+## Downloads and installs what check() found ("available").
+func install() -> String:
+	if state != "available" or Dolphin.is_running():
+		return state   # (a running game holds Dolphin's files: after it closes)
+	cancelled = false
+	return await _install(_manifest, _need)
+
+
+func cancel() -> void:
+	cancelled = true
+
+
+# --- Manifest ---------------------------------------------------------------------------------
+
+## The manifest, if its signature is the release key's ({} otherwise).
+func _verified(envelope_bytes: PackedByteArray) -> Dictionary:
+	var env = JSON.parse_string(envelope_bytes.get_string_from_utf8())
+	if not env is Dictionary or not env.has("manifest") or not env.has("signature"):
+		return {}
+	var data := Marshalls.base64_to_raw(String(env["manifest"]))
+	var sig := Marshalls.base64_to_raw(String(env["signature"]))
+	var key := CryptoKey.new()
+	if key.load_from_string(FileAccess.get_file_as_string(key_path()), true) != OK:
+		push_warning("Updater: data/update_key.pem isn't a public key")
+		return {}
+	var hc := HashingContext.new()
+	hc.start(HashingContext.HASH_SHA256)
+	hc.update(data)
+	if not Crypto.new().verify(HashingContext.HASH_SHA256, hc.finish(), sig, key):
+		return {}
+	var m = JSON.parse_string(data.get_string_from_utf8())
+	if not m is Dictionary or int(m.get("format", 0)) != 1 or not m.get("files") is Array:
+		return {}
+	for f in m["files"]:
+		var p := String(f.get("path", ""))
+		# Paths stay inside the install folder.
+		if p == "" or p.begins_with("/") or ":" in p or ".." in p.split("/") or "\\" in p \
+				or not RegEx.create_from_string("^[0-9a-f]{64}$").search(String(f.get("sha256", ""))):
+			return {}
+	return m
+
+
+func _installed_path() -> String:
+	return root().path_join("SparkingData/update/installed.json")
+
+
+func _installed() -> Dictionary:
+	var d = JSON.parse_string(FileAccess.get_file_as_string(_installed_path())) \
+			if FileAccess.file_exists(_installed_path()) else null
+	return d if d is Dictionary else {"files": {}}
+
+
+## The local file's SHA-256, from installed.json while its size and time haven't changed.
+func _local_sha(rel: String, known: Dictionary) -> String:
+	var path := root().path_join(rel)
+	if not FileAccess.file_exists(path):
+		return ""
+	var size := _size(path)
+	var mtime := FileAccess.get_modified_time(path)
+	var k: Dictionary = known.get(rel, {})
+	if int(k.get("size", -1)) == size and int(k.get("mtime", -1)) == mtime and String(k.get("sha256", "")) != "":
+		return String(k["sha256"])
+	return FileAccess.get_sha256(path)
+
+
+static func _size(path: String) -> int:
+	var f := FileAccess.open(path, FileAccess.READ)
+	return f.get_length() if f else -1
+
+
+func _outdated(m: Dictionary) -> Array:
+	var known: Dictionary = _installed().get("files", {})
+	var out := []
+	for f in m["files"]:
+		if _local_sha(String(f["path"]), known) != String(f["sha256"]):
+			out.append(f)
+	return out
+
+
+## Files the previous update installed that this one no longer has.
+func _removed(m: Dictionary) -> Array:
+	var now := {}
+	for f in m["files"]:
+		now[String(f["path"])] = true
+	var out := []
+	for rel in _installed().get("files", {}):
+		if not now.has(rel) and FileAccess.file_exists(root().path_join(rel)):
+			out.append(rel)
+	return out
+
+
+func _save_installed(m: Dictionary, pending: Dictionary) -> void:
+	var files := {}
+	for f in m["files"]:
+		var rel := String(f["path"])
+		var path := root().path_join(rel)
+		# A file still waiting for the restart script: hashed again next time.
+		files[rel] = {"sha256": String(f["sha256"]), "size": int(f["size"]),
+			"mtime": -1 if pending.has(rel) else FileAccess.get_modified_time(path)}
+	DirAccess.make_dir_recursive_absolute(_installed_path().get_base_dir())
+	var out := FileAccess.open(_installed_path(), FileAccess.WRITE)
+	if out:
+		out.store_string(JSON.stringify({"version": m.get("version", ""), "build": m.get("build", 0),
+			"files": files}, " "))
+
+
+# --- Download and install ---------------------------------------------------------------------
+
+func _staging() -> String:
+	return root().path_join("SparkingData/update/download")
+
+
+func _install(m: Dictionary, need: Array) -> String:
+	if DirAccess.make_dir_recursive_absolute(_staging()) != OK or not _writable(root()):
+		_to_state("failed", "The game folder is read-only (Program Files?). Move it, or run as administrator.")
+		return state
+	_to_state("downloading")
+	# Links for the files we don't have staged yet (a cancelled update keeps what it got).
+	var todo := {}
+	for f in need:
+		var staged := _staging().path_join(String(f["sha256"]))
+		if FileAccess.file_exists(staged) and FileAccess.get_sha256(staged) == String(f["sha256"]):
+			done_bytes += int(f["size"])
+			continue
+		todo[String(f["sha256"])] = f
+	changed.emit()
+	var shas: Array = todo.keys()
+	for start in range(0, shas.size(), BATCH):
+		var batch := shas.slice(start, start + BATCH)
+		var r: Dictionary = await Ranked.api("update.php", {"action": "files", "files": batch})
+		if not r.get("ok", false):
+			_to_state("failed", "Couldn't reach the update server.")
+			return state
+		for sha in batch:
+			if cancelled:
+				_to_state("idle")
+				return state
+			var f: Dictionary = todo[sha]
+			if not await _download(String(r["urls"][sha]), String(sha), int(f["size"])):
+				if cancelled:
+					_to_state("idle")
+					return state
+				_to_state("failed", "A download failed or arrived damaged. Try again later.")
+				return state
+	_to_state("applying")
+	var pending := {}   # rel path -> staged file: for the restart script
+	var self_files := _own_files()
+	for f in need:
+		var rel := String(f["path"])
+		var staged := _staging().path_join(String(f["sha256"]))
+		if self_files.has(rel) or not _replace(staged, root().path_join(rel)):
+			pending[rel] = staged
+	for rel in _removed(m):
+		if not self_files.has(rel):
+			DirAccess.remove_absolute(root().path_join(rel))
+	_save_installed(m, pending)
+	if pending.is_empty():
+		_clear_staging()
+		_to_state("up_to_date")
+		return state
+	_to_state("restarting")
+	_restart_with(pending, String(m.get("launcher", "")))
+	return state
+
+
+## The launcher's own files, relative to the install folder: its .exe and its .pck.
+func _own_files() -> Dictionary:
+	var out := {}
+	for rel in own_files_override:
+		out[String(rel)] = true
+	if not own_files_override.is_empty():
+		return out
+	var exe := OS.get_executable_path()
+	for p in [exe, exe.get_basename() + ".pck"]:
+		if p.begins_with(root() + "/"):
+			out[p.substr(root().length() + 1)] = true
+	return out
+
+
+func _writable(dir: String) -> bool:
+	var probe := dir.path_join("SparkingData/update/.write_test")
+	var f := FileAccess.open(probe, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.close()
+	DirAccess.remove_absolute(probe)
+	return true
+
+
+## Moves the staged file into place (the old one out of the way first). false: couldn't (in use).
+func _replace(staged: String, target: String) -> bool:
+	DirAccess.make_dir_recursive_absolute(target.get_base_dir())
+	var old := target + ".old"
+	if FileAccess.file_exists(old):
+		DirAccess.remove_absolute(old)
+	if FileAccess.file_exists(target) and DirAccess.rename_absolute(target, old) != OK:
+		return false
+	if DirAccess.rename_absolute(staged, target) != OK and DirAccess.copy_absolute(staged, target) != OK:
+		if FileAccess.file_exists(old):
+			DirAccess.rename_absolute(old, target)   # put the old one back
+		return false
+	DirAccess.remove_absolute(old)
+	if FileAccess.file_exists(staged):
+		DirAccess.remove_absolute(staged)
+	return true
+
+
+func _clear_staging() -> void:
+	for n in DirAccess.get_files_at(_staging()):
+		DirAccess.remove_absolute(_staging().path_join(n))
+
+
+func _get_bytes(url: String) -> PackedByteArray:
+	var req := HTTPRequest.new()
+	req.timeout = 30.0
+	add_child(req)
+	if req.request(url) != OK:
+		req.queue_free()
+		return PackedByteArray()
+	var res: Array = await req.request_completed
+	req.queue_free()
+	if int(res[0]) != HTTPRequest.RESULT_SUCCESS or int(res[1]) != 200:
+		return PackedByteArray()
+	return res[3]
+
+
+## Downloads one file into staging and checks its SHA-256.
+func _download(url: String, sha: String, size: int) -> bool:
+	var part := _staging().path_join(sha + ".part")
+	var req := HTTPRequest.new()
+	req.download_file = part
+	req.download_chunk_size = 262144
+	req.timeout = 0.0   # big files: no overall limit (a stall still ends the connection)
+	add_child(req)
+	var base := done_bytes
+	if req.request(url) != OK:
+		req.queue_free()
+		return false
+	var done := {}   # (a lambda can't assign this function's locals: it fills this)
+	req.request_completed.connect(func(a, b, _c, _d):
+		done["result"] = [a, b])
+	var last := -1
+	var still := 0.0
+	while not done.has("result"):
+		if cancelled or still > STALL_SECONDS:
+			req.cancel_request()
+			break
+		var got := req.get_downloaded_bytes()
+		still = still + 0.1 if got == last else 0.0
+		last = got
+		done_bytes = base + got
+		changed.emit()
+		await get_tree().create_timer(0.1).timeout
+	req.queue_free()
+	var result: Array = done.get("result", [])
+	if result.is_empty() or int(result[0]) != HTTPRequest.RESULT_SUCCESS or int(result[1]) != 200:
+		DirAccess.remove_absolute(part)
+		done_bytes = base
+		return false
+	if FileAccess.get_sha256(part) != sha:
+		DirAccess.remove_absolute(part)
+		done_bytes = base
+		return false
+	DirAccess.rename_absolute(part, _staging().path_join(sha))
+	done_bytes = base + size
+	changed.emit()
+	return true
+
+
+## The launcher's own files (and any file that was in use): a script waits for this launcher to
+## close, moves them in, and starts the launcher again.
+func _restart_with(pending: Dictionary, launcher: String) -> void:
+	var exe := OS.get_executable_path()
+	var start := root().path_join(launcher) if launcher != "" else exe
+	var dir := root().path_join("SparkingData/update")
+	if OS.get_name() == "Windows":
+		var path := dir.path_join("finish_update.ps1")
+		var f := FileAccess.open(path, FileAccess.WRITE)
+		f.store_buffer(PackedByteArray([0xEF, 0xBB, 0xBF]))   # UTF-8 BOM: Windows PowerShell 5 reads it as UTF-8
+		f.store_string(powershell_script(OS.get_process_id(), pending, root(), start))
+		f.close()
+		if not restart_hook.is_valid():
+			OS.create_process("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass",
+				"-WindowStyle", "Hidden", "-File", path.replace("/", "\\")])
+	else:
+		var sh := PackedStringArray(["#!/bin/sh", "while kill -0 %d 2>/dev/null; do sleep 0.2; done" % OS.get_process_id()])
+		for rel in pending:
+			sh.append("mkdir -p '%s' && cp -f '%s' '%s' && rm -f '%s'" % [root().path_join(rel).get_base_dir(),
+				pending[rel], root().path_join(rel), pending[rel]])
+		sh.append("rm -f \"$0\"")
+		var path := dir.path_join("finish_update.sh")
+		var f := FileAccess.open(path, FileAccess.WRITE)
+		f.store_string("\n".join(sh) + "\n")
+		f.close()
+		if not restart_hook.is_valid():
+			OS.create_process("/bin/sh", [path])
+	if restart_hook.is_valid():
+		restart_hook.call()
+	else:
+		get_tree().quit()
+
+
+## The Windows restart script: waits for this launcher (pid) to close, copies each staged file
+## over its target (retrying while Windows still holds it), starts the launcher again, deletes
+## itself.
+static func powershell_script(pid: int, pending: Dictionary, install: String, start: String) -> String:
+	var ps := PackedStringArray([
+		"# Dolphin-Sparking update: finishes what the launcher couldn't replace while running.",
+		"$ErrorActionPreference = 'SilentlyContinue'",
+		"Wait-Process -Id %d -Timeout 60" % pid,
+	])
+	for rel in pending:
+		ps.append("$src = %s; $dst = %s" % [_ps(pending[rel]), _ps(install.path_join(rel))])
+		ps.append("New-Item -ItemType Directory -Force -Path (Split-Path -LiteralPath $dst) | Out-Null")
+		ps.append("for ($i = 0; $i -lt 30; $i++) { try { Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop; Remove-Item -LiteralPath $src; break } catch { Start-Sleep -Seconds 1 } }")
+	ps.append("Start-Process -FilePath %s -WorkingDirectory %s" % [_ps(start), _ps(install)])
+	ps.append("Remove-Item -LiteralPath $PSCommandPath")
+	return "\r\n".join(ps) + "\r\n"
+
+
+static func _ps(path: String) -> String:
+	return "'" + path.replace("/", "\\").replace("'", "''") + "'"
+
+
+## A line for Options > Updates.
+func summary() -> String:
+	match state:
+		"up_to_date":
+			return tr("Up to date (%s)") % version if version != "" else tr("Up to date")
+		"available":
+			return tr("Version %s is available.") % version
+		"checking":
+			return tr("Checking...")
+		"downloading", "applying", "restarting":
+			return tr("Updating...")
+		"no_login":
+			return tr("Needs a DRAGON NET login")
+		"failed":
+			return tr("Failed")
+		"off":
+			return tr("Not set up")
+	return tr("Check now")
+
+
+## What check() came to, for a toast.
+func result_text() -> String:
+	match state:
+		"up_to_date":
+			return tr("Up to date (%s)") % version if version != "" else tr("Up to date")
+		"no_login":
+			return tr("Log in to DRAGON NET to get updates (Ranked Match > Profile).")
+		"off":
+			return tr("Updates aren't set up in this build.")
+		"failed":
+			return tr("Updates aren't set up on the server yet.") if error == "updates_not_set_up" else tr(error)
+	return ""

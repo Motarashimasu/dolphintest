@@ -33,6 +33,7 @@ Sfx="*res://scripts/sfx.gd"
 Lang="*res://scripts/lang.gd"
 Ranked="*res://scripts/ranked.gd"
 Social="*res://scripts/social.gd"
+Updater="*res://scripts/updater.gd"
 
 [display]
 

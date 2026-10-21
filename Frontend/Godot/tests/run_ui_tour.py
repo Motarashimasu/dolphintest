@@ -192,11 +192,22 @@ def main():
         rk_vegeta.send("start")
         rk_vegeta.seen("game_started", timeout=60)
         time.sleep(1)
-        for _ in range(2):
-            for addr, val in (("80001100", "42C80000"), ("80001104", "42C80000"), ("80001100", "00000000")):
-                rk_vegeta.send(f"poke {addr} {val}")
-                time.sleep(0.4)
-            time.sleep(1.5)
+        def count(event):
+            return sum(1 for e in rk_vegeta.history if e.get("event") == event)
+
+        def wait_count(event, n, timeout=15):
+            end = time.time() + timeout
+            while count(event) < n and time.time() < end:
+                time.sleep(0.05)
+
+        # Each round: both bars full (wait until the host's watcher sees the round start, so a
+        # busy machine can't miss it), then Vegeta's to 0 (wait for the KO).
+        for r in range(1, 3):
+            rk_vegeta.send("poke 80001100 42C80000")
+            rk_vegeta.send("poke 80001104 42C80000")
+            wait_count("round_started", r)
+            rk_vegeta.send("poke 80001100 00000000")
+            wait_count("round_result", r)
         rk_vegeta.seen("koth_set", timeout=20)
         ranked_call(ranked, "match.php", vegeta_token, action="report", lobby=rk_lobby, result="loss")
 

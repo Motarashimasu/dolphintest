@@ -120,6 +120,9 @@ var defaults := {
 		"mode": "single", "board_mode": "single", "board_region": "global",
 		"last_single": 0, "last_team": 0,     # last known ratings, for the menu's rating plate
 		"b2last_single": 0, "b2last_team": 0},   # (Budokai Tenkaichi 2's)
+	# Automatic updates (scripts/updater.gd). root / key: tests only (the install folder to
+	# update, the public key to trust).
+	"update": {"root": "", "key": ""},
 	# Per game: "<game>_preset" = auto, keep, or a preset name (scripts/controllers.gd); "" = not
 	# chosen yet. ("preset": the one choice before per-game ones, now Tenkaichi 3's.)
 	# "gcpad_game": whose mapping GCPadNew.ini's [GCPad1] holds now (scripts/controllers.gd).

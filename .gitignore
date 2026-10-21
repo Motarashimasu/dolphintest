@@ -49,3 +49,9 @@ CMakeLists.txt.user
 # Ignore CMake user presets
 CMakeUserPresets.json
 __pycache__/
+
+# Automatic updates: the release signing key and the release config (R2 write key) stay on
+# the developer's PC (Docs/UPDATES.md).
+release_private.pem
+*_private.pem
+release.json

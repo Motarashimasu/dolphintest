@@ -64,6 +64,11 @@ func _ready() -> void:
 		get_tree().root.add_child.call_deferred(load("res://tests/lang_check.gd").new())
 	elif lang_check >= 0:
 		ignore_focus = true
+	var update_check := user_args.find("--update-check")
+	if update_check >= 0:
+		Settings.use_file(user_args[update_check + 1])
+		add_child(load("res://tests/update_check.gd").new())
+		return
 	if "--pad-check" in user_args:
 		add_child(load("res://tests/pad_check.gd").new())
 		return
@@ -77,12 +82,23 @@ func _ready() -> void:
 	Engine.set_meta("reopen", "")
 	if reopen != "":
 		open(reopen)   # e.g. Options, after switching the language
+	Updater.found.connect(_on_update_found)
+	if not reloading and lang_check < 0:
+		Updater.check.call_deferred(false)   # (needs the release key, a login: else nothing)
 	if not Settings.data_writable():
 		push(_read_only_screen())
 	elif not Lang.chosen():
 		push(_language_menu(true))
 	elif Settings.needs_setup():
 		push(load(SCREENS % "setup").new())
+
+
+## A newer build (Updater.check): the update screen downloads and installs it, unless a game or
+## a lobby is on (then it waits for Options > Updates or the next start).
+func _on_update_found() -> void:
+	if Dolphin.is_running() or (top() and top().get_script() == load(SCREENS % "update")):
+		return
+	push(load(SCREENS % "update").new())
 
 
 ## SparkingData can't be written (installed under Program Files...): nothing would be saved and

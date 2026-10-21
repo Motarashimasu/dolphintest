@@ -869,6 +869,10 @@ DRAGON NET login and located folders on first launch, and setup runs again; opti
 controls stay. **Don't ship your own frontend.cfg anyway** (it holds your DRAGON NET session):
 leave it out of installers (Inno Setup: `Excludes: "frontend.cfg"` on the SparkingData files).
 
+**Automatic updates** replace shipping a new installer for every build: `Docs/UPDATES.md`
+(Cloudflare R2, `Server/ranked/update.php`, `Tools/sparking_release.py`, the launcher's
+`scripts/updater.gd`). The installer is then only for new players.
+
 ## Godot side (sketch)
 
 ```gdscript

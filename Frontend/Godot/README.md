@@ -217,6 +217,10 @@ tutorial open it on A.
 The menus take controller and keyboard only: the mouse is hidden and ignored, so it can't
 steal the selection.
 
+**Automatic updates.** Logged-in players get new builds by themselves at start (or Options >
+Updates): `scripts/updater.gd`, the Update screen `scripts/screens/update.gd`. Setup and
+publishing: `Docs/UPDATES.md`.
+
 **Languages.** English, Spanish, Italian and Japanese. Picked at the first launch; Options > Language
 changes it any time. Netplay is called **DRAGON NET** in the menus and on Discord.
 - Every menu text is written in English in the scripts. The translations are

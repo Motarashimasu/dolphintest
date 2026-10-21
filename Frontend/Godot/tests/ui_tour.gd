@@ -108,7 +108,7 @@ func _check_translations() -> void:
 			if JSON.stringify(s).trim_prefix("\"").trim_suffix("\"") in term_text:
 				continue
 			if s.begins_with("◀") or s.begins_with("★") or s.begins_with("[b]") or "   ·   " in s \
-					or RegEx.create_from_string("^\\d+ ms|^[A-Z]{2}$|Sparking Standard|^Tecbox layout|^\\S+  \\(.+\\)$|^#\\d+   |   Rating \\d+$| \\([a-z_]+\\)$").search(s):
+					or RegEx.create_from_string("^\\d+ ms|^[A-Z]{2}$|Sparking Standard|^Tecbox layout|^\\S+  \\(.+\\)$|^#\\d+   |^[\\d.]+ / [\\d.]+ MB$|   Rating \\d+$| \\([a-z_]+\\)$").search(s):
 				continue   # composed from translated pieces
 			if templates.any(func(rx): return rx.search(s) != null):
 				continue
@@ -1333,6 +1333,27 @@ func _tour() -> void:
 	fake_lobby.free()
 	await wait_for("lobby fade finished", func(): return not app._fade.visible, 3)
 	app.transitions = false
+
+	# The automatic update's screen (scripts/updater.gd; Tools/update_test.py tests the update
+	# itself), shown mid-download.
+	Updater.version = "206"
+	Updater.notes = "New BT2 battle states"
+	Updater.file_count = 4
+	Updater.total_bytes = 52428800
+	Updater.done_bytes = 20971520
+	Updater.state = "downloading"
+	app.push(load("res://scripts/screens/update.gd").new())
+	await frames(5)
+	await shot("update_downloading")
+	check("update screen: version and progress", top().list.get_value("version") == "206"
+			and top().list.get_value("progress") == "20.0 / 50.0 MB")
+	Updater.state = "idle"
+	app.pop()
+	await frames(3)
+	app.open("options")
+	await frames(3)
+	check("Options has Updates", top().list.row("updates").get("value") == "Check now")
+	app.pop()
 
 	# Button hints in the pad's own pictures (look/prompts/): PlayStation, then Xbox, then the
 	# keyboard's text badges again.

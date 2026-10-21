@@ -51,6 +51,8 @@ What's in here
                    are deleted first), replay_daily (per player per day, default 30).
   auth.php         logout; and the Discord login, only to convert a profile from before accounts
   discord.php      where Discord sends the browser back after "Authorize"
+  update.php       automatic updates: short-lived download links into the Cloudflare R2
+                   bucket for logged-in players (r2_* in config.php; Docs/UPDATES.md)
   me.php           your profile: ratings and records
   lobby.php        ranked lobbies: open / heartbeat / close / list / join / status / leave
   match.php        ranked matches: start / report / forfeit

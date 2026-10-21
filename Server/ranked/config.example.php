@@ -28,4 +28,14 @@ return [
     // address for their links (normally worked out from the request).
     // 'pic_dir' => __DIR__ . '/pics',
     // 'public_url' => 'https://tecshideout.ct.ws/sparking/',
+
+    // Automatic updates (update.php; Docs/UPDATES.md). Cloudflare R2: your account ID, the
+    // bucket, and an R2 API token that can only READ that bucket (R2 > Manage API tokens >
+    // "Object Read only", this bucket only). This server only signs short-lived download links
+    // with it; it never uploads. Leave them empty to keep updates off.
+    // 'r2_account_id' => '',
+    // 'r2_access_key' => '',
+    // 'r2_secret_key' => '',
+    // 'r2_bucket' => '',
+    // 'update_prefix' => '',      // a folder inside the bucket, if the release script uses one
 ];
