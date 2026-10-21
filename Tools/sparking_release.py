@@ -323,8 +323,16 @@ def collect(build: str, include: list[str], exclude: list[str]) -> list[dict]:
 
 
 def load_config(path: str) -> dict:
-    with open(path, encoding="utf-8") as f:
-        cfg = json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except OSError as e:
+        raise SystemExit(f"Can't read {path}: {e.strerror}")
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"{path} isn't valid JSON (line {e.lineno}, column {e.colno}: {e.msg}). "
+                         "Paths need / (or \\\\), and every line but the last in a list or block needs a comma.")
+    if not isinstance(cfg, dict):
+        raise SystemExit(f"{path} isn't valid JSON: it should be one {{ ... }} block.")
     for k in ("r2_access_key", "r2_secret_key", "r2_bucket", "private_key"):
         if not cfg.get(k):
             raise SystemExit(f"{path}: \"{k}\" is missing")
