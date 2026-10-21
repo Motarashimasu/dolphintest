@@ -354,6 +354,8 @@ def cmd_keygen(args) -> None:
 def cmd_publish(args) -> None:
     cfg = load_config(args.config)
     build = os.path.abspath(args.build)
+    if not os.path.isdir(build):
+        raise SystemExit(f"The build folder doesn't exist: {build}")
     include = cfg.get("include") or ["*.exe", "*.pck", "*.ico", "Dolphin/**", "SparkingData/states/*",
                                      "SparkingData/textures/**"]
     exclude = cfg.get("exclude") or []
@@ -363,7 +365,7 @@ def cmd_publish(args) -> None:
     print(f"Hashing {build} ...")
     files = collect(build, include, exclude)
     if not files:
-        raise SystemExit("No files matched \"include\".")
+        raise SystemExit(f"No files in {build} matched \"include\" ({', '.join(include)}).")
     if launcher and not any(f["path"] == launcher for f in files):
         raise SystemExit(f"The launcher \"{launcher}\" isn't in the build (release.json \"launcher\").")
     total = sum(f["size"] for f in files)
