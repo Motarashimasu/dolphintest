@@ -187,14 +187,18 @@ func _show_message(m: Dictionary) -> void:
 	ok.add_theme_constant_override("separation", 10)
 	Style.place(ok, 60, 268, 700, 36)
 	frame.add_child(ok)
-	var badge := Style.panel(p["color"], 16)
-	badge.custom_minimum_size = Vector2(maxf(34, 16 + 10 * String(p["key"]).length()), 32)
-	var k := Style.label(String(p["key"]), 15, Style.INK, 0, Color.BLACK, "button")
-	k.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	k.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	k.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	badge.add_child(k)
-	ok.add_child(badge)
+	var icon := Pad.prompt_icon_row("A", 34)   # a PlayStation / Xbox pad: its own picture
+	if icon:
+		ok.add_child(icon)
+	else:
+		var badge := Style.panel(p["color"], 16)
+		badge.custom_minimum_size = Vector2(maxf(34, 16 + 10 * String(p["key"]).length()), 32)
+		var k := Style.label(String(p["key"]), 15, Style.INK, 0, Color.BLACK, "button")
+		k.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		k.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		k.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		badge.add_child(k)
+		ok.add_child(badge)
 	ok.add_child(Style.label(tr("OK"), 22, Color.WHITE, 4, Color("#06302f"), "button"))
 	root.modulate.a = 0.0
 	create_tween().tween_property(root, "modulate:a", 1.0, 0.18)

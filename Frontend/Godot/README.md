@@ -84,7 +84,10 @@ they're plugged in.
 - While a game is running the controller belongs to the game: the menus behind it ignore it
   completely (even if Windows still gives them the input), until the in-game menu opens.
 - A / Cross (or Start) selects; B / Circle goes back.
-- The button prompts follow the controller you used last: A/B, ×/O, or Enter/Esc.
+- The button prompts follow the controller you used last: the pad's own pictures for a
+  PlayStation or Xbox controller (`look/prompts/ps_*.png` / `xbox_*.png`: select, back, the D-pad
+  as ▲▼ / ◀▶ / all four, L1 R1 / LB RB; `Pad.prompt_icons`), Enter/Esc text for the keyboard.
+  Replace a PNG to change a picture.
 
 **In-game HUD.** Two separate options:
 - **Health %** (Options, on by default): both fighters' health in the top corners.

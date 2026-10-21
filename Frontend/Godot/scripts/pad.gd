@@ -9,6 +9,8 @@ extends Node
 
 signal kind_changed(kind: String)   # "keyboard", "xbox", "playstation"
 
+const Style := preload("res://scripts/ui/style.gd")
+
 const STICK_ON := 0.55      # past this the stick counts as a direction
 const STICK_OFF := 0.35     # back under this it's neutral again
 const REPEAT_DELAY := 0.38
@@ -204,3 +206,39 @@ func prompt(button: String) -> Dictionary:
 				"back": {"key": "B", "color": Color("#e8663d")}}[button]
 	return {"accept": {"key": "Enter", "color": Color("#cfe9ee")},
 		"back": {"key": "Esc", "color": Color("#cfe9ee")}}[button]
+
+
+## The pad's own pictures for a menu hint (look/prompts/, cut from the PlayStation and Xbox
+## prompt sheets): "A" / "B" (select / back), "▲▼", "◀▶", "◀▲▼▶" (D-pad) and "LB RB".
+## [] = no picture (keyboard, or a hint without one): the menus show the text badge instead.
+const PROMPT_ICONS := {"A": ["accept"], "B": ["back"], "▲▼": ["updown"], "◀▶": ["leftright"],
+	"◀▲▼▶": ["all"], "LB RB": ["lb", "rb"]}
+
+func prompt_icons(key: String) -> Array[Texture2D]:
+	var out: Array[Texture2D] = []
+	var prefix: String = {"playstation": "ps_", "xbox": "xbox_"}.get(kind, "")
+	if prefix == "" or not PROMPT_ICONS.has(key):
+		return out
+	for n in PROMPT_ICONS[key]:
+		var t := Style.look_texture("", "prompts/%s%s.png" % [prefix, n])
+		if t == null:
+			return [] as Array[Texture2D]
+		out.append(t)
+	return out
+
+
+## The hint's pad pictures, `height` tall, in a row (null when there are none).
+func prompt_icon_row(key: String, height: float) -> Control:
+	var icons := prompt_icons(key)
+	if icons.is_empty():
+		return null
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	for t in icons:
+		var r := TextureRect.new()
+		r.texture = t
+		r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		r.custom_minimum_size = Vector2(height * t.get_width() / float(t.get_height()), height)
+		row.add_child(r)
+	return row

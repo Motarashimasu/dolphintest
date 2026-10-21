@@ -1334,6 +1334,21 @@ func _tour() -> void:
 	await wait_for("lobby fade finished", func(): return not app._fade.visible, 3)
 	app.transitions = false
 
+	# Button hints in the pad's own pictures (look/prompts/): PlayStation, then Xbox, then the
+	# keyboard's text badges again.
+	for k in ["playstation", "xbox"]:
+		Pad._set_kind(k)
+		app.open("modifications")   # hints: LB RB, ▲▼, A, B
+		await frames(5)
+		var pics: Array = app._hints.find_children("*", "TextureRect", true, false)
+		await shot("hints_" + k)
+		check("%s hints are pictures (%d)" % [k, pics.size()], pics.size() == 5
+				and pics.all(func(r): return r.texture != null))
+		app.pop()
+	Pad._set_kind("keyboard")
+	await frames(3)
+	check("keyboard hints are text again", app._hints.find_children("*", "TextureRect", true, false).is_empty())
+
 	# Languages: the first-launch picker, then a few menus in Spanish and Italian.
 	TranslationServer.remove_translation(recorder)   # (Godot falls back to "en" for missing texts)
 	app.push(app._language_menu(true))

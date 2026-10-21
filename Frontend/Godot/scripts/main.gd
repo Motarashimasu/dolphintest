@@ -987,6 +987,13 @@ func _build_backdrop() -> void:
 
 
 func _hint(key: String, color: Color, text: String) -> Control:
+	var icons := Pad.prompt_icon_row(key, 32)   # a PlayStation / Xbox pad: its own pictures
+	if icons:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		row.add_child(icons)
+		row.add_child(Style.label(text, 17, Style.INK_LINE, 0, Color.BLACK, "button"))
+		return row
 	if key == "A" or key == "B":
 		var p: Dictionary = Pad.prompt("accept" if key == "A" else "back")
 		key = p["key"]
