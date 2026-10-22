@@ -79,8 +79,11 @@ func on_press(key: String) -> void:
 		return
 	match key:
 		"dolphin":
-			pick_path(false, ["*.exe ; Programs", "* ; All files"], "", "Select DolphinNoGUI.exe",
-					_set_path.bind("dolphin"))
+			if OS.get_name() == "Windows":
+				pick_path(false, ["*.exe ; Programs", "* ; All files"], "", "Select DolphinNoGUI.exe",
+						_set_path.bind("dolphin"))
+			else:   # Linux: dolphin-emu-nogui, no extension
+				pick_path(false, ["* ; All files"], "", "Select dolphin-emu-nogui", _set_path.bind("dolphin"))
 		"data":
 			pick_path(true, [], "", "Select the SparkingData folder", _set_path.bind("data"))
 		"done":
