@@ -24,7 +24,8 @@ release.json (keep it on your PC: it holds the R2 key that can write to the buck
       "private_key": "C:/Keys/release_private.pem",
       "launcher": "DRAGON BALL Sparking! Collection.exe",
       "include": ["*.exe", "*.pck", "*.ico", "Dolphin/**", "SparkingData/states/*",
-                  "SparkingData/textures/**"],
+                  "SparkingData/textures/**",
+                  "SparkingData/saves/netplay/*/title/00010000/*/data/**"],
       "exclude": []
     }
 ("r2_endpoint" may replace the account's R2 address, e.g. for a local test server.)
@@ -40,6 +41,7 @@ import hmac
 import json
 import math
 import os
+import re
 import secrets
 import sys
 import time
@@ -290,17 +292,23 @@ class R2:
 
 # --- The build's files -----------------------------------------------------------------------
 
-def matches(rel: str, patterns: list[str]) -> bool:
-    """fnmatch, where "dir/**" means everything under dir and "*" never crosses a folder."""
-    for p in patterns:
-        if p.endswith("/**"):
-            if rel.startswith(p[:-2]):
-                return True
-        elif "/" not in p.replace("**", "") and "/" in rel:
+def _glob_regex(pattern: str) -> "re.Pattern":
+    """A path pattern: * = any name part (never crosses a folder), ? = one character,
+    ** = anything, folders included ("Dolphin/**" = everything under Dolphin)."""
+    out, i = "", 0
+    while i < len(pattern):
+        c = pattern[i]
+        if pattern.startswith("**", i):
+            out += ".*"
+            i += 2
             continue
-        elif fnmatch.fnmatchcase(rel, p):
-            return True
-    return False
+        out += "[^/]*" if c == "*" else "[^/]" if c == "?" else re.escape(c)
+        i += 1
+    return re.compile(out + r"\Z")
+
+
+def matches(rel: str, patterns: list[str]) -> bool:
+    return any(_glob_regex(p).match(rel) for p in patterns)
 
 
 def sha256_file(path: str) -> str:
@@ -360,15 +368,20 @@ def cmd_keygen(args) -> None:
           f"(copy it to Frontend/Godot/data/update_key.pem)")
 
 
+# The DRAGON NET saves: every player needs them byte-identical (the lobby compares exactly these
+# files: title/.../data of each version's NAND), and matches never write to them. Not the rest of
+# those NAND folders: Dolphin's own SYSCONF, fst.bin... differ per PC.
+NETPLAY_SAVES = "SparkingData/saves/netplay/*/title/00010000/*/data/**"
+
 # Each platform has its own signed file list (players' launchers ask for theirs); the files
 # themselves share one store, so a state or texture both builds have is uploaded once.
 PLATFORMS = {
     "windows": {"manifest": "manifest.json", "archive": "manifests/{build}.json", "suffix": "",
                 "include": ["*.exe", "*.pck", "*.ico", "Dolphin/**", "SparkingData/states/*",
-                            "SparkingData/textures/**"]},
+                            "SparkingData/textures/**", NETPLAY_SAVES]},
     "linux": {"manifest": "manifest-linux.json", "archive": "manifests/linux-{build}.json", "suffix": "_linux",
               "include": ["*.x86_64", "*.pck", "Dolphin/**", "SparkingData/states/*",
-                          "SparkingData/textures/**"]},
+                          "SparkingData/textures/**", NETPLAY_SAVES]},
 }
 
 

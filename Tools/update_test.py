@@ -211,8 +211,16 @@ def main():
         write(os.path.join(b1, "SparkingData/states/RDSPAF-SingleBattle.sav"), os.urandom(300000))
         write(os.path.join(b1, "SparkingData/textures/RDSPAF/big.png"), os.urandom(3 * 1048576 + 123))   # hashed in pieces
         write(os.path.join(b1, "SparkingData/settings.bat"), b"the developer's own: not shipped")
+        write(os.path.join(b1, "SparkingData/saves/netplay/RDSPAF/title/00010000/52445350/data/DBZT3"), b"unlocked save")
+        write(os.path.join(b1, "SparkingData/saves/netplay/RDSPAF/shared2/sys/SYSCONF"), b"this PC's Wii settings")
+        write(os.path.join(b1, "SparkingData/saves/solo/title/00010000/52445350/data/DBZT3"), b"developer's progress")
         out = publish(b1, "205")
         check("publish build 205", out.returncode == 0 and "Published windows version 205" in out.stdout)
+        paths1 = {f["path"] for f in json.loads(release.base64.b64decode(
+            json.loads(r2.objects["manifest.json"])["manifest"]))["files"]}
+        check("the DRAGON NET save is in the update, Dolphin's own NAND files and solo saves aren't",
+              "SparkingData/saves/netplay/RDSPAF/title/00010000/52445350/data/DBZT3" in paths1
+              and not any("SYSCONF" in p or "/solo/" in p for p in paths1))
         check("the developer's .bat isn't in the update", "settings.bat" not in json.dumps(
             list(r2.objects)) and not any(b"the developer" in v for v in r2.objects.values()))
         install = os.path.join(work, "install")

@@ -23,9 +23,9 @@ launcher <---------------- downloads with those links -----------------
 - **Never during a game:** a running game holds Dolphin's files, so an update waits until the
   game is closed.
 - **What's updated:** only the files in the list: the launcher's `.exe` and `.pck`, the `Dolphin`
-  folder, battle states and texture packs (the release config's `include`). Players' saves,
-  settings (`frontend.cfg`), controller profiles, replays and Dolphin user folders are never
-  touched. A file that an earlier update installed and the new build no longer has is deleted.
+  folder, battle states, texture packs and the DRAGON NET saves (the release config's
+  `include`). Players' own saves (`saves/solo`), settings (`frontend.cfg`), controller profiles,
+  replays and Dolphin user folders are never touched. A file that an earlier update installed and the new build no longer has is deleted.
 - **Only changes are downloaded:** files are stored under their own hash, so publishing uploads
   only new files, and a launcher downloads only the files that differ from its copy. A changed
   ini is a few KB.
@@ -89,16 +89,24 @@ Until `data/update_key.pem` exists, the launcher's updates stay off (Options > U
   "private_key": "C:/SparkingKeys/release_private.pem",
   "launcher": "DRAGON BALL Sparking! Collection.exe",
   "include": ["*.exe", "*.pck", "*.ico", "Dolphin/**", "SparkingData/states/*",
-              "SparkingData/textures/**"],
-  "exclude": []
+              "SparkingData/textures/**",
+              "SparkingData/saves/netplay/*/title/00010000/*/data/**"],
+  "exclude": ["SparkingData/states/*.bak"]
 }
 ```
 
 - `launcher`: the launcher's file name in the build folder. The restart script starts it.
   **Keep this name the same from build to build**, because players' shortcuts point to it.
-- `include` / `exclude`: paths relative to the build folder. `Folder/**` means everything under
-  it; `*` never crosses a folder. Anything not included is never sent: your `.bat` test scripts,
-  `saves`, `user`, `frontend.cfg`, `statebackup`...
+- `include` / `exclude`: paths relative to the build folder. `*` is any name (never crosses a
+  folder), `**` anything, folders included (`Folder/**` = everything under it). Anything not
+  included is never sent: your `.bat` test scripts, `saves/solo`, `user`, `frontend.cfg`,
+  `statebackup`...
+- The `saves/netplay/...` line: the DRAGON NET saves, which every player needs byte-identical
+  (the lobby compares exactly these `title/.../data` files). Only the saves themselves: the rest
+  of those folders is Dolphin's own per-PC files. Change a netplay save in the build and the next
+  publish sends it to everyone.
+- Linux builds (`--platform linux`, Docs/LINUX.md) read `include_linux` / `exclude_linux` /
+  `launcher_linux` instead (defaults: the same with `*.x86_64` for `*.exe` / `*.ico`).
 
 ### 5. The installer
 
@@ -108,6 +116,11 @@ Until `data/update_key.pem` exists, the launcher's updates stay off (Options > U
 - Export the launcher with its `.pck` next to the `.exe` (`export_presets.cfg`:
   `embed_pck=false`, already set). Then a menu change downloads the `.pck` (your music and
   pictures) and never the Godot engine (the `.exe`).
+- **Ship the DRAGON NET saves.** Leave `SparkingData\saves\netplay` in the installer: every
+  player needs that exact save, or lobbies refuse their matches. Exclude only your own files, e.g.
+  on the `[Files]` line for the build folder:
+  `Excludes: "frontend.cfg,*.bat,\SparkingData\saves\solo\*,\SparkingData\saves\capture\*,\SparkingData\user\*,\SparkingData\user2\*,\SparkingData\statebackup\*,\SparkingData\old_scripts\*,\SparkingData\update\*"`
+  (a leading `\` means "from the build folder's top", so only those exact folders are skipped).
 - Players on a build from before automatic updates (205 and older) install the first updating
   build by hand, once.
 
