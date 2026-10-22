@@ -46,12 +46,12 @@ if ($LASTEXITCODE -ne 0) {
 
 # 3. Godot's source, at your editor's exact version.
 if (-not (Test-Path (Join-Path $Source ".git"))) {
-    Write-Host "Downloading Godot $Tag source..."
+    Write-Host "Downloading Godot ${Tag} source..."
     git clone --depth 1 --branch $Tag https://github.com/godotengine/godot.git $Source
-    if ($LASTEXITCODE -ne 0) { throw "git couldn't download Godot $Tag (is the tag right?)." }
+    if ($LASTEXITCODE -ne 0) { throw "git couldn't download Godot ${Tag} (is the tag right?)." }
 } else {
     $have = (git -C $Source describe --tags --exact-match 2>$null)
-    if ($have -ne $Tag) { throw "$Source holds Godot '$have', not $Tag: delete the folder (or pass -Source) and run again." }
+    if ($have -ne $Tag) { throw "${Source} holds Godot '${have}', not ${Tag}. Delete that folder (or pass -Source) and run again." }
 }
 
 # 4. Build the release template with the key compiled in.
