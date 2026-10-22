@@ -56,6 +56,9 @@ jobs:
 
       - name: Configure
         run: |
+          set -o pipefail
+          # On failure, CMake's errors also go to the run's summary (annotations).
+          trap 'grep -A12 "CMake Error" cfg.log | head -60 | sed ":a;N;\$!ba;s/%/%25/g;s/\n/%0A/g" | sed "s/^/::error title=CMake::/"' ERR
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=gcc-12 -DCMAKE_CXX_COMPILER=g++-12 \
@@ -65,7 +68,7 @@ jobs:
             -DENABLE_LLVM=OFF -DENABLE_BLUEZ=OFF -DENABLE_AUTOUPDATE=OFF -DENABLE_ANALYTICS=OFF \
             -DENCODE_FRAMEDUMPS=OFF -DUSE_MGBA=OFF -DUSE_RETRO_ACHIEVEMENTS=OFF \
             -DENABLE_X11=ON -DENABLE_EGL=ON -DENABLE_EVDEV=ON \
-            -DENABLE_CUBEB=ON -DENABLE_PULSEAUDIO=ON -DENABLE_ALSA=ON
+            -DENABLE_CUBEB=ON -DENABLE_PULSEAUDIO=ON -DENABLE_ALSA=ON 2>&1 | tee cfg.log
 
       - name: Build
         run: cmake --build build --target dolphin-nogui -j "$(nproc)"
