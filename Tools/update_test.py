@@ -179,6 +179,7 @@ def main():
         check("update.php needs a login", status == 401)
         server.write_config(report_grace=3, r2_account_id="acc", r2_access_key=KEY, r2_secret_key=SECRET,
                             r2_bucket=BUCKET, r2_endpoint=r2.url)
+        time.sleep(1.1)   # (a config rewritten within the same second can still be read stale)
         status, r = call(server, "update.php", token, action="files", files=["../etc"])
         check("update.php refuses a file that isn't a hash", status == 400)
 
@@ -329,6 +330,12 @@ def main():
             f.write(s.replace(f'token="{token}"', 'token=""'))
         res = run_launcher()
         check(f"not logged in: no update {res}", res.get("state") == "no_login")
+
+        # A login that expired on the server: "log in again", not "can't reach".
+        with open(settings, "w") as f:
+            f.write(s.replace(f'token="{token}"', 'token="' + "x" * 40 + '"'))
+        res = run_launcher()
+        check(f"an expired login: asks to log in {res}", res.get("state") == "no_login")
 
         # Prune: files only the oldest builds used.
         out = subprocess.run([sys.executable, os.path.join(ROOT, "Tools", "sparking_release.py"), "prune",

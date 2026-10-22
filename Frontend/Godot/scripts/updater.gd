@@ -26,6 +26,7 @@ const STALL_SECONDS := 30.0    # a download that gets nothing for this long has 
 ## idle, checking, available, up_to_date, downloading, applying, restarting, failed, no_login, off
 var state := "idle"
 var error := ""                # what went wrong (failed), in English: shown through tr()
+var detail := ""               # ...and the server's answer (error code, HTTP status), for reports
 var version := ""              # the newest build's version (once known)
 var notes := ""
 var done_bytes := 0
@@ -78,6 +79,10 @@ func busy() -> bool:
 func _to_state(s: String, err := "") -> void:
 	state = s
 	error = err
+	if err == "":
+		detail = ""
+	else:
+		print("Updater: ", err, " (", detail, ")")
 	changed.emit()
 
 
@@ -97,6 +102,10 @@ func check(apply := true) -> String:
 	_to_state("checking")
 	var r: Dictionary = await Ranked.api("update.php", {"action": "check"})
 	if not r.get("ok", false):
+		if r.get("error") == "login_required":   # the login expired (Ranked forgot it): log in again
+			_to_state("no_login")
+			return state
+		detail = _detail(r)
 		_to_state("failed", "updates_not_set_up" if r.get("error") == "updates_not_set_up" else "Couldn't reach the update server.")
 		return state
 	var got := await _get_bytes(String(r["manifest_url"]))
@@ -309,6 +318,7 @@ func _install(m: Dictionary, need: Array) -> String:
 		var batch := shas.slice(start, start + BATCH)
 		var r: Dictionary = await Ranked.api("update.php", {"action": "files", "files": batch})
 		if not r.get("ok", false):
+			detail = _detail(r)
 			_to_state("failed", "Couldn't reach the update server.")
 			return state
 		for sha in batch:
@@ -502,6 +512,16 @@ static func _ps(path: String) -> String:
 	return "'" + path.replace("/", "\\").replace("'", "''") + "'"
 
 
+## The server's answer, short: "login_required", "bad_response, HTTP 404", "unreachable".
+static func _detail(r: Dictionary) -> String:
+	var d := String(r.get("error", "?"))
+	if r.has("http"):
+		d += ", HTTP %d" % int(r["http"])
+	if r.has("result"):
+		d += ", connection error %d" % int(r["result"])
+	return d
+
+
 ## A line for Options > Updates.
 func summary() -> String:
 	match state:
@@ -532,5 +552,6 @@ func result_text() -> String:
 		"off":
 			return tr("Updates aren't set up in this build.")
 		"failed":
-			return tr("Updates aren't set up on the server yet.") if error == "updates_not_set_up" else tr(error)
+			var t := tr("Updates aren't set up on the server yet.") if error == "updates_not_set_up" else tr(error)
+			return t + ("  (%s)" % detail if detail != "" else "")
 	return ""

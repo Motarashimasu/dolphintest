@@ -89,7 +89,7 @@ func api(endpoint: String, body := {}) -> Dictionary:
 	var res: Array = await req.request_completed
 	req.queue_free()
 	if int(res[0]) != HTTPRequest.RESULT_SUCCESS:
-		return {"ok": false, "error": "unreachable"}
+		return {"ok": false, "error": "unreachable", "result": int(res[0])}   # (HTTPRequest.Result)
 	var data = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
 	if typeof(data) != TYPE_DICTIONARY:
 		return {"ok": false, "error": "bad_response", "http": int(res[1])}
