@@ -1,0 +1,131 @@
+# Linux build of Dolphin-Sparking (dolphin-emu-nogui + Sys) for players: Docs/LINUX.md.
+#
+# Built on Ubuntu 22.04 so it runs on most Linux systems of the last years (glibc 2.35+: Ubuntu
+# 22.04+, Debian 12+, Fedora 36+, SteamOS 3 / Steam Deck, Arch...). Dolphin's own copies of its
+# libraries (USE_SYSTEM_LIBS=OFF) and a static libstdc++, so it only needs what every desktop
+# has: X11 (or XWayland), libudev / libevdev (controllers), PulseAudio or ALSA (sound).
+#
+# Run it: GitHub > Actions > "Linux build" > Run workflow (it also runs on pushes that change
+# Dolphin). The result is the artifact "dolphin-sparking-linux-x86_64": a .tar.gz of the Dolphin
+# folder to put next to the Linux launcher.
+#
+# Optional: with the repository secret GODOT_PCK_KEY (the 64 characters of godot_pck_key.txt),
+# it also builds the Linux Godot export template with that key, for encrypted Linux launchers
+# (artifact "godot-template-linux-encrypted"). Without the secret that job is skipped.
+name: Linux build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["sparking/**"]
+    paths:
+      - "Source/**"
+      - "Data/Sys/**"
+      - "Externals/**"
+      - "CMake/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/linux.yml"
+
+jobs:
+  dolphin:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Submodules (the ones Linux uses)
+        run: |
+          # Not: Windows' Qt and FFmpeg binaries, Android's driver tools, the unit test framework,
+          # GBA link (mGBA) and RetroAchievements (switched off below: BT2 / BT3 use neither).
+          for p in $(git config -f .gitmodules --get-regexp '\.path$' | awk '{print $2}'); do
+            case "$p" in
+              Externals/Qt|Externals/FFmpeg-bin|Externals/libadrenotools|Externals/gtest|\
+              Externals/mGBA/mgba|Externals/rcheevos/rcheevos) continue ;;
+            esac
+            git submodule update --init --depth 1 "$p"
+          done
+
+      - name: Build tools and system headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++-12 ninja-build pkg-config \
+            libx11-dev libxrandr-dev libxi-dev libxext-dev libegl-dev libgl-dev \
+            libevdev-dev libudev-dev libpulse-dev libasound2-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=gcc-12 -DCMAKE_CXX_COMPILER=g++-12 \
+            -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc" \
+            -DUSE_SYSTEM_LIBS=OFF \
+            -DENABLE_QT=OFF -DENABLE_NOGUI=ON -DENABLE_TESTS=OFF \
+            -DENABLE_LLVM=OFF -DENABLE_BLUEZ=OFF -DENABLE_AUTOUPDATE=OFF -DENABLE_ANALYTICS=OFF \
+            -DENCODE_FRAMEDUMPS=OFF -DUSE_MGBA=OFF -DUSE_RETRO_ACHIEVEMENTS=OFF \
+            -DENABLE_X11=ON -DENABLE_EGL=ON -DENABLE_EVDEV=ON \
+            -DENABLE_CUBEB=ON -DENABLE_PULSEAUDIO=ON -DENABLE_ALSA=ON
+
+      - name: Build
+        run: cmake --build build --target dolphin-nogui -j "$(nproc)"
+
+      - name: Check what it needs from the system
+        run: |
+          bin=build/Binaries/dolphin-emu-nogui
+          echo "Shared libraries:"; ldd "$bin" | awk '{print "  " $1}'
+          echo "Newest glibc symbol:"; objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+          if ldd "$bin" | grep -Eq 'libLLVM|libQt|libav|libstdc\+\+'; then
+            echo "::error::Linked a library players may not have"; exit 1
+          fi
+
+      - name: Package the Dolphin folder
+        run: |
+          mkdir -p out/Dolphin
+          cp build/Binaries/dolphin-emu-nogui out/Dolphin/
+          cp -r Data/Sys out/Dolphin/Sys
+          chmod 755 out/Dolphin/dolphin-emu-nogui
+          tar -C out -czf dolphin-sparking-linux-x86_64.tar.gz Dolphin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dolphin-sparking-linux-x86_64
+          path: dolphin-sparking-linux-x86_64.tar.gz
+          retention-days: 30
+
+  godot-template:
+    runs-on: ubuntu-22.04
+    env:
+      SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.GODOT_PCK_KEY }}
+      GODOT_TAG: 4.7.2-stable   # the editor's exact version (Tools/build_encrypted_template.ps1 too)
+    steps:
+      - name: Skip without the key
+        id: key
+        run: |
+          if [ -z "$SCRIPT_AES256_ENCRYPTION_KEY" ]; then
+            echo "No GODOT_PCK_KEY secret: no encrypted Linux template."; echo "have=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=yes" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Godot source
+        if: steps.key.outputs.have == 'yes'
+        run: git clone --depth 1 --branch "$GODOT_TAG" https://github.com/godotengine/godot.git godot
+      - name: Build tools
+        if: steps.key.outputs.have == 'yes'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libx11-dev libxcursor-dev \
+            libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev libudev-dev \
+            libxi-dev libxrandr-dev
+          python3 -m pip install --user scons
+      - name: Build the template
+        if: steps.key.outputs.have == 'yes'
+        working-directory: godot
+        # X11 only (XWayland covers Wayland desktops); no screen reader driver, as on Windows.
+        run: python3 -m SCons platform=linuxbsd target=template_release arch=x86_64 production=yes accesskit=no wayland=no -j "$(nproc)"
+      - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.have == 'yes'
+        with:
+          name: godot-template-linux-encrypted
+          path: godot/bin/godot.linuxbsd.template_release.x86_64
+          retention-days: 3
