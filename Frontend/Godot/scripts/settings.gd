@@ -273,15 +273,30 @@ func current_version() -> String:
 	return offline_version(game)
 
 
+## The disc image a version runs. A version with a disc recipe (scripts/discs.gd) runs the
+## launcher's own copy built from the player's disc, never a picked file.
 func copy_path(key: String, ver: String) -> String:
-	return String(get_value("games", "%s_%s" % [key, ver])) if ver != "" else ""
+	if ver == "":
+		return ""
+	var id := String(GAMES.get(key, {}).get("versions", {}).get(ver, ""))
+	if Discs.has_recipe(id):
+		return Discs.built_path(id)
+	return String(get_value("games", "%s_%s" % [key, ver]))
 
 
 func has_copy(key: String, ver: String) -> bool:
 	if not ver in VERSIONS:
 		return false   # a locked version (NTSC-U for now) is never played, even if it's set
+	var id := String(GAMES.get(key, {}).get("versions", {}).get(ver, ""))
+	if Discs.has_recipe(id):
+		return Discs.ready(id)
 	var p := copy_path(key, ver)
 	return p != "" and FileAccess.file_exists(p)
+
+
+## What players see for a version: "4.0" for one with a recipe named so, else "PAL", "NTSC-J".
+func version_name(key: String, ver: String) -> String:
+	return Discs.version_name(key, ver) if GAMES.has(key) and ver != "" else ver
 
 
 ## Versions of `key` with a copy on this PC, in VERSIONS order.

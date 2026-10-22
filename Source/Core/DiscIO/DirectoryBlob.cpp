@@ -490,6 +490,47 @@ DirectoryBlobReader::DirectoryBlobReader(
   }
 }
 
+std::unique_ptr<DirectoryBlobReader>
+DirectoryBlobReader::CreateWithLayout(std::unique_ptr<VolumeDisc> volume,
+                                      std::vector<LayoutContent> layout, u64 data_size)
+{
+  if (!volume || volume->GetVolumeType() != Platform::WiiDisc)
+    return nullptr;
+  return std::unique_ptr<DirectoryBlobReader>(
+      new DirectoryBlobReader(std::move(volume), std::move(layout), data_size));
+}
+
+DirectoryBlobReader::DirectoryBlobReader(std::unique_ptr<VolumeDisc> volume,
+                                         std::vector<LayoutContent> layout, u64 data_size)
+    : m_encryption_cache(this), m_is_wii(true), m_encrypted(true), m_data_size(0),
+      m_wrapped_volume(std::move(volume))
+{
+  DirectoryBlobPartition game_partition(*m_wrapped_volume, m_wrapped_volume->GetGamePartition(),
+                                        std::move(layout), data_size);
+
+  std::vector<u8> header_bin(WII_NONPARTITION_DISCHEADER_SIZE);
+  if (!m_wrapped_volume->Read(WII_NONPARTITION_DISCHEADER_ADDRESS, WII_NONPARTITION_DISCHEADER_SIZE,
+                              header_bin.data(), PARTITION_NONE))
+  {
+    header_bin.clear();
+  }
+  std::vector<u8> disc_header(DISCHEADER_SIZE);
+  game_partition.GetContents().Read(DISCHEADER_ADDRESS, DISCHEADER_SIZE, disc_header.data(), this);
+  SetNonpartitionDiscHeader(disc_header, std::move(header_bin));
+
+  std::vector<u8> wii_region_data(WII_REGION_DATA_SIZE);
+  if (!m_wrapped_volume->Read(WII_REGION_DATA_ADDRESS, WII_REGION_DATA_SIZE,
+                              wii_region_data.data(), PARTITION_NONE))
+  {
+    wii_region_data.clear();
+  }
+  SetWiiRegionData(wii_region_data, "volume");
+
+  std::vector<PartitionWithType> partitions;
+  partitions.emplace_back(std::move(game_partition), PartitionType::Game);
+  SetPartitions(std::move(partitions));
+}
+
 DirectoryBlobReader::DirectoryBlobReader(const DirectoryBlobReader& rhs)
     : m_gamecube_pseudopartition(rhs.m_gamecube_pseudopartition),
       m_nonpartition_contents(rhs.m_nonpartition_contents), m_partitions(rhs.m_partitions),
@@ -853,6 +894,16 @@ DirectoryBlobPartition::DirectoryBlobPartition(std::string root_directory,
   BuildFSTFromFolder(m_root_directory + "files/", fst_address, &disc_header);
 
   m_contents.Add(DISCHEADER_ADDRESS, disc_header);
+}
+
+DirectoryBlobPartition::DirectoryBlobPartition(const VolumeDisc& volume,
+                                               const Partition& partition,
+                                               std::vector<LayoutContent> layout, u64 data_size)
+    : m_is_wii(volume.GetVolumeType() == Platform::WiiDisc), m_address_shift(m_is_wii ? 2 : 0),
+      m_data_size(data_size), m_wrapped_partition(partition)
+{
+  for (LayoutContent& c : layout)
+    m_contents.Add(c.offset, c.size, std::move(c.source));
 }
 
 static void FillSingleFileNode(FSTBuilderNode* node, std::vector<u8> data)

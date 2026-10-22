@@ -18,7 +18,9 @@ Without --modded the recipe is the original itself (no data.bin): the launcher t
 the disc and copies it in (e.g. NTSC-J as it is).
 
 The launcher (dolphin-tool sparking-disc) checks the player's disc against the list and writes
-the version out as one RVZ: built from the files only, so it's byte-identical for every player.
+the version out as one RVZ, every file (and the file table, main.dol) exactly where it is on your
+version's disc: save states made on your disc keep working. Built from the files only, it's
+byte-identical for every player.
 Uses DolphinTool's "extract" for both discs (any format Dolphin reads); needs free space for
 both discs' files while it runs. No packages needed.
 """
@@ -33,7 +35,7 @@ import subprocess
 import tempfile
 
 FORMAT = 1
-SYS_FILES = ["sys/boot.bin", "sys/bi2.bin", "sys/apploader.img", "sys/main.dol"]
+SYS_FILES = ["sys/boot.bin", "sys/bi2.bin", "sys/apploader.img", "sys/main.dol", "sys/fst.bin"]
 
 
 def masked(path: str, data: bytes) -> bytes:
@@ -88,6 +90,46 @@ class Disc:
             for n in sorted(names):
                 self.files[prefix + n] = os.path.join(dirpath, n)
         self._hashes: dict[str, str] = {}
+        self.offsets = self._layout()
+
+    def _layout(self) -> dict[str, int]:
+        """Where each file is in the game partition: from boot.bin and the file table (FST)."""
+        import struct
+        with open(self.files["sys/boot.bin"], "rb") as f:
+            boot = f.read(0x440)
+        wii = struct.unpack_from(">I", boot, 0x18)[0] == 0x5D1C9EA3
+        shift = 2 if wii else 0
+        dol, fst_at = (struct.unpack_from(">I", boot, o)[0] << shift for o in (0x420, 0x424))
+        out = {"sys/boot.bin": 0, "sys/bi2.bin": 0x440, "sys/apploader.img": 0x2440,
+               "sys/main.dol": dol, "sys/fst.bin": fst_at}
+        fst = self.read("sys/fst.bin")
+        count = struct.unpack_from(">I", fst, 8)[0]
+        names = count * 12
+
+        def name(i: int) -> str:
+            at = names + (struct.unpack_from(">I", fst, i * 12)[0] & 0xFFFFFF)
+            raw = fst[at:fst.index(b"\0", at)]
+            try:
+                return raw.decode("shift_jis")
+            except UnicodeDecodeError:
+                return raw.decode("latin-1")
+
+        def walk(first: int, last: int, prefix: str) -> None:
+            i = first
+            while i < last:
+                kind, off, size = fst[i * 12], *struct.unpack_from(">II", fst, i * 12 + 4)
+                if kind & 1:                       # a folder: its entries run to `size`
+                    walk(i + 1, size, prefix + name(i) + "/")
+                    i = size
+                else:
+                    out[prefix + name(i)] = off << shift
+                    i += 1
+
+        walk(1, count, "files/")
+        missing = [rel for rel in self.files if rel not in out]
+        if missing:
+            raise SystemExit(f"{missing[0]} isn't in the disc's file table (FST): extracted from another disc?")
+        return out
 
     def size(self, rel: str) -> int:
         return os.path.getsize(self.files[rel])
@@ -101,8 +143,9 @@ class Disc:
         with open(self.files[rel], "rb") as f:
             return f.read()
 
-    def entries(self) -> list[list]:
-        return [[rel, self.size(rel), self.sha1(rel)] for rel in sorted(self.files)]
+    def entries(self, with_offsets: bool = False) -> list[list]:
+        return [[rel, self.size(rel), self.sha1(rel)] + ([self.offsets[rel]] if with_offsets else [])
+                for rel in sorted(self.files)]
 
 
 def extract(tool: str, disc: str, out: str) -> Disc:
@@ -211,14 +254,14 @@ def make_recipe(original: Disc, modded: Disc | None, name: str, out_dir: str,
         by_hash.setdefault((e[1], e[2]), i)
 
     target_disc = modded or original
-    target = target_disc.entries()
+    target = target_disc.entries(with_offsets=True)
     files: dict[str, list] = {}
     data_path = os.path.join(out_dir, "data.bin")
     data_size = 0
     data_hash = hashlib.sha1()
     new_by_file: list[tuple[int, str]] = []
     with open(data_path, "wb") as data:
-        for rel, size, sha in target:
+        for rel, size, sha, _ in target:
             i = index.get(rel)
             if i is not None and source[i][1] == size and source[i][2] == sha:
                 continue                                  # the original's file
@@ -251,7 +294,6 @@ def make_recipe(original: Disc, modded: Disc | None, name: str, out_dir: str,
         "made": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "source": source,
         "target": target,
-        "empty_dirs": target_disc.empty_dirs,
         "files": files,
     }
     if data_size:
@@ -302,6 +344,18 @@ def check_recipe(recipe: dict, original: Disc, target_disc: Disc, out_dir: str) 
             raise SystemExit(f"Internal error: the recipe doesn't rebuild {rel} exactly.")
 
 
+STANDARD_GAME_PARTITION = 0xF800000   # where built copies (and Wii discs) have the game
+
+
+def disc_info(tool: str, disc: str) -> dict:
+    """ID, revision and where the game partition is (dolphin-tool sparking-disc --info)."""
+    r = subprocess.run([tool, "sparking-disc", "-i", disc, "--info"], capture_output=True, text=True)
+    for line in r.stdout.splitlines():
+        if line.startswith("info "):
+            return json.loads(line[5:])
+    return {}
+
+
 def cmd_disc(args) -> None:
     tool = args.dolphin_tool
     if not tool or not os.path.isfile(tool):
@@ -320,6 +374,12 @@ def cmd_disc(args) -> None:
                 if os.path.exists(os.path.join(args.out, n)):
                     os.remove(os.path.join(args.out, n))
         make_recipe(original, modded, args.name, args.out)
+        info = disc_info(tool, args.modded or args.original)
+        if info.get("wii") and info.get("partition_offset") != STANDARD_GAME_PARTITION:
+            print(f"  Warning: on {os.path.basename(args.modded or args.original)} the game partition is at "
+                  f"{info.get('partition_offset', 0):#x}, built copies have it at {STANDARD_GAME_PARTITION:#x} "
+                  "(where Wii discs have it). Save states made on that disc won't load on built copies: "
+                  "make them again on a built copy.")
         print(f"Recipe written to {args.out} (publish the build to send it to players)")
     finally:
         shutil.rmtree(work, ignore_errors=True)

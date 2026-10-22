@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests disc recipes end to end with made-up Wii discs (no game data):
 
-    python3 Tools/sparking_disc_test.py <dolphin-tool> [work folder]
+    python3 Tools/sparking_disc_test.py <dolphin-tool> [work folder] [godot]
 
 Makes an "original" Wii disc and a "modded" one (changed, added, moved and removed files, a
 changed main.dol and boot.bin), packs the original as ISO, RVZ, GCZ and WBFS (scrubbed, like
@@ -12,7 +12,9 @@ real WBFS copies), makes the recipe with sparking_release.py disc, then checks t
   - other games / versions, other revisions, modified or damaged copies, and broken recipes are
     refused with the right error;
   - a recipe without --modded (the original as it is) works too;
-  - the launcher's disc-ID reader finds the ID in ISO, RVZ and WBFS.
+  - the launcher's disc-ID reader finds the ID in ISO, RVZ and WBFS;
+  - with a Godot binary: the launcher's side (tests/disc_check.gd): 4.0 shown for PAL, building
+    through the screen, refusals, the lock (touched / replaced copies), recipe updates, stopping.
 """
 from __future__ import annotations
 
@@ -251,17 +253,35 @@ def main() -> None:
     check(len(set(outputs.values())) == 1 and len(outputs) == len(formats),
           "every format gives the same image, byte for byte", str(outputs))
 
+    # A full dump still has the disc's update partition (WBFS / NKit copies usually don't).
+    shutil.copytree(j("orig"), j("orig_upd"))
+    make_wii_folder(j("upd_part"), "RDSPAF", 0, "UPDATE", {"update.bin": rnd(9, 300_000)}, rnd(10, 4000))
+    shutil.copytree(j("upd_part", "DATA"), j("orig_upd", "UPDATE"))
+    convert(tool, j("orig_upd", "DATA", "sys", "main.dol"), j("orig_upd.iso"), "iso", user)
+    code, lines = sparking(tool, j("orig_upd.iso"), recipe_path, j("out_upd.rvz"), user)
+    check(code == 0 and sha256(j("out_upd.rvz")) == outputs.get("iso"),
+          "a dump with the update partition gives the same image too", str(lines[-2:]))
+
     print("What was built:")
     built = sparking_disc.extract(tool, j("out_iso.rvz"), j("x_out"))
     want = sparking_disc.extract(tool, j("mod.iso"), j("x_mod"))
-    check(built.entries() == want.entries(), "exactly the modded disc's files (and sizes, hashes)")
+    check(built.entries(True) == want.entries(True), "exactly the modded disc's files, each at its place")
+    check(built.read("sys/boot.bin") == want.read("sys/boot.bin") and built.read("sys/fst.bin") == want.read("sys/fst.bin"),
+          "the same disc header and file table, byte for byte")
     check(built.empty_dirs == ["files/empty/"], "the empty folder is kept", str(built.empty_dirs))
     check(built.game_id == "RDSPAF", "disc ID")
+    info = sparking_disc.disc_info(tool, j("out_iso.rvz"))
+    check(info.get("partition_offset") == sparking_disc.STANDARD_GAME_PARTITION,
+          "the game partition where Wii discs have it (save states remember it)", str(info))
+    check("Warning" not in r.stdout, "no layout warning for a standard disc")
     code, lines = sparking(tool, j("out_iso.rvz"), recipe_path, j("x.rvz"), user, "--check")
     check(error_of(lines).startswith("error modified"), "the built image isn't taken as an original")
 
     code, lines = sparking(tool, formats["iso"], recipe_path, j("out.iso"), user, "-f", "iso")
     check(code == 0 and os.path.getsize(j("out.iso")) > 0, "ISO output works too")
+
+    print("A version laid out its own way (save states need every file where it was):")
+    weird_layout(tool, j, formats, user)
 
     print("Refusals:")
     make_wii_folder(j("us"), "RDSE70", 0, "TEST GAME", files, dol_text, empty_dirs=["empty"])
@@ -317,10 +337,95 @@ def main() -> None:
     check(same.entries() == sparking_disc.extract(tool, formats["iso"], j("x_orig")).entries(),
           "exactly the original's files")
 
+    if len(sys.argv) > 3:
+        launcher_check(sys.argv[3], tool, work, j, formats)
+
     if FAILS:
         print(f"DISC TEST FAILED ({len(FAILS)}): " + "; ".join(FAILS))
         sys.exit(1)
     print("DISC TEST PASSED")
+
+
+def weird_layout(tool: str, j, formats: dict, user: str) -> None:
+    """A "version" with the original's files in reverse order, spread out (no tool lays a disc
+    out like that): made with a hand-written recipe, then used as --modded. The build must put
+    every file exactly where that disc has it, file table included."""
+    orig = sparking_disc.extract(tool, formats["iso"], j("x_orig_w"))
+    fst = bytearray(orig.read("sys/fst.bin"))
+    count = struct.unpack_from(">I", fst, 8)[0]
+    by_off = {off >> 2: rel for rel, off in orig.offsets.items() if rel.startswith("files/")}
+    entries = [i for i in range(1, count) if not fst[i * 12] & 1]
+    at = max(orig.offsets["sys/fst.bin"] + len(fst), orig.offsets["sys/main.dol"] + orig.size("sys/main.dol"))
+    at = (at + 0x7FFF) // 0x8000 * 0x8000 + 0x40000
+    want: dict[str, int] = {}
+    for i in sorted(entries, key=lambda i: -struct.unpack_from(">I", fst, i * 12 + 4)[0]):
+        rel = by_off[struct.unpack_from(">I", fst, i * 12 + 4)[0]]
+        struct.pack_into(">I", fst, i * 12 + 4, at >> 2)
+        want[rel] = at
+        at = (at + orig.size(rel) + 0x7FFF) // 0x8000 * 0x8000 + 0x18000
+    os.makedirs(j("weird_recipe"))
+    with open(j("weird_recipe", "data.bin"), "wb") as f:
+        f.write(fst)
+    source = orig.entries()
+    target = []
+    for rel, size, sha in source:
+        off = want.get(rel, orig.offsets[rel])
+        if rel == "sys/fst.bin":
+            sha = hashlib.sha1(fst).hexdigest()
+        target.append([rel, size, sha, off])
+    recipe = {"format": 1, "name": "weird", "game_id": "RDSPAF", "revision": 0, "source": source,
+              "target": target, "files": {"sys/fst.bin": [["n", 0, len(fst)]]},
+              "data": "data.bin", "data_size": len(fst)}
+    with open(j("weird_recipe", "recipe.json"), "w") as f:
+        json.dump(recipe, f)
+    code, lines = sparking(tool, formats["iso"], j("weird_recipe", "recipe.json"), j("weird.iso"), user, "-f", "iso")
+    check(code == 0, "a disc with its own layout is made", str(lines[-2:]))
+    weird = sparking_disc.extract(tool, j("weird.iso"), j("x_weird"))
+    check(all(weird.offsets[r] == o for r, o in want.items()) and
+          [e[:3] for e in weird.entries() if e[0].startswith("files/")] ==
+          [e[:3] for e in orig.entries() if e[0].startswith("files/")],
+          "its files are the original's, where the layout says")
+
+    r = subprocess.run([sys.executable, os.path.join(HERE, "sparking_release.py"), "disc",
+                        "--original", formats["rvz"], "--modded", j("weird.iso"), "--name", "W",
+                        "--out", j("weird_recipe2"), "--dolphin-tool", tool, "--temp", j()],
+                       capture_output=True, text=True)
+    check(r.returncode == 0, "its recipe", r.stdout + r.stderr)
+    code, lines = sparking(tool, formats["wbfs"], j("weird_recipe2", "recipe.json"), j("weird_built.rvz"), user)
+    check(code == 0, "built from the WBFS", str(lines[-2:]))
+    got = sparking_disc.extract(tool, j("weird_built.rvz"), j("x_weird_built"))
+    check(got.offsets == weird.offsets and got.read("sys/fst.bin") == weird.read("sys/fst.bin"),
+          "every file at the same place, the same file table")
+
+
+def launcher_check(godot: str, tool: str, work: str, j, formats: dict) -> None:
+    print("The launcher (tests/disc_check.gd):")
+    install = j("install")
+    data = os.path.join(install, "SparkingData")
+    shutil.copytree(j("recipe"), os.path.join(data, "discs", "RDSPAF"))
+    os.makedirs(os.path.join(install, "Dolphin"))
+    shutil.copy(tool, os.path.join(install, "Dolphin", "dolphin-tool"))
+    with open(os.path.join(install, "Dolphin", "dolphin-emu-nogui"), "w") as f:
+        f.write("")
+    cfg = j("launcher.cfg")
+    with open(cfg, "w") as f:
+        f.write(f'[paths]\ndata="{data}"\ndolphin="{os.path.join(install, "Dolphin", "dolphin-emu-nogui")}"\n'
+                'setup_done=true\n[options]\nlanguage="en"\n')
+    env = dict(os.environ, DISC_ORIG=formats["wbfs"], DISC_MOD=j("mod.iso"), DISC_US=j("us.iso"))
+    project = os.path.join(os.path.dirname(HERE), "Frontend", "Godot")
+    r = subprocess.run([godot, "--headless", "--path", project, "--", "--disc-check", cfg],
+                       capture_output=True, text=True, env=env, timeout=900)
+    ended = False
+    for line in r.stdout.splitlines():
+        if line.startswith("DISC_CHECK_END"):
+            ended = True
+        elif line.startswith("DISC_CHECK "):
+            ok = line.startswith("DISC_CHECK ok")
+            print("  " + line[len("DISC_CHECK "):])
+            if not ok:
+                FAILS.append("launcher: " + line[len("DISC_CHECK FAIL "):])
+    errors = [l for l in (r.stdout + r.stderr).splitlines() if "SCRIPT ERROR" in l or "Parse Error" in l]
+    check(ended and not errors, "the launcher check ran to the end", "\n".join(errors[:5]) or r.stdout[-2000:] + r.stderr[-2000:])
 
 
 if __name__ == "__main__":

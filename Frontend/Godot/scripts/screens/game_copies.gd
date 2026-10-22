@@ -2,7 +2,10 @@ extends "res://scripts/screens/form_screen.gd"
 ## Options > Game Copies > a game: where each version's disc image is (NTSC-U, PAL, NTSC-J) and
 ## which one Play Offline runs. DRAGON NET asks which version to play when there's more than one.
 ## A picked file's version is read from the disc (its ID); when it can't be (GCZ...), the player
-## says which version it is.
+## says which version it is. A version with a disc recipe (e.g. 4.0) is built from the player's
+## original disc instead (scripts/discs.gd, disc_build.gd): its copy can only be built, not picked.
+
+const DiscBuild := preload("res://scripts/screens/disc_build.gd")
 
 const GAME_FILTERS := ["*.iso, *.rvz, *.wbfs, *.gcz, *.ciso, *.wia, *.gcm ; Wii disc images", "* ; All files"]
 
@@ -31,6 +34,18 @@ func screen_desc() -> String:
 	return tr("Where your %s copies are, one per version.") % Settings.GAMES[key]["title"]
 
 
+## A built copy's state, for the Game Copies row.
+static func built_text(id: String) -> String:
+	match Discs.state(id):
+		"ready":
+			return TranslationServer.translate("Built from your disc")
+		"outdated":
+			return TranslationServer.translate("Updated: build it again")
+		"changed":
+			return TranslationServer.translate("Changed: check it")
+	return TranslationServer.translate("Not set")
+
+
 static func file_text(path: String) -> String:
 	if path == "":
 		return TranslationServer.translate("Not set")
@@ -43,6 +58,13 @@ func build_rows() -> Array:
 	var g: Dictionary = Settings.GAMES[key]
 	var rows: Array = []
 	for v in Settings.VERSIONS:
+		var id := String(g["versions"][v])
+		if Discs.has_recipe(id):
+			rows.append({"type": "action", "key": v, "label": Settings.version_name(key, v),
+				"value": built_text(id),
+				"desc": tr("%s %s is built from your original %s disc (%s).\nThe launcher makes and keeps its own copy: pick your disc to build it.") % [
+					g["title"], Settings.version_name(key, v), v, id]})
+			continue
 		rows.append({"type": "action", "key": v, "label": v,
 			"value": file_text(Settings.copy_path(key, v)),
 			"desc": tr("Your %s %s disc image (%s).\nThe version is checked when you pick it.") % [g["title"], v, g["versions"][v]]})
@@ -55,6 +77,7 @@ func build_rows() -> Array:
 		rows.append({"type": "info", "key": "offline", "label": "Play Offline uses", "value": tr("No copy yet")})
 	else:
 		rows.append({"type": "choice", "key": "offline", "label": "Play Offline uses", "values": owned,
+			"names": owned.map(func(v): return Settings.version_name(key, v)),
 			"value": Settings.offline_version(key),
 			"desc": "The version Play Offline runs.\nDRAGON NET asks which one when you have more than one."})
 	rows.append({"type": "action", "key": "back", "label": "Back", "desc": "Back to the game list."})
@@ -71,6 +94,10 @@ func on_press(k: String) -> void:
 		on_back()
 		return
 	if not k in Settings.VERSIONS:
+		return
+	var id := String(Settings.GAMES[key]["versions"][k])
+	if Discs.has_recipe(id):
+		_built_menu(k, id)
 		return
 	if not Settings.has_copy(key, k) and Settings.copy_path(key, k) == "":
 		_pick(k)
@@ -92,6 +119,39 @@ func on_press(k: String) -> void:
 	app.push(app.menu("Game Copy", items, "main_menu"))
 
 
+## A built version: build it (again) from a disc, check it, or remove it.
+func _built_menu(k: String, id: String) -> void:
+	var refresh := func(): list.set_rows(build_rows(), k)
+	var st := Discs.state(id)
+	if st == "missing" and Discs.candidate(key, k) == "":
+		DiscBuild.pick_and_build(self, key, k, refresh)
+		return
+	var name := Settings.version_name(key, k)
+	var items: Array = []
+	var again := Discs.candidate(key, k)
+	if st in ["outdated", "missing"] and again != "":
+		items.append({"label": "Build again", "glyph": "R", "color": "#3fbf6b",
+			"desc": tr("Build %s again from %s.") % [name, again.get_file()],
+			"action": func(): app.replace(DiscBuild.new().setup(key, k, again, refresh))})
+	if st == "changed":
+		items.append({"label": "Check it", "glyph": "C", "color": "#3fbf6b",
+			"desc": tr("Check that your %s copy is still the one that was built.") % name,
+			"action": func(): app.replace(DiscBuild.new().setup(key, k, "", refresh))})
+	items.append({"label": "Build from a disc", "glyph": "F", "color": "#3fa9f5",
+		"desc": tr("Pick your original %s disc (%s) and build %s from it.") % [k, id, name],
+		"action": func():
+			app.pop()
+			DiscBuild.pick_and_build(self, key, k, refresh)})
+	if st != "missing":
+		items.append({"label": "Remove", "glyph": "X", "color": "#e8663d",
+			"desc": tr("Delete the launcher's %s copy (your disc file stays).") % name,
+			"action": func():
+				Discs.remove(id)
+				app.pop()})
+	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true, "desc": "Keep it as it is."})
+	app.push(app.menu("Game Copy", items, "main_menu"))
+
+
 func _pick(ver: String) -> void:
 	pick_path(false, GAME_FILTERS, Settings.copy_path(key, ver),
 			tr("Select your %s %s game file") % [Settings.GAMES[key]["title"], ver],
@@ -105,6 +165,9 @@ static func store(screen: Control, path: String, game_key: String, ver: String, 
 	var app: Node = screen.app
 	var where: Array = Settings.game_of_id(Settings.read_disc_id(path))
 	if where.is_empty():
+		if ver != "" and Discs.has_recipe(String(Settings.GAMES[game_key]["versions"][ver])):
+			app.push(DiscBuild.new().setup(game_key, ver, path, done))
+			return
 		if ver != "":
 			Settings.set_copy(game_key, ver, path)
 			done.call()
@@ -113,6 +176,11 @@ static func store(screen: Control, path: String, game_key: String, ver: String, 
 		return
 	if where[1] in Settings.LOCKED_VERSIONS:
 		app.toast(TranslationServer.translate("That's the %s version, which isn't supported yet.") % where[1], 5.0)
+		return
+	var id := String(Settings.GAMES[where[0]]["versions"][where[1]])
+	if Discs.has_recipe(id):
+		# Built, not picked: this disc is the original it's built from (checked there).
+		app.push(DiscBuild.new().setup(where[0], where[1], path, done))
 		return
 	if where[0] != game_key:
 		app.toast(TranslationServer.translate("That's %s (%s): saved as that game's copy.") % [
@@ -127,11 +195,14 @@ static func _ask_version(app: Node, path: String, game_key: String, done: Callab
 	var g: Dictionary = Settings.GAMES[game_key]
 	var items: Array = []
 	for v in Settings.VERSIONS:
-		items.append({"label": v, "glyph": String(v).left(1), "color": g["color"],
+		items.append({"label": Settings.version_name(game_key, v), "glyph": String(v).left(1), "color": g["color"],
 			"desc": TranslationServer.translate("%s\nis the %s %s (%s).") % [path.get_file(), g["title"], v, g["versions"][v]],
 			"action": func():
-				Settings.set_copy(game_key, v, path)
 				app.pop()
+				if Discs.has_recipe(String(g["versions"][v])):
+					app.push(DiscBuild.new().setup(game_key, v, path, done))
+					return
+				Settings.set_copy(game_key, v, path)
 				done.call()})
 	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 		"desc": "Don't use this file."})

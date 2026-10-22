@@ -71,23 +71,24 @@ jobs:
             -DENABLE_CUBEB=ON -DENABLE_PULSEAUDIO=ON -DENABLE_ALSA=ON 2>&1 | tee cfg.log
 
       - name: Build
-        run: cmake --build build --target dolphin-nogui -j "$(nproc)"
+        run: cmake --build build --target dolphin-nogui dolphin-tool -j "$(nproc)"
 
       - name: Check what it needs from the system
         run: |
-          bin=build/Binaries/dolphin-emu-nogui
-          echo "Shared libraries:"; ldd "$bin" | awk '{print "  " $1}'
-          echo "Newest glibc symbol:"; objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
-          if ldd "$bin" | grep -Eq 'libLLVM|libQt|libav|libstdc\+\+'; then
-            echo "::error::Linked a library players may not have"; exit 1
-          fi
+          for bin in build/Binaries/dolphin-emu-nogui build/Binaries/dolphin-tool; do
+            echo "$bin shared libraries:"; ldd "$bin" | awk '{print "  " $1}'
+            echo "Newest glibc symbol:"; objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+            if ldd "$bin" | grep -Eq 'libLLVM|libQt|libav|libstdc\+\+'; then
+              echo "::error::$bin linked a library players may not have"; exit 1
+            fi
+          done
 
       - name: Package the Dolphin folder
         run: |
           mkdir -p out/Dolphin
-          cp build/Binaries/dolphin-emu-nogui out/Dolphin/
+          cp build/Binaries/dolphin-emu-nogui build/Binaries/dolphin-tool out/Dolphin/
           cp -r Data/Sys out/Dolphin/Sys
-          chmod 755 out/Dolphin/dolphin-emu-nogui
+          chmod 755 out/Dolphin/dolphin-emu-nogui out/Dolphin/dolphin-tool
           tar -C out -czf dolphin-sparking-linux-x86_64.tar.gz Dolphin
 
       - uses: actions/upload-artifact@v4

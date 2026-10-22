@@ -5,6 +5,7 @@ extends "res://scripts/screens/form_screen.gd"
 ## appear if that failed.
 
 const GameCopies := preload("res://scripts/screens/game_copies.gd")
+const DiscBuild := preload("res://scripts/screens/disc_build.gd")
 
 
 func screen_music() -> String:
@@ -28,7 +29,14 @@ func _copies_text(key: String) -> String:
 				any = Settings.copy_path(key, v)
 		return GameCopies.file_text(any)
 	var v: String = owned[0]
+	if Discs.has_recipe(String(Settings.GAMES[key]["versions"][v])):
+		return "%s · %s" % [Settings.version_name(key, v), tr("Built from your disc")]
 	return "%s · %s" % [v, Settings.copy_path(key, v).get_file()]
+
+
+## Some version of the game is built from the player's disc (a disc recipe): ask the version first.
+static func _has_recipes(key: String) -> bool:
+	return Settings.VERSIONS.any(func(v): return Discs.has_recipe(String(Settings.GAMES[key]["versions"][v])))
 
 
 func build_rows() -> Array:
@@ -37,7 +45,8 @@ func build_rows() -> Array:
 		var g: Dictionary = Settings.GAMES[key]
 		rows.append({"type": "action", "key": "game_" + key, "label": g["title"],
 			"value": _copies_text(key),
-			"desc": tr("Your %s disc image (any version).\nMore versions later: Options > Game Copies.") % g["full_title"]})
+			"desc": (tr("Pick the %s version you want to play, then your disc.\nMore versions later: Options > Game Copies.") % g["full_title"]) if _has_recipes(key) \
+				else (tr("Your %s disc image (any version).\nMore versions later: Options > Game Copies.") % g["full_title"])})
 	rows.append_array([
 		{"type": "text", "key": "nickname", "label": "DRAGON NET name",
 			"value": Settings.get_value("player", "nickname"), "max_length": 24,
@@ -71,6 +80,9 @@ func on_value(key: String, value: Variant) -> void:
 func on_press(key: String) -> void:
 	if key.begins_with("game_"):
 		var game_key := key.trim_prefix("game_")
+		if _has_recipes(game_key):
+			_version_menu(game_key, key)
+			return
 		var owned := Settings.owned_versions(game_key)
 		var current := Settings.copy_path(game_key, owned[0]) if not owned.is_empty() else ""
 		pick_path(false, GameCopies.GAME_FILTERS, current,
@@ -88,6 +100,32 @@ func on_press(key: String) -> void:
 			pick_path(true, [], "", "Select the SparkingData folder", _set_path.bind("data"))
 		"done":
 			_finish()
+
+
+## Which version to play: those with a recipe are built from the player's original disc.
+func _version_menu(game_key: String, row: String) -> void:
+	var g: Dictionary = Settings.GAMES[game_key]
+	var refresh := func(): list.set_rows(build_rows(), row)
+	var items: Array = []
+	for v in Settings.VERSIONS:
+		var id := String(g["versions"][v])
+		var name := Settings.version_name(game_key, v)
+		var built := Discs.has_recipe(id)
+		items.append({"label": name, "glyph": String(v).left(1), "color": g["color"],
+			"desc": (tr("Play %s %s. It's built from your original %s disc (%s):\nnext, pick that disc's file.") % [g["title"], name, v, id]) if built \
+				else (tr("Play %s %s: next, pick your %s disc's file (%s).") % [g["title"], v, v, id]),
+			"action": func():
+				app.pop()
+				if built:
+					DiscBuild.pick_and_build(self, game_key, v, refresh)
+				else:
+					pick_path(false, GameCopies.GAME_FILTERS, Settings.copy_path(game_key, v),
+							tr("Select your %s %s game file") % [g["title"], v],
+							func(path: String): GameCopies.store(self, path, game_key, v, refresh))})
+	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true, "desc": "Back to the setup."})
+	var m: Control = app.menu("Which version?", items, "main_menu")
+	m.notices = false
+	app.push(m)
 
 
 func _set_path(path: String, key: String) -> void:

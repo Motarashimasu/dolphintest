@@ -69,6 +69,11 @@ func _ready() -> void:
 		Settings.use_file(user_args[update_check + 1])
 		add_child(load("res://tests/update_check.gd").new())
 		return
+	var disc_check := user_args.find("--disc-check")
+	if disc_check >= 0:
+		Settings.use_file(user_args[disc_check + 1])
+		add_child(load("res://tests/disc_check.gd").new())
+		return
 	if "--pad-check" in user_args:
 		add_child(load("res://tests/pad_check.gd").new())
 		return
@@ -91,6 +96,8 @@ func _ready() -> void:
 		push(_language_menu(true))
 	elif Settings.needs_setup():
 		push(load(SCREENS % "setup").new())
+	elif not Discs.pending().is_empty():
+		push(load(SCREENS % "disc_pending").new())   # a copy to build from the player's disc
 
 
 ## A newer build (Updater.check): the update screen downloads and installs it, unless a game or
@@ -314,7 +321,7 @@ func require_setup() -> bool:
 	if missing.size() == 1 and missing[0] == "game file":
 		# This game / version has no copy (or it moved): its Game Copies page.
 		var g: Dictionary = Settings.GAME
-		toast(tr("Your %s %s copy isn't set or has moved.") % [g["title"], g["version"]], 4.0)
+		toast(tr("Your %s %s copy isn't set or has moved.") % [g["title"], Settings.version_name(g["key"], g["version"])], 4.0)
 		push(load(SCREENS % "game_copies").new().setup(g["key"]))
 		return false
 	toast(tr("Missing: %s") % ", ".join(missing))
@@ -366,7 +373,7 @@ func _game_menu(key: String) -> Control:
 			"desc": func():
 				if Settings.owned_versions(key).is_empty():
 					return tr("Play on your own, with your own save data.\nAdd your copy first: Options > Game Copies.")
-				return tr("Play on your own, with your own save data (%s copy).\nSingle Battle, Team Battle, story mode: everything the game has.") % Settings.offline_version(key),
+				return tr("Play on your own, with your own save data (%s copy).\nSingle Battle, Team Battle, story mode: everything the game has.") % Settings.version_name(key, Settings.offline_version(key)),
 			"action": func():
 				Settings.use_game(key)
 				open_checked("play_offline")},
@@ -409,8 +416,8 @@ func open_netplay(key: String) -> void:
 	var g: Dictionary = Settings.GAMES[key]
 	var items: Array = []
 	for v in owned:
-		items.append({"label": v, "glyph": String(v).left(1), "color": g["color"],
-			"desc": tr("Play DRAGON NET on your %s copy (%s).\nOnly players on the same version can play together.") % [v, g["versions"][v]],
+		items.append({"label": Settings.version_name(key, v), "glyph": String(v).left(1), "color": g["color"],
+			"desc": tr("Play DRAGON NET on your %s copy (%s).\nOnly players on the same version can play together.") % [Settings.version_name(key, v), g["versions"][v]],
 			"action": func():
 				Settings.use_game(key, v)
 				Settings.set_value("games", key + "_netplay", v)
@@ -467,7 +474,7 @@ func _modifications_menu() -> Control:
 func _netplay_menu() -> Control:
 	var title := "DRAGON NET"
 	if Settings.owned_versions(Settings.game).size() > 1:
-		title = "DRAGON NET (%s)" % Settings.current_version()
+		title = "DRAGON NET (%s)" % Settings.version_name(Settings.game, Settings.current_version())
 	return _menu(title, [
 		{"label": "Lobby Browser", "glyph": "L", "color": "#3fa9f5",
 			"desc": "Public lobbies of players on this same version:\nmode, host, region and connection. Pick one to join.",
@@ -719,7 +726,7 @@ func _on_discord_join(target: String, koth := false, disc_id := "") -> void:
 		return
 	if not Settings.has_copy(where[0], where[1]):
 		toast(tr("That lobby plays %s %s: add that copy in Options > Game Copies.") % [
-			Settings.GAMES[where[0]]["title"], where[1]], 5.0)
+			Settings.GAMES[where[0]]["title"], Settings.version_name(where[0], where[1])], 5.0)
 		return
 	Settings.use_game(where[0], where[1])
 	var lobby: Control = load(SCREENS % "lobby").new()

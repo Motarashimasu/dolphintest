@@ -81,8 +81,8 @@ func on_press(key: String) -> void:
 				"desc": func():
 					var owned := Settings.owned_versions(k)
 					return tr("%s copies: %s.\nPlay Offline uses %s.") % [g["short"],
-						", ".join(owned) if not owned.is_empty() else tr("none yet"),
-						Settings.offline_version(k) if not owned.is_empty() else "-"],
+						", ".join(owned.map(func(v): return Settings.version_name(k, v))) if not owned.is_empty() else tr("none yet"),
+						Settings.version_name(k, Settings.offline_version(k)) if not owned.is_empty() else "-"],
 				"action": func(): app.push(load("res://scripts/screens/game_copies.gd").new().setup(k))})
 		items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true, "desc": "Back to Options."})
 		var m: Control = app.menu("Game Copies", items, "main_menu")

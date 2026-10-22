@@ -24,6 +24,7 @@ boot_splash/image="res://splash/splash.png"
 [autoload]
 
 Settings="*res://scripts/settings.gd"
+Discs="*res://scripts/discs.gd"
 Dolphin="*res://scripts/dolphin.gd"
 Demos="*res://scripts/demos.gd"
 Music="*res://scripts/music.gd"

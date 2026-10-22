@@ -89,6 +89,15 @@ struct BuilderContentSource
   ContentSource m_source;
 };
 
+// Dolphin-Sparking: one piece of a game partition at a fixed place (offset in the partition's
+// data), for DirectoryBlobReader::CreateWithLayout.
+struct LayoutContent
+{
+  u64 offset = 0;
+  u64 size = 0;
+  ContentSource source;
+};
+
 struct FSTBuilderNode
 {
   std::string m_filename;
@@ -184,6 +193,10 @@ public:
           fst_callback,
       DirectoryBlobReader* blob);
 
+  // Dolphin-Sparking: every piece (system files, FST, files) at the place given.
+  DirectoryBlobPartition(const VolumeDisc& volume, const Partition& partition,
+                         std::vector<LayoutContent> layout, u64 data_size);
+
   DirectoryBlobPartition(const DirectoryBlobPartition&) = default;
   DirectoryBlobPartition& operator=(const DirectoryBlobPartition&) = default;
   DirectoryBlobPartition(DirectoryBlobPartition&&) = default;
@@ -252,6 +265,13 @@ public:
       const std::function<void(std::vector<FSTBuilderNode>* fst_nodes, FSTBuilderNode* dol_node)>&
           fst_callback);
 
+  // Dolphin-Sparking: the game partition of `volume` (its ticket, TMD, certificates and disc
+  // header) holding exactly `layout` (`data_size` bytes), and no other partition: a disc laid
+  // out like another one, built only from its files, the same whatever `volume`'s format.
+  static std::unique_ptr<DirectoryBlobReader>
+  CreateWithLayout(std::unique_ptr<VolumeDisc> volume, std::vector<LayoutContent> layout,
+                   u64 data_size);
+
   DirectoryBlobReader(DirectoryBlobReader&&) = default;
   DirectoryBlobReader& operator=(DirectoryBlobReader&&) = default;
 
@@ -291,6 +311,8 @@ private:
       const std::function<void(std::vector<FSTBuilderNode>* fst_nodes, FSTBuilderNode* dol_node)>&
           fst_callback);
   explicit DirectoryBlobReader(const DirectoryBlobReader& rhs);
+  DirectoryBlobReader(std::unique_ptr<VolumeDisc> volume, std::vector<LayoutContent> layout,
+                      u64 data_size);
 
   const DirectoryBlobPartition* GetPartition(u64 offset, u64 size, u64 partition_data_offset) const;
 

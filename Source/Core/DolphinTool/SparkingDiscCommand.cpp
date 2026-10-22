@@ -13,8 +13,10 @@
 //      original's (no file missing, extra, changed or damaged). Any container works: the check
 //      is on the files inside, which are the same in every good copy.
 //   2. build: the collection's version as a virtual disc on top of the player's (Dolphin's
-//      DirectoryBlob, as for Riivolution mods), written out as one RVZ (or ISO). The layout only
-//      depends on the files, so every player gets a byte-identical image.
+//      DirectoryBlob), written out as one RVZ (or ISO). Every file (the FST and main.dol too)
+//      goes exactly where it is on the version's own disc: the game's file table in a save state
+//      stays right. Only the game partition is built (copies without the update partition, like
+//      WBFS or NKit, give the same result), so every player gets a byte-identical image.
 //
 // Output on stdout, one line each (for the launcher; flushed as they happen):
 //   stage check|build           progress <0..1>
@@ -40,6 +42,7 @@
 #include <picojson.h>
 
 #include "Common/CommonTypes.h"
+#include "Common/DirectIOFile.h"
 #include "Common/Crypto/SHA1.h"
 #include "Common/FileUtil.h"
 #include "Common/IOFile.h"
@@ -48,6 +51,7 @@
 #include "DiscIO/DirectoryBlob.h"
 #include "DiscIO/DiscUtils.h"
 #include "DiscIO/Filesystem.h"
+#include "DiscIO/MultithreadedCompressor.h"
 #include "DiscIO/Volume.h"
 #include "DiscIO/WIABlob.h"
 #include "UICommon/UICommon.h"
@@ -79,6 +83,7 @@ struct Entry
   std::string path;
   u64 size = 0;
   std::string sha1;
+  u64 offset = 0;  // (target files: where in the partition)
 };
 
 struct Recipe
@@ -88,7 +93,6 @@ struct Recipe
   int revision = 0;
   std::vector<Entry> source;
   std::vector<Entry> target;
-  std::vector<std::string> empty_dirs;                 // "files/<path>/" with nothing inside
   std::map<std::string, std::vector<Segment>> built;   // target files that aren't the original's
   std::string data_path;
   u64 data_size = 0;
@@ -176,6 +180,17 @@ bool ListDisc(const DiscIO::Volume& volume, const DiscIO::Partition& partition,
   {
     return false;
   }
+  const std::optional<u64> fst_offset = DiscIO::GetFSTOffset(volume, partition);
+  const std::optional<u64> fst_size = DiscIO::GetFSTSize(volume, partition);
+  if (!fst_offset || !fst_size)
+    return false;
+  DiscFile fst;
+  fst.offset = *fst_offset;
+  fst.size = *fst_size;
+  (*files)["sys/fst.bin"] = std::move(fst);
+  // NKit's own data in the header isn't the disc's (dolphin-tool extract leaves it out too).
+  if (volume.IsNKit())
+    std::fill(boot.bytes.begin() + 0x200, boot.bytes.begin() + 0x21C, u8(0));
   dol.offset = *dol_offset;
   dol.size = *dol_size;
   (*files)["sys/boot.bin"] = std::move(boot);
@@ -236,7 +251,7 @@ std::optional<std::string> HashFile(const DiscIO::Volume& volume,
 
 // --- The recipe ---------------------------------------------------------------------------
 
-std::optional<std::vector<Entry>> ParseEntries(const picojson::value& v)
+std::optional<std::vector<Entry>> ParseEntries(const picojson::value& v, bool with_offset)
 {
   if (!v.is<picojson::array>())
     return std::nullopt;
@@ -246,13 +261,14 @@ std::optional<std::vector<Entry>> ParseEntries(const picojson::value& v)
     if (!item.is<picojson::array>())
       return std::nullopt;
     const auto& a = item.get<picojson::array>();
-    if (a.size() != 3 || !a[0].is<std::string>() || !a[1].is<double>() ||
-        !a[2].is<std::string>())
+    if (a.size() != (with_offset ? 4u : 3u) || !a[0].is<std::string>() || !a[1].is<double>() ||
+        !a[2].is<std::string>() || (with_offset && !a[3].is<double>()))
     {
       return std::nullopt;
     }
     out.push_back({a[0].get<std::string>(), static_cast<u64>(a[1].get<double>()),
-                   a[2].get<std::string>()});
+                   a[2].get<std::string>(),
+                   with_offset ? static_cast<u64>(a[3].get<double>()) : 0});
   }
   return out;
 }
@@ -280,20 +296,12 @@ std::optional<std::string> LoadRecipe(const std::string& path, Recipe* r)
   r->revision = static_cast<int>(get("revision").get<double>());
   r->name = get("name").is<std::string>() ? get("name").get<std::string>() : r->game_id;
 
-  const auto source = ParseEntries(get("source"));
-  const auto target = ParseEntries(get("target"));
+  const auto source = ParseEntries(get("source"), false);
+  const auto target = ParseEntries(get("target"), true);
   if (!source || !target)
     return "bad source / target lists";
   r->source = *source;
   r->target = *target;
-  if (get("empty_dirs").is<picojson::array>())
-  {
-    for (const picojson::value& d : get("empty_dirs").get<picojson::array>())
-    {
-      if (d.is<std::string>())
-        r->empty_dirs.push_back(d.get<std::string>());
-    }
-  }
 
   if (get("data").is<std::string>())
   {
@@ -382,13 +390,29 @@ std::optional<std::string> LoadRecipe(const std::string& path, Recipe* r)
     if (t.path.rfind("sys/", 0) != 0 && t.path.rfind("files/", 0) != 0)
       return "unknown place for " + t.path;
   }
-  for (const char* sys : {"sys/boot.bin", "sys/bi2.bin", "sys/apploader.img", "sys/main.dol"})
+  for (const char* sys :
+       {"sys/boot.bin", "sys/bi2.bin", "sys/apploader.img", "sys/main.dol", "sys/fst.bin"})
   {
     if (std::none_of(r->target.begin(), r->target.end(),
                      [sys](const Entry& e) { return e.path == sys; }))
     {
       return std::string("no ") + sys + " in the target";
     }
+  }
+  // The pieces may not overlap (or the disc would be wrong).
+  std::vector<const Entry*> by_offset;
+  for (const Entry& t : r->target)
+    by_offset.push_back(&t);
+  std::sort(by_offset.begin(), by_offset.end(),
+            [](const Entry* a, const Entry* b) { return a->offset < b->offset; });
+  u64 end = 0;
+  for (const Entry* t : by_offset)
+  {
+    if (t->size == 0)
+      continue;
+    if (t->offset < end)
+      return t->path + " overlaps another file";
+    end = t->offset + t->size;
   }
   return std::nullopt;
 }
@@ -398,37 +422,13 @@ std::optional<std::string> LoadRecipe(const std::string& path, Recipe* r)
 struct Builder
 {
   const Recipe& recipe;
-  const DiscIO::Volume* volume;
   DiscIO::Partition partition;
   std::map<std::string, DiscFile> files;  // the player's disc
-  bool ok = true;
 
   const DiscFile& Source(size_t index) const { return files.at(recipe.source[index].path); }
 
-  std::vector<DiscIO::BuilderContentSource> Sources(const std::string& path) const
-  {
-    std::vector<DiscIO::BuilderContentSource> out;
-    const auto it = recipe.built.find(path);
-    if (it == recipe.built.end())
-    {
-      const DiscFile& f = files.at(path);
-      AddRange(f, 0, f.size, 0, &out);
-      return out;
-    }
-    u64 at = 0;
-    for (const Segment& s : it->second)
-    {
-      if (s.from_source)
-        AddRange(Source(s.source_index), s.offset, s.length, at, &out);
-      else
-        out.push_back({at, s.length, DiscIO::ContentFile{recipe.data_path, s.offset}});
-      at += s.length;
-    }
-    return out;
-  }
-
   void AddRange(const DiscFile& f, u64 offset, u64 length, u64 at,
-                std::vector<DiscIO::BuilderContentSource>* out) const
+                std::vector<DiscIO::LayoutContent>* out) const
   {
     if (length == 0)
       return;
@@ -445,104 +445,39 @@ struct Builder
     }
   }
 
-  // A small system file as bytes (boot.bin, bi2.bin, apploader.img).
-  std::vector<u8> Bytes(const std::string& path)
+  // Every piece of the version's game partition, at its place.
+  std::vector<DiscIO::LayoutContent> Layout() const
   {
-    const auto it = recipe.built.find(path);
-    if (it == recipe.built.end())
-      return files.at(path).bytes;
-    std::vector<u8> out;
-    for (const Segment& s : it->second)
+    std::vector<DiscIO::LayoutContent> out;
+    for (const Entry& t : recipe.target)
     {
-      const size_t at = out.size();
-      out.resize(at + s.length);
-      if (s.from_source)
+      const auto it = recipe.built.find(t.path);
+      if (it == recipe.built.end())
       {
-        const DiscFile& f = Source(s.source_index);
-        if (f.in_memory)
-          std::copy_n(f.bytes.begin() + static_cast<s64>(s.offset), s.length, out.begin() + at);
-        else
-          ok &= volume->Read(f.offset + s.offset, s.length, out.data() + at, partition);
+        const DiscFile& f = files.at(t.path);
+        AddRange(f, 0, f.size, t.offset, &out);
+        continue;
       }
-      else
+      u64 at = t.offset;
+      for (const Segment& s : it->second)
       {
-        File::IOFile data(recipe.data_path, "rb");
-        ok &= data.Seek(static_cast<s64>(s.offset), File::SeekOrigin::Begin) &&
-              data.ReadBytes(out.data() + at, s.length);
+        if (s.from_source)
+          AddRange(Source(s.source_index), s.offset, s.length, at, &out);
+        else
+          out.push_back({at, s.length, DiscIO::ContentFile{recipe.data_path, s.offset}});
+        at += s.length;
       }
     }
     return out;
   }
 
-  void Sys(std::vector<DiscIO::FSTBuilderNode>* nodes)
+  // The partition's size: the end of the last piece, in whole 32 KiB clusters.
+  u64 DataSize() const
   {
-    for (DiscIO::FSTBuilderNode& node : *nodes)
-    {
-      const std::string path = "sys/" + node.m_filename;
-      if (!recipe.built.contains(path))
-        continue;
-      std::vector<u8> bytes = Bytes(path);
-      node.m_size = bytes.size();
-      std::vector<DiscIO::BuilderContentSource> content;
-      content.push_back({0, bytes.size(), std::make_shared<std::vector<u8>>(std::move(bytes))});
-      node.m_content = std::move(content);
-    }
-  }
-
-  static DiscIO::FSTBuilderNode* Folder(std::vector<DiscIO::FSTBuilderNode>* nodes,
-                                        const std::string& name)
-  {
-    for (DiscIO::FSTBuilderNode& n : *nodes)
-    {
-      if (n.m_filename == name && n.IsFolder())
-        return &n;
-    }
-    nodes->push_back(DiscIO::FSTBuilderNode{name, 0, std::vector<DiscIO::FSTBuilderNode>{}});
-    return &nodes->back();
-  }
-
-  static std::vector<DiscIO::FSTBuilderNode>* Place(std::vector<DiscIO::FSTBuilderNode>* root,
-                                                    const std::string& relative,
-                                                    std::string* leaf)
-  {
-    std::vector<DiscIO::FSTBuilderNode>* at = root;
-    size_t start = 0;
-    for (size_t slash; (slash = relative.find('/', start)) != std::string::npos; start = slash + 1)
-      at = &Folder(at, relative.substr(start, slash - start))->GetFolderContent();
-    *leaf = relative.substr(start);
-    return at;
-  }
-
-  void Fst(std::vector<DiscIO::FSTBuilderNode>* nodes, DiscIO::FSTBuilderNode* dol)
-  {
-    std::vector<DiscIO::FSTBuilderNode> root;
+    u64 end = 0;
     for (const Entry& t : recipe.target)
-    {
-      if (t.path.rfind("files/", 0) != 0)
-        continue;
-      std::string leaf;
-      std::vector<DiscIO::FSTBuilderNode>* folder = Place(&root, t.path.substr(6), &leaf);
-      folder->push_back(DiscIO::FSTBuilderNode{leaf, t.size, Sources(t.path)});
-    }
-    for (const std::string& d : recipe.empty_dirs)
-    {
-      std::string leaf;
-      Place(&root, d.substr(6), &leaf);   // (ends in "/": the folder itself, no file)
-    }
-    *nodes = std::move(root);
-
-    dol->m_size = recipe.target[TargetIndex("sys/main.dol")].size;
-    dol->m_content = Sources("sys/main.dol");
-  }
-
-  size_t TargetIndex(const std::string& path) const
-  {
-    for (size_t i = 0; i < recipe.target.size(); ++i)
-    {
-      if (recipe.target[i].path == path)
-        return i;
-    }
-    return 0;  // (checked when the recipe was loaded)
+      end = std::max(end, t.offset + t.size);
+    return (end + 0x7fff) & ~u64(0x7fff);
   }
 };
 }  // namespace
@@ -551,13 +486,16 @@ int SparkingDiscCommand(const std::vector<std::string>& args)
 {
   optparse::OptionParser parser;
   parser.usage("usage: sparking-disc -i DISC -r RECIPE [-o OUTPUT] [-f rvz|iso] [-u USER] | "
-               "sparking-disc -i DISC --list");
+               "sparking-disc -i DISC --list | sparking-disc -i DISC --info");
   parser.add_option("-i", "--input").action("store").help("The player's disc image.");
   parser.add_option("-r", "--recipe").action("store").help("recipe.json.");
   parser.add_option("-o", "--output").action("store").help("Where to write the built disc.");
   parser.add_option("-f", "--format").action("store").set_default("rvz").help("rvz or iso.");
   parser.add_option("-u", "--user").action("store").help("Dolphin user folder (temporary files).");
   parser.add_option("-c", "--check").action("store_true").help("Only check the disc.");
+  parser.add_option("--info")
+      .action("store_true")
+      .help("Print the disc's ID, revision and game partition's place as JSON.");
   parser.add_option("-l", "--list")
       .action("store_true")
       .help("Print the disc's ID, revision and files (path, size, SHA-1) as JSON.");
@@ -581,6 +519,17 @@ int SparkingDiscCommand(const std::vector<std::string>& args)
   const DiscIO::Partition partition = volume->GetGamePartition();
   const std::string game_id = volume->GetGameID(partition);
   const int revision = volume->GetRevision(partition).value_or(0);
+
+  if (options.get("info"))
+  {
+    picojson::object o;
+    o["game_id"] = picojson::value(game_id);
+    o["revision"] = picojson::value(static_cast<double>(revision));
+    o["wii"] = picojson::value(volume->GetVolumeType() == DiscIO::Platform::WiiDisc);
+    o["partition_offset"] = picojson::value(static_cast<double>(partition.offset));
+    Say("info " + picojson::value(o).serialize());
+    return EXIT_SUCCESS;
+  }
 
   std::map<std::string, DiscFile> files;
   std::vector<std::string> empty_dirs;
@@ -668,14 +617,12 @@ int SparkingDiscCommand(const std::vector<std::string>& args)
     return Fail("usage", "-f must be rvz or iso");
 
   Say("stage build");
-  Builder builder{recipe, volume.get(), partition, std::move(files)};
-  std::unique_ptr<DiscIO::DirectoryBlobReader> blob = DiscIO::DirectoryBlobReader::Create(
-      std::move(volume),
-      [&builder](std::vector<DiscIO::FSTBuilderNode>* nodes) { builder.Sys(nodes); },
-      [&builder](std::vector<DiscIO::FSTBuilderNode>* nodes, DiscIO::FSTBuilderNode* dol) {
-        builder.Fst(nodes, dol);
-      });
-  if (!blob || !builder.ok)
+  if (volume->GetVolumeType() != DiscIO::Platform::WiiDisc)
+    return Fail("not_disc", "not a Wii disc");
+  Builder builder{recipe, partition, std::move(files)};
+  std::unique_ptr<DiscIO::DirectoryBlobReader> blob = DiscIO::DirectoryBlobReader::CreateWithLayout(
+      std::move(volume), builder.Layout(), builder.DataSize());
+  if (!blob)
     return Fail("read", "couldn't put the disc together");
 
   File::Delete(output);
@@ -684,11 +631,22 @@ int SparkingDiscCommand(const std::vector<std::string>& args)
     Progress::Set(static_cast<double>(percent));
     return true;
   };
-  const bool written =
-      format == "iso" ?
-          DiscIO::ConvertToPlain(blob.get(), input, output, callback) :
-          DiscIO::ConvertToWIAOrRVZ(blob.get(), input, output, true,
-                                    DiscIO::WIARVZCompressionType::Zstd, 5, 128 * 1024, callback);
+  bool written;
+  if (format == "iso")
+  {
+    written = DiscIO::ConvertToPlain(blob.get(), input, output, callback);
+  }
+  else
+  {
+    // (Not ConvertToWIAOrRVZ: it reads the partition list from the input's path, i.e. the
+    // player's disc, which may have an update partition the built disc doesn't.)
+    const std::unique_ptr<DiscIO::VolumeDisc> built = DiscIO::CreateDisc(blob->CopyReader());
+    File::DirectIOFile out(output, File::AccessMode::Write);
+    written = built && out.IsOpen() &&
+              DiscIO::RVZFileReader::Convert(blob.get(), built.get(), &out,
+                                             DiscIO::WIARVZCompressionType::Zstd, 5, 128 * 1024,
+                                             callback) == DiscIO::ConversionResultCode::Success;
+  }
   if (!written)
   {
     File::Delete(output);
