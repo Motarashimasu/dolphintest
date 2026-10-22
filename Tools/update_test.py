@@ -225,8 +225,8 @@ def main():
             f.write(f'[ranked]\nserver="{server.url}"\ntoken="{token}"\nname="Goku"\n'
                     f'[update]\nroot="{install}"\nkey="{os.path.join(work, "keys", "release_public.pem")}"\n')
 
-        def run_launcher(own="Launcher.exe,Launcher.pck"):
-            env = dict(os.environ, UPDATE_OWN=own)
+        def run_launcher(own="Launcher.exe,Launcher.pck", hitch=0):
+            env = dict(os.environ, UPDATE_OWN=own, UPDATE_HITCH_MS=str(hitch))
             p = subprocess.run([godot, "--headless", "--path", os.path.join(ROOT, "Frontend", "Godot"),
                                 "--", "--update-check", settings], capture_output=True, text=True, env=env,
                                timeout=180)
@@ -283,10 +283,11 @@ def main():
         res = run_launcher()
         check(f"after the restart: up to date {res}", res.get("state") == "up_to_date" and res.get("version") == "206")
 
-        # A player's file edited / damaged: put back to the build's.
+        # A player's file edited / damaged: put back to the build's. The launcher hangs for 25 s
+        # just before asking for the links (build 206's hashing freeze made them "time out").
         write(os.path.join(install, "Dolphin/Sys/GameSettings/RDSPAF.ini"), b"edited by hand")
-        res = run_launcher()
-        check(f"an edited managed file is restored {res}", res.get("state") == "up_to_date" and res.get("files") == 1
+        res = run_launcher(hitch=25000)
+        check(f"an edited managed file is restored, even after a 25 s hang {res}", res.get("state") == "up_to_date" and res.get("files") == 1
               and read(os.path.join(install, "Dolphin/Sys/GameSettings/RDSPAF.ini")) == b"[Gecko]\nv2\n")
 
         # Attacks: a list not signed by the release key; a file swapped on the bucket.

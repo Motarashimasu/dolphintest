@@ -19,6 +19,15 @@ func _run() -> void:
 		return
 	var flags := {"restarted": false}   # (a lambda can't assign this function's locals)
 	Updater.restart_hook = func(): flags["restarted"] = true
+	# UPDATE_HITCH_MS: the launcher hangs right before it asks for the download links (as build
+	# 206 did while hashing): the request must not "time out" because of the hang.
+	var hitch := int(OS.get_environment("UPDATE_HITCH_MS")) if OS.get_environment("UPDATE_HITCH_MS") != "" else 0
+	if hitch > 0:
+		var once := {"done": false}
+		Updater.changed.connect(func():
+			if Updater.state == "downloading" and not once["done"]:
+				once["done"] = true
+				OS.delay_msec(hitch))
 	var own := OS.get_environment("UPDATE_OWN")
 	if own != "":
 		Updater.own_files_override = Array(own.split(","))

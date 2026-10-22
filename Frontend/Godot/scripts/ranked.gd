@@ -11,6 +11,7 @@ extends Node
 signal changed   # logged in / out, or the profile changed
 
 const Style := preload("res://scripts/ui/style.gd")
+const HttpWait := preload("res://scripts/util/http_wait.gd")
 
 const MODE_CAP := {"single": 2, "team": 1}   # wins that take a ranked match
 
@@ -77,8 +78,7 @@ static func _from_server(v: Variant) -> Variant:
 func api(endpoint: String, body := {}) -> Dictionary:
 	body = _to_server(endpoint, body)
 	var req := HTTPRequest.new()
-	req.timeout = 20.0
-	add_child(req)
+	add_child(req)   # (timed out by the real clock below, not req.timeout: util/http_wait.gd)
 	var headers := PackedStringArray(["Content-Type: application/json", "Accept: application/json"])
 	if token() != "":
 		headers.append("X-Sparking-Token: " + token())
@@ -86,7 +86,7 @@ func api(endpoint: String, body := {}) -> Dictionary:
 	if err != OK:
 		req.queue_free()
 		return {"ok": false, "error": "unreachable"}
-	var res: Array = await req.request_completed
+	var res: Array = await HttpWait.done(req, 20.0)
 	req.queue_free()
 	if int(res[0]) != HTTPRequest.RESULT_SUCCESS:
 		return {"ok": false, "error": "unreachable", "result": int(res[0])}   # (HTTPRequest.Result)

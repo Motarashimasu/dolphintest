@@ -19,6 +19,7 @@ extends Node
 signal changed   # state / progress
 signal found     # a newer build is available (check() found one): Main opens the update screen
 
+const HttpWait := preload("res://scripts/util/http_wait.gd")
 const KEY_PATH := "res://data/update_key.pem"   # the release key's public half (keygen)
 const BATCH := 400             # links per update.php call
 const STALL_SECONDS := 30.0    # a download that gets nothing for this long has failed
@@ -402,12 +403,11 @@ func _clear_staging() -> void:
 
 func _get_bytes(url: String) -> PackedByteArray:
 	var req := HTTPRequest.new()
-	req.timeout = 30.0
 	add_child(req)
 	if req.request(url) != OK:
 		req.queue_free()
 		return PackedByteArray()
-	var res: Array = await req.request_completed
+	var res: Array = await HttpWait.done(req, 30.0)
 	req.queue_free()
 	if int(res[0]) != HTTPRequest.RESULT_SUCCESS or int(res[1]) != 200:
 		return PackedByteArray()
@@ -429,25 +429,37 @@ func _download(url: String, sha: String, size: int) -> bool:
 	var done := {}   # (a lambda can't assign this function's locals: it fills this)
 	req.request_completed.connect(func(a, b, _c, _d):
 		done["result"] = [a, b])
+	# Checked every frame (thousands of small textures: no fixed wait per file). A stall is
+	# judged by the real clock, and a hitch of the launcher itself isn't counted as one.
 	var last := -1
-	var still := 0.0
+	var progress_at := Time.get_ticks_msec()
+	var frame_at := progress_at
+	var shown_at := 0
 	while not done.has("result"):
-		if cancelled or still > STALL_SECONDS:
+		var now := Time.get_ticks_msec()
+		if now - frame_at > 2000:
+			progress_at = now   # the launcher itself was stuck: not the download
+		frame_at = now
+		if cancelled or now - progress_at > int(STALL_SECONDS * 1000.0):
 			req.cancel_request()
 			break
 		var got := req.get_downloaded_bytes()
-		still = still + 0.1 if got == last else 0.0
-		last = got
+		if got != last:
+			last = got
+			progress_at = now
 		done_bytes = base + got
-		changed.emit()
-		await get_tree().create_timer(0.1).timeout
+		if now - shown_at > 100:
+			shown_at = now
+			changed.emit()
+		await get_tree().process_frame
 	req.queue_free()
 	var result: Array = done.get("result", [])
 	if result.is_empty() or int(result[0]) != HTTPRequest.RESULT_SUCCESS or int(result[1]) != 200:
 		DirAccess.remove_absolute(part)
 		done_bytes = base
 		return false
-	if FileAccess.get_sha256(part) != sha:
+	_frame_start = Time.get_ticks_msec()
+	if await _hash_file(part) != sha:
 		DirAccess.remove_absolute(part)
 		done_bytes = base
 		return false
