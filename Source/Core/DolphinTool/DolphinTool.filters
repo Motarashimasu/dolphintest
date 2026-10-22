@@ -7,12 +7,14 @@
     <ClCompile Include="ExtractCommand.cpp" />
     <ClCompile Include="ToolHeadlessPlatform.cpp" />
     <ClCompile Include="ToolMain.cpp" />
+    <ClCompile Include="SparkingDiscCommand.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ExtractCommand.h" />
     <ClInclude Include="ConvertCommand.h" />
     <ClInclude Include="VerifyCommand.h" />
     <ClInclude Include="HeaderCommand.h" />
+    <ClInclude Include="SparkingDiscCommand.h" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="DolphinTool.exe.manifest" />

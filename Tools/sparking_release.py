@@ -24,10 +24,12 @@ release.json (keep it on your PC: it holds the R2 key that can write to the buck
       "private_key": "C:/Keys/release_private.pem",
       "launcher": "DRAGON BALL Sparking! Collection.exe",
       "include": ["*.exe", "*.pck", "*.ico", "Dolphin/**", "SparkingData/states/*",
-                  "SparkingData/textures/**",
+                  "SparkingData/textures/**", "SparkingData/discs/**",
                   "SparkingData/saves/netplay/*/title/00010000/*/data/**"],
       "exclude": []
     }
+disc: makes a disc recipe (Tools/sparking_disc.py, Docs/DISCS.md).
+
 ("r2_endpoint" may replace the account's R2 address, e.g. for a local test server.)
 """
 from __future__ import annotations
@@ -49,6 +51,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sparking_disc  # noqa: E402  (the "disc" command)
 
 FORMAT = 1
 
@@ -378,10 +383,10 @@ NETPLAY_SAVES = "SparkingData/saves/netplay/*/title/00010000/*/data/**"
 PLATFORMS = {
     "windows": {"manifest": "manifest.json", "archive": "manifests/{build}.json", "suffix": "",
                 "include": ["*.exe", "*.pck", "*.ico", "Dolphin/**", "SparkingData/states/*",
-                            "SparkingData/textures/**", NETPLAY_SAVES]},
+                            "SparkingData/textures/**", "SparkingData/discs/**", NETPLAY_SAVES]},
     "linux": {"manifest": "manifest-linux.json", "archive": "manifests/linux-{build}.json", "suffix": "_linux",
               "include": ["*.x86_64", "*.pck", "Dolphin/**", "SparkingData/states/*",
-                          "SparkingData/textures/**", NETPLAY_SAVES]},
+                          "SparkingData/textures/**", "SparkingData/discs/**", NETPLAY_SAVES]},
 }
 
 
@@ -522,7 +527,10 @@ def main() -> None:
     r.add_argument("--keep", type=int, default=3, help="also keep the newest N builds' files")
     r.add_argument("--yes", action="store_true")
     sub.add_parser("self-test", help="check the signing code against AWS's examples")
+    sparking_disc.add_parser(sub)
     args = ap.parse_args()
+    if hasattr(args, "func"):
+        return args.func(args)
     {"keygen": cmd_keygen, "publish": cmd_publish, "prune": cmd_prune,
      "self-test": lambda a: self_test()}[args.cmd](args)
 
