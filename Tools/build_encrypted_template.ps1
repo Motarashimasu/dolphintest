@@ -17,7 +17,9 @@ param(
     # Must be the exact Godot version of your editor (Help > About, e.g. 4.7.2.stable).
     [string]$Tag = "4.7.2-stable"
 )
-$ErrorActionPreference = "Stop"
+# (Not "Stop": Windows PowerShell 5.1 then aborts when a program like git or python writes to its
+# error output while it's redirected. Every step checks its own result instead.)
+$ErrorActionPreference = "Continue"
 
 function Need($cmd, $hint) {
     if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) { throw "$cmd wasn't found. $hint" }
@@ -27,10 +29,10 @@ Need python "Install Python 3 from python.org (tick 'Add python.exe to PATH')."
 
 # 1. The key (made once).
 if (-not (Test-Path $KeyFile)) {
-    New-Item -ItemType Directory -Force -Path (Split-Path $KeyFile) | Out-Null
+    New-Item -ItemType Directory -Force -Path (Split-Path $KeyFile) -ErrorAction Stop | Out-Null
     $bytes = New-Object byte[] 32
     [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    (-join ($bytes | ForEach-Object { $_.ToString("x2") })) | Set-Content -NoNewline -Encoding ASCII $KeyFile
+    (-join ($bytes | ForEach-Object { $_.ToString("x2") })) | Set-Content -NoNewline -Encoding ASCII $KeyFile -ErrorAction Stop
     Write-Host "Made a new key: $KeyFile (back it up, keep it secret)"
 }
 $key = (Get-Content -Raw $KeyFile).Trim()
