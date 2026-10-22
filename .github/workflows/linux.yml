@@ -43,7 +43,7 @@ jobs:
               Externals/Qt|Externals/FFmpeg-bin|Externals/libadrenotools|Externals/gtest|\
               Externals/mGBA/mgba|Externals/rcheevos/rcheevos) continue ;;
             esac
-            git submodule update --init --depth 1 "$p"
+            git submodule update --init --recursive --depth 1 "$p"
           done
 
       - name: Build tools and system headers
