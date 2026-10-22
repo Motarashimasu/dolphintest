@@ -25,6 +25,11 @@ class Proc:
 	var exit_code := -1
 
 	func start(exe: String, args: PackedStringArray) -> bool:
+		# Linux: a Dolphin copied from Windows, unpacked by hand or put in by an update may have
+		# lost its "executable" mark, and then it won't start.
+		if OS.get_name() == "Linux" and FileAccess.file_exists(exe) \
+				and FileAccess.get_unix_permissions(exe) & 0b001001001 == 0:
+			FileAccess.set_unix_permissions(exe, 493)   # rwxr-xr-x
 		var r := OS.execute_with_pipe(exe, args)
 		if r.is_empty():
 			return false

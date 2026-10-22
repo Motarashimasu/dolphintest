@@ -212,7 +212,7 @@ def main():
         write(os.path.join(b1, "SparkingData/textures/RDSPAF/big.png"), os.urandom(3 * 1048576 + 123))   # hashed in pieces
         write(os.path.join(b1, "SparkingData/settings.bat"), b"the developer's own: not shipped")
         out = publish(b1, "205")
-        check("publish build 205", out.returncode == 0 and "Published version 205" in out.stdout)
+        check("publish build 205", out.returncode == 0 and "Published windows version 205" in out.stdout)
         check("the developer's .bat isn't in the update", "settings.bat" not in json.dumps(
             list(r2.objects)) and not any(b"the developer" in v for v in r2.objects.values()))
         install = os.path.join(work, "install")
@@ -223,7 +223,8 @@ def main():
         settings = os.path.join(work, "frontend.cfg")
         with open(settings, "w") as f:
             f.write(f'[ranked]\nserver="{server.url}"\ntoken="{token}"\nname="Goku"\n'
-                    f'[update]\nroot="{install}"\nkey="{os.path.join(work, "keys", "release_public.pem")}"\n')
+                    f'[update]\nroot="{install}"\nkey="{os.path.join(work, "keys", "release_public.pem")}"\n'
+                    f'platform="windows"\n')
 
         def run_launcher(own="Launcher.exe,Launcher.pck", hitch=0):
             env = dict(os.environ, UPDATE_OWN=own, UPDATE_HITCH_MS=str(hitch))
@@ -345,12 +346,76 @@ def main():
         res = run_launcher()
         check(f"an expired login: asks to log in {res}", res.get("state") == "no_login")
 
+        # --- Linux: its own list, the same file store -----------------------------------------
+        import stat
+        l1 = os.path.join(work, "linux1")
+        write(os.path.join(l1, "Launcher.x86_64"), b"#!/bin/sh\ntouch \"$(dirname \"$0\")/relaunched\"\n")
+        write(os.path.join(l1, "Launcher.pck"), b"linux menus v1")
+        write(os.path.join(l1, "Dolphin/dolphin-emu-nogui"), b"#!/bin/sh\necho v1\n")
+        write(os.path.join(l1, "Dolphin/Sys/GameSettings/RDSPAF.ini"), read(os.path.join(b3, "Dolphin/Sys/GameSettings/RDSPAF.ini")))
+        write(os.path.join(l1, "SparkingData/states/RDSPAF-SingleBattle.sav"),
+              read(os.path.join(b3, "SparkingData/states/RDSPAF-SingleBattle.sav")))
+        win_list = r2.objects["manifest.json"]
+        out = publish(l1, "207", ["--platform", "linux"])
+        check(f"Linux build: only its own files uploaded (the ini and state are shared) [{out.stdout.strip().splitlines()[-2:]}]",
+              out.returncode == 0 and "Uploading 3 new files" in out.stdout and "manifest-linux.json" in r2.objects)
+        check("publishing for Linux leaves the Windows list alone", r2.objects["manifest.json"] == win_list)
+        out = publish(b3, "207", ["--platform", "linux"])
+        check("a Windows build folder published as Linux is refused", out.returncode != 0)
+        linst = os.path.join(work, "linst")
+        shutil.copytree(l1, linst)
+        for rel in ("Launcher.x86_64", "Dolphin/dolphin-emu-nogui"):
+            os.chmod(os.path.join(linst, rel), 0o644)   # unpacked from a Windows-made archive
+        lset = os.path.join(work, "linux.cfg")
+        with open(lset, "w") as f:
+            f.write(f'[ranked]\nserver="{server.url}"\ntoken="{token}"\nname="Goku"\n'
+                    f'[update]\nroot="{linst}"\nkey="{os.path.join(work, "keys", "release_public.pem")}"\n'
+                    f'platform="linux"\n')
+        settings_win = settings
+        settings = lset
+        res = run_launcher(own="Launcher.x86_64,Launcher.pck")
+        check(f"Linux install: up to date on its own list {res}", res.get("state") == "up_to_date")
+        l2 = os.path.join(work, "linux2")
+        shutil.copytree(l1, l2)
+        write(os.path.join(l2, "Dolphin/dolphin-emu-nogui"), b"#!/bin/sh\necho v2\n")
+        write(os.path.join(l2, "Launcher.pck"), b"linux menus v2")
+        publish(l2, "208", ["--platform", "linux"])
+        res = run_launcher(own="Launcher.x86_64,Launcher.pck")
+        dolphin = os.path.join(linst, "Dolphin/dolphin-emu-nogui")
+        check(f"Linux update: Dolphin replaced and executable again {res}",
+              res.get("state") == "restarting" and read(dolphin) == b"#!/bin/sh\necho v2\n"
+              and os.stat(dolphin).st_mode & stat.S_IXUSR)
+        script = os.path.join(linst, "SparkingData/update/finish_update.sh")
+        subprocess.run(["/bin/sh", script], check=True, timeout=60)
+        for _ in range(50):
+            if os.path.exists(os.path.join(linst, "relaunched")):
+                break
+            time.sleep(0.1)
+        logtext = open(os.path.join(linst, "SparkingData/update/finish_update.log")).read()
+        check("Linux restart script: new .pck in, launcher executable and started again, logged",
+              read(os.path.join(linst, "Launcher.pck")) == b"linux menus v2"
+              and os.stat(os.path.join(linst, "Launcher.x86_64")).st_mode & stat.S_IXUSR
+              and os.path.exists(os.path.join(linst, "relaunched")) and "launcher started" in logtext)
+        res = run_launcher(own="Launcher.x86_64,Launcher.pck")
+        check(f"Linux install: up to date after the restart {res}", res.get("state") == "up_to_date" and res.get("version") == "208")
+        # A Windows launcher handed the Linux list (server mix-up) refuses it.
+        settings = settings_win
+        with open(settings, "w") as f:
+            f.write(f'[ranked]\nserver="{server.url}"\ntoken="{token}"\nname="Goku"\n'
+                    f'[update]\nroot="{install}"\nkey="{os.path.join(work, "keys", "release_public.pem")}"\n'
+                    f'platform="windows"\n')
+        r2.objects["manifest.json"] = r2.objects["manifest-linux.json"]
+        res = run_launcher()
+        check(f"a Windows launcher refuses the Linux list {res}",
+              res.get("state") == "failed" and "another system" in res.get("error", ""))
+        r2.objects["manifest.json"] = win_list
+
         # Prune: files only the oldest builds used.
         out = subprocess.run([sys.executable, os.path.join(ROOT, "Tools", "sparking_release.py"), "prune",
                               "--config", cfg, "--keep", "1", "--yes"], capture_output=True, text=True)
-        live = {"files/" + f["sha256"] for f in json.loads(release.base64.b64decode(
-            json.loads(r2.objects["manifest.json"])["manifest"]))["files"]}
-        check(f"prune keeps exactly the current build's files ({out.stdout.strip()})",
+        live = {"files/" + f["sha256"] for k in ("manifest.json", "manifest-linux.json")
+                for f in json.loads(release.base64.b64decode(json.loads(r2.objects[k])["manifest"]))["files"]}
+        check(f"prune keeps exactly the current builds' files, Windows and Linux ({out.stdout.strip()})",
               {k for k in r2.objects if k.startswith("files/")} == live)
         check("no request had a bad signature", r2.rejected == 0)
     finally:

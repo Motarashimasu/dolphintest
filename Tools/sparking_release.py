@@ -3,6 +3,7 @@
 
     python Tools/sparking_release.py keygen  <folder>
     python Tools/sparking_release.py publish <build folder> --config release.json --version 206
+    python Tools/sparking_release.py publish <linux build> --config release.json --version 206 --platform linux
     python Tools/sparking_release.py prune   --config release.json        (old builds' files)
 
 Pure Python 3.9+, no packages. See Docs/UPDATES.md for the whole setup.
@@ -359,15 +360,38 @@ def cmd_keygen(args) -> None:
           f"(copy it to Frontend/Godot/data/update_key.pem)")
 
 
+# Each platform has its own signed file list (players' launchers ask for theirs); the files
+# themselves share one store, so a state or texture both builds have is uploaded once.
+PLATFORMS = {
+    "windows": {"manifest": "manifest.json", "archive": "manifests/{build}.json", "suffix": "",
+                "include": ["*.exe", "*.pck", "*.ico", "Dolphin/**", "SparkingData/states/*",
+                            "SparkingData/textures/**"]},
+    "linux": {"manifest": "manifest-linux.json", "archive": "manifests/linux-{build}.json", "suffix": "_linux",
+              "include": ["*.x86_64", "*.pck", "Dolphin/**", "SparkingData/states/*",
+                          "SparkingData/textures/**"]},
+}
+
+
+def platform_settings(cfg: dict, platform: str) -> tuple[list, list, str]:
+    """include, exclude, launcher for a platform: release.json's "include" / "exclude" /
+    "launcher" for Windows, "include_linux" / "exclude_linux" / "launcher_linux" for Linux
+    (the Linux launcher defaults to the Windows one's name with .x86_64)."""
+    p = PLATFORMS[platform]
+    sfx = p["suffix"]
+    include = cfg.get("include" + sfx) or p["include"]
+    exclude = cfg.get("exclude" + sfx) if ("exclude" + sfx) in cfg else cfg.get("exclude", [])
+    launcher = cfg.get("launcher" + sfx, "")
+    if not launcher and platform == "linux" and cfg.get("launcher", "").endswith(".exe"):
+        launcher = cfg["launcher"][:-4] + ".x86_64"
+    return include, exclude or [], launcher
+
+
 def cmd_publish(args) -> None:
     cfg = load_config(args.config)
     build = os.path.abspath(args.build)
     if not os.path.isdir(build):
         raise SystemExit(f"The build folder doesn't exist: {build}")
-    include = cfg.get("include") or ["*.exe", "*.pck", "*.ico", "Dolphin/**", "SparkingData/states/*",
-                                     "SparkingData/textures/**"]
-    exclude = cfg.get("exclude") or []
-    launcher = cfg.get("launcher", "")
+    include, exclude, launcher = platform_settings(cfg, args.platform)
     with open(cfg["private_key"]) as f:
         n, d = load_private(f.read())
     print(f"Hashing {build} ...")
@@ -375,15 +399,20 @@ def cmd_publish(args) -> None:
     if not files:
         raise SystemExit(f"No files in {build} matched \"include\" ({', '.join(include)}).")
     if launcher and not any(f["path"] == launcher for f in files):
-        raise SystemExit(f"The launcher \"{launcher}\" isn't in the build (release.json \"launcher\").")
+        raise SystemExit(f"The launcher \"{launcher}\" isn't in the build (release.json "
+                         f"\"launcher{PLATFORMS[args.platform]['suffix']}\").")
+    if args.platform == "linux" and any(f["path"].endswith(".exe") for f in files):
+        raise SystemExit("A .exe in a Linux build: is this the Windows build folder? (--platform)")
+    if args.platform == "windows" and any(f["path"].endswith(".x86_64") for f in files):
+        raise SystemExit("A .x86_64 in a Windows build: is this the Linux build folder? (--platform linux)")
     total = sum(f["size"] for f in files)
     manifest = {"format": FORMAT, "version": args.version, "build": int(time.time()),
                 "created": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "launcher": launcher, "notes": args.notes or "", "files": files}
+                "platform": args.platform, "launcher": launcher, "notes": args.notes or "", "files": files}
     data = json.dumps(manifest, indent=1, ensure_ascii=False).encode()
     envelope = json.dumps({"manifest": base64.b64encode(data).decode(),
                            "signature": base64.b64encode(sign(data, n, d)).decode()}).encode()
-    print(f"{len(files)} files, {total / 1048576:.1f} MB")
+    print(f"{args.platform}: {len(files)} files, {total / 1048576:.1f} MB")
     if args.dry_run:
         for f in files:
             print(f"  {f['path']}  {f['size']}")
@@ -399,20 +428,33 @@ def cmd_publish(args) -> None:
     for i, f in enumerate(todo.values(), 1):
         print(f"  [{i}/{len(todo)}] {f['path']} ({f['size'] / 1048576:.1f} MB)")
         r2.put_file("files/" + f["sha256"], os.path.join(build, f["path"]))
-    r2.put_bytes("manifest.json", envelope, "application/json")
+    p = PLATFORMS[args.platform]
+    r2.put_bytes(p["manifest"], envelope, "application/json")
     # Keep a copy of each published list (prune keeps their files).
-    r2.put_bytes(f"manifests/{manifest['build']}.json", envelope, "application/json")
-    print(f"Published version {args.version} (build {manifest['build']}). Launchers update on their next start.")
+    r2.put_bytes(p["archive"].format(build=manifest["build"]), envelope, "application/json")
+    print(f"Published {args.platform} version {args.version} (build {manifest['build']}). "
+          "Launchers update on their next start.")
 
 
 def cmd_prune(args) -> None:
-    """Delete files/ objects no kept manifest needs (the newest --keep builds)."""
+    """Delete files/ objects no kept list needs: each platform's current list and its newest
+    --keep published ones."""
     cfg = load_config(args.config)
     r2 = R2(cfg)
-    lists = sorted(r2.list_keys("manifests/"), key=lambda k: int(k.rsplit("/", 1)[-1].split(".")[0]))
-    keep = lists[-args.keep:] if args.keep > 0 else []
+    archives = sorted(r2.list_keys("manifests/"))
+    by_platform: dict[str, list] = {}
+    for k in archives:
+        name = k.rsplit("/", 1)[-1][:-len(".json")]
+        plat, _, build = name.rpartition("-")
+        by_platform.setdefault(plat or "windows", []).append((int(build), k))
+    keep, drop = [], []
+    for lists in by_platform.values():
+        lists.sort()
+        cut = len(lists) - args.keep if args.keep > 0 else len(lists)
+        drop += [k for _, k in lists[:max(cut, 0)]]
+        keep += [k for _, k in lists[max(cut, 0):]]
     needed = set()
-    for k in keep + [r2.prefix + "manifest.json"]:
+    for k in keep + [r2.prefix + p["manifest"] for p in PLATFORMS.values()]:
         status, body = r2.request("GET", k)
         if status == 200:
             m = json.loads(base64.b64decode(json.loads(body)["manifest"]))
@@ -420,9 +462,7 @@ def cmd_prune(args) -> None:
     stale = [k for k in r2.list_keys("files/") if k.rsplit("/", 1)[-1] not in needed]
     print(f"{len(stale)} files no kept build needs" + ("" if args.yes else " (--yes to delete them)"))
     if args.yes:
-        for k in stale:
-            r2.delete(k)
-        for k in lists[:-args.keep] if args.keep > 0 else lists:
+        for k in stale + drop:
             r2.delete(k)
 
 
@@ -462,6 +502,8 @@ def main() -> None:
     p.add_argument("--version", required=True, help="shown to players, e.g. 206")
     p.add_argument("--notes", help="one line shown while updating")
     p.add_argument("--dry-run", action="store_true", help="list the files, upload nothing")
+    p.add_argument("--platform", choices=sorted(PLATFORMS), default="windows",
+                   help="which launchers get this build (default windows)")
     r = sub.add_parser("prune", help="delete files only old builds used")
     r.add_argument("--config", required=True)
     r.add_argument("--keep", type=int, default=3, help="also keep the newest N builds' files")

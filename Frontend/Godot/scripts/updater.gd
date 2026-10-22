@@ -57,6 +57,27 @@ func enabled() -> bool:
 	return FileAccess.file_exists(key_path()) and (root() != "")
 
 
+## Which build this launcher takes: each platform has its own signed list on the server.
+## ([update] platform: tests only.)
+func platform() -> String:
+	var forced := String(Settings.get_value("update", "platform"))
+	if forced != "":
+		return forced
+	return "linux" if OS.get_name() in ["Linux", "FreeBSD", "NetBSD", "OpenBSD", "BSD"] else "windows"
+
+
+## Linux: files that must be runnable (the launcher, Dolphin's programs). Windows doesn't keep
+## Linux's "executable" mark, so it's set here after every update by name.
+static func is_executable(rel: String) -> bool:
+	return rel.ends_with(".x86_64") or rel.ends_with(".sh") \
+			or (rel.begins_with("Dolphin/") and rel.count("/") == 1 and not "." in rel.get_file())
+
+
+func _make_executable(rel: String) -> void:
+	if platform() == "linux" and is_executable(rel) and FileAccess.file_exists(root().path_join(rel)):
+		FileAccess.set_unix_permissions(root().path_join(rel), 493)   # rwxr-xr-x
+
+
 ## The public key ([update] key: tests only, never a shipped build's).
 func key_path() -> String:
 	var forced := String(Settings.get_value("update", "key"))
@@ -101,7 +122,7 @@ func check(apply := true) -> String:
 		_to_state("no_login")
 		return state
 	_to_state("checking")
-	var r: Dictionary = await Ranked.api("update.php", {"action": "check"})
+	var r: Dictionary = await Ranked.api("update.php", {"action": "check", "platform": platform()})
 	if not r.get("ok", false):
 		if r.get("error") == "login_required":   # the login expired (Ranked forgot it): log in again
 			_to_state("no_login")
@@ -116,6 +137,9 @@ func check(apply := true) -> String:
 	var m := _verified(got)
 	if m.is_empty():
 		_to_state("failed", "The update list isn't signed by the release key: not installed.")
+		return state
+	if String(m.get("platform", "windows")) != platform():
+		_to_state("failed", "The update list is for another system: not installed.")
 		return state
 	# Never back to an older build than the one installed (an old signed list put back).
 	if int(m.get("build", 0)) < int(_installed().get("build", 0)):
@@ -345,6 +369,8 @@ func _install(m: Dictionary, need: Array) -> String:
 		var staged := _staging().path_join(String(f["sha256"]))
 		if self_files.has(rel) or not _replace(staged, root().path_join(rel)):
 			pending[rel] = staged
+		else:
+			_make_executable(rel)
 	for rel in _removed(m):
 		if not self_files.has(rel):
 			DirAccess.remove_absolute(root().path_join(rel))
@@ -527,14 +553,10 @@ func _restart_with(pending: Dictionary, launcher: String) -> void:
 			OS.create_process("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass",
 				"-WindowStyle", "Hidden", "-File", path.replace("/", "\\")])
 	else:
-		var sh := PackedStringArray(["#!/bin/sh", "while kill -0 %d 2>/dev/null; do sleep 0.2; done" % OS.get_process_id()])
-		for rel in pending:
-			sh.append("mkdir -p '%s' && cp -f '%s' '%s' && rm -f '%s'" % [root().path_join(rel).get_base_dir(),
-				pending[rel], root().path_join(rel), pending[rel]])
-		sh.append("rm -f \"$0\"")
+		var sh := shell_script(OS.get_process_id(), pending, root(), start)
 		var path := dir.path_join("finish_update.sh")
 		var f := FileAccess.open(path, FileAccess.WRITE)
-		f.store_string("\n".join(sh) + "\n")
+		f.store_string(sh)
 		f.close()
 		if not restart_hook.is_valid():
 			OS.create_process("/bin/sh", [path])
@@ -569,6 +591,40 @@ static func powershell_script(pid: int, pending: Dictionary, install: String, st
 	ps.append("try { $si = New-Object Diagnostics.ProcessStartInfo %s; $si.WorkingDirectory = %s; $si.UseShellExecute = $true; [Diagnostics.Process]::Start($si) | Out-Null; Log 'launcher started' } catch { Log ('could not start the launcher: ' + $_.Exception.Message) }" % [_ps(start), _ps(install)])
 	ps.append("try { [IO.File]::Delete($PSCommandPath) } catch {}")
 	return "\r\n".join(ps) + "\r\n"
+
+
+## The Linux / macOS restart script: waits for this launcher (pid) to close, copies each staged
+## file over its target, marks the launcher / Dolphin executable, starts the launcher again
+## (detached), deletes itself. Steps go to finish_update.log.
+static func shell_script(pid: int, pending: Dictionary, install: String, start: String) -> String:
+	var sh := PackedStringArray([
+		"#!/bin/sh",
+		"# Dolphin-Sparking update: finishes what the launcher couldn't replace while running.",
+		"LOG=%s" % _sh(install.path_join("SparkingData/update/finish_update.log")),
+		"log() { echo \"$(date +%Y-%m-%dT%H:%M:%S) $1\" >> \"$LOG\" 2>/dev/null; }",
+		"log 'waiting for the launcher (pid %d) to close'" % pid,
+		"i=0; while kill -0 %d 2>/dev/null && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done" % pid,
+	])
+	for rel in pending:
+		var dst := install.path_join(rel)
+		sh.append("SRC=%s; DST=%s" % [_sh(pending[rel]), _sh(dst)])
+		sh.append("if [ ! -f \"$SRC\" ]; then log \"missing: $SRC\"; else")
+		sh.append("  mkdir -p \"$(dirname \"$DST\")\"; ok=0; i=0")
+		sh.append("  while [ $ok = 0 ] && [ $i -lt 30 ]; do if cp -f \"$SRC\" \"$DST.new\" && mv -f \"$DST.new\" \"$DST\"; then ok=1; else i=$((i+1)); sleep 1; fi; done")
+		sh.append("  if [ $ok = 1 ]; then log \"replaced: $DST\"; rm -f \"$SRC\"; else log \"FAILED: $DST\"; fi")
+		sh.append("fi")
+		if is_executable(rel):
+			sh.append("chmod 755 %s 2>/dev/null" % _sh(dst))
+	sh.append("chmod 755 %s 2>/dev/null" % _sh(start))
+	sh.append("cd %s || exit 1" % _sh(install))
+	sh.append("if command -v setsid >/dev/null 2>&1; then setsid %s >/dev/null 2>&1 </dev/null & else nohup %s >/dev/null 2>&1 </dev/null & fi" % [_sh(start), _sh(start)])
+	sh.append("log 'launcher started'")
+	sh.append("rm -f \"$0\"")
+	return "\n".join(sh) + "\n"
+
+
+static func _sh(path: String) -> String:
+	return "'" + path.replace("'", "'\\''") + "'"
 
 
 static func _ps(path: String) -> String:

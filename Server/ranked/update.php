@@ -12,7 +12,8 @@
 // This server never reads the bucket: it only signs links (AWS Signature Version 4, which R2
 // speaks) with a read-only R2 token from config.php. The launcher downloads from Cloudflare.
 //
-//   GET/POST update.php?action=check                -> {"ok", "manifest_url", "expires"}
+//   GET/POST update.php?action=check[&platform=linux] -> {"ok", "manifest_url", "expires"}
+//            (each platform has its own list: manifest.json = Windows, manifest-linux.json = Linux)
 //   POST     update.php?action=files  {"files": [<sha256>, ...]} (at most 400)
 //                                                    -> {"ok", "urls": {<sha256>: <url>}, "expires"}
 // Both need the X-Sparking-Token header (banned players still get updates).
@@ -20,6 +21,7 @@ require __DIR__ . '/lib.php';
 
 const UPDATE_LINK_SECONDS = 900;    // a link works this long (a download that started goes on)
 const UPDATE_FILES_MAX = 400;
+const UPDATE_PLATFORMS = ['windows' => 'manifest.json', 'linux' => 'manifest-linux.json'];
 
 /** The R2 settings from config.php, or a 503 when updates aren't set up. */
 function r2(): array
@@ -83,8 +85,12 @@ guard(function () {
     $expires = time() + UPDATE_LINK_SECONDS;
     switch (arg('action', 'check')) {
         case 'check':
-            out(['ok' => true, 'expires' => $expires,
-                 'manifest_url' => presign($r2, $r2['prefix'] . 'manifest.json', UPDATE_LINK_SECONDS)]);
+            $platform = arg('platform', 'windows');
+            if (!isset(UPDATE_PLATFORMS[$platform])) {
+                fail('bad_platform');
+            }
+            out(['ok' => true, 'expires' => $expires, 'platform' => $platform,
+                 'manifest_url' => presign($r2, $r2['prefix'] . UPDATE_PLATFORMS[$platform], UPDATE_LINK_SECONDS)]);
         case 'files':
             $files = input()['files'] ?? null;
             if (!is_array($files) || count($files) > UPDATE_FILES_MAX) {
