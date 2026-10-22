@@ -61,7 +61,9 @@ Write-Host "Building the export template (this takes a while)..."
 $env:SCRIPT_AES256_ENCRYPTION_KEY = $key
 Push-Location $Source
 try {
-    python -m SCons platform=windows target=template_release arch=x86_64 production=yes
+    # d3d12 / accesskit off: the launcher renders with Compatibility (OpenGL) and doesn't use the
+    # screen-reader driver; both would need extra SDKs downloaded first.
+    python -m SCons platform=windows target=template_release arch=x86_64 production=yes d3d12=no accesskit=no
     if ($LASTEXITCODE -ne 0) { throw "The build failed (see the messages above)." }
 } finally {
     Pop-Location
