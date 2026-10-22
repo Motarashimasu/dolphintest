@@ -851,5 +851,6 @@
  "Check now": "Buscar ahora",
  "Log in to DRAGON NET to get updates (Ranked Match > Profile).": "Inicia sesión en DRAGON NET para recibir actualizaciones (Combate clasificatorio > Perfil).",
  "Updates aren't set up in this build.": "Las actualizaciones no están configuradas en esta versión.",
- "Updates aren't set up on the server yet.": "Las actualizaciones aún no están configuradas en el servidor."
+ "Updates aren't set up on the server yet.": "Las actualizaciones aún no están configuradas en el servidor.",
+ "The update couldn't replace the launcher's files (in use, or blocked by antivirus?). Close other copies of the launcher and try again, or reinstall.": "La actualización no pudo reemplazar los archivos del lanzador (¿en uso o bloqueados por el antivirus?). Cierra otras copias del lanzador e inténtalo de nuevo, o reinstálalo."
 }

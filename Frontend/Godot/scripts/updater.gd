@@ -128,6 +128,7 @@ func check(apply := true) -> String:
 	var need: Array = await _outdated(m)
 	if need.is_empty() and _removed(m).is_empty():
 		_save_installed(m, {})
+		_clear_restart_mark()
 		_to_state("up_to_date")
 		return state
 	_need = need
@@ -304,6 +305,9 @@ func _install(m: Dictionary, need: Array) -> String:
 	if DirAccess.make_dir_recursive_absolute(_staging()) != OK or not _writable(root()):
 		_to_state("failed", "The game folder is read-only (Program Files?). Move it, or run as administrator.")
 		return state
+	for n in DirAccess.get_files_at(_staging()):
+		if n.ends_with(".part"):   # (left by builds up to 209, which renamed after downloading)
+			DirAccess.remove_absolute(_staging().path_join(n))
 	_to_state("downloading")
 	# Links for the files we don't have staged yet (a cancelled update keeps what it got).
 	var todo := {}
@@ -344,14 +348,50 @@ func _install(m: Dictionary, need: Array) -> String:
 	for rel in _removed(m):
 		if not self_files.has(rel):
 			DirAccess.remove_absolute(root().path_join(rel))
-	_save_installed(m, pending)
 	if pending.is_empty():
+		_save_installed(m, pending)
 		_clear_staging()
+		_clear_restart_mark()
 		_to_state("up_to_date")
 		return state
+	# The restart script copies these in after the launcher closes: they must all be there, and
+	# a restart that already happened for this build without them getting in must not repeat
+	# (it would loop: restart, same update, restart...).
+	for rel in pending:
+		if not FileAccess.file_exists(pending[rel]):
+			_to_state("failed", "A download failed or arrived damaged. Try again later.")
+			return state
+	if _restarted_for(m):
+		_to_state("failed", "The update couldn't replace the launcher's files (in use, or blocked by antivirus?). Close other copies of the launcher and try again, or reinstall.")
+		return state
+	_save_installed(m, pending)
+	_mark_restart(m)
 	_to_state("restarting")
 	_restart_with(pending, String(m.get("launcher", "")))
 	return state
+
+
+func _restart_mark_path() -> String:
+	return root().path_join("SparkingData/update/restarted.json")
+
+
+## Restarted to install this build less than 10 minutes ago (and it still isn't in).
+func _restarted_for(m: Dictionary) -> bool:
+	var d = JSON.parse_string(FileAccess.get_file_as_string(_restart_mark_path())) \
+			if FileAccess.file_exists(_restart_mark_path()) else null
+	return d is Dictionary and int(d.get("build", -1)) == int(m.get("build", 0)) \
+			and Time.get_unix_time_from_system() - float(d.get("at", 0)) < 600.0
+
+
+func _mark_restart(m: Dictionary) -> void:
+	var f := FileAccess.open(_restart_mark_path(), FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"build": int(m.get("build", 0)), "at": Time.get_unix_time_from_system()}))
+
+
+func _clear_restart_mark() -> void:
+	if FileAccess.file_exists(_restart_mark_path()):
+		DirAccess.remove_absolute(_restart_mark_path())
 
 
 ## The launcher's own files, relative to the install folder: its .exe and its .pck.
@@ -416,7 +456,10 @@ func _get_bytes(url: String) -> PackedByteArray:
 
 ## Downloads one file into staging and checks its SHA-256.
 func _download(url: String, sha: String, size: int) -> bool:
-	var part := _staging().path_join(sha + ".part")
+	# Straight under its final name, no rename afterwards: Windows (Defender scanning a new .exe,
+	# for one) can hold a just-written file open, and a rename then fails. A file that's cut off or
+	# damaged never passes the SHA-256 check below or the one before it's used.
+	var part := _staging().path_join(sha)
 	var req := HTTPRequest.new()
 	req.download_file = part
 	req.download_chunk_size = 262144
@@ -463,7 +506,6 @@ func _download(url: String, sha: String, size: int) -> bool:
 		DirAccess.remove_absolute(part)
 		done_bytes = base
 		return false
-	DirAccess.rename_absolute(part, _staging().path_join(sha))
 	done_bytes = base + size
 	changed.emit()
 	return true
@@ -506,17 +548,26 @@ func _restart_with(pending: Dictionary, launcher: String) -> void:
 ## over its target (retrying while Windows still holds it), starts the launcher again, deletes
 ## itself.
 static func powershell_script(pid: int, pending: Dictionary, install: String, start: String) -> String:
+	# .NET's file calls, not Copy-Item / Start-Process: those read [ ] in paths as wildcards
+	# (texture folders are named like "[GrandpaNiki DDS]"). Everything goes to finish_update.log.
+	var log := _ps(install.path_join("SparkingData/update/finish_update.log"))
 	var ps := PackedStringArray([
 		"# Dolphin-Sparking update: finishes what the launcher couldn't replace while running.",
-		"$ErrorActionPreference = 'SilentlyContinue'",
-		"Wait-Process -Id %d -Timeout 60" % pid,
+		"$ErrorActionPreference = 'Continue'",
+		"$log = %s" % log,
+		"function Log($t) { try { [IO.File]::AppendAllText($log, ((Get-Date).ToString('s') + ' ' + $t + [Environment]::NewLine)) } catch {} }",
+		"Log 'waiting for the launcher (pid %d) to close'" % pid,
+		"try { Wait-Process -Id %d -Timeout 60 -ErrorAction Stop } catch {}" % pid,
 	])
 	for rel in pending:
 		ps.append("$src = %s; $dst = %s" % [_ps(pending[rel]), _ps(install.path_join(rel))])
-		ps.append("New-Item -ItemType Directory -Force -Path (Split-Path -LiteralPath $dst) | Out-Null")
-		ps.append("for ($i = 0; $i -lt 30; $i++) { try { Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop; Remove-Item -LiteralPath $src; break } catch { Start-Sleep -Seconds 1 } }")
-	ps.append("Start-Process -FilePath %s -WorkingDirectory %s" % [_ps(start), _ps(install)])
-	ps.append("Remove-Item -LiteralPath $PSCommandPath")
+		ps.append("if (-not [IO.File]::Exists($src)) { Log ('missing: ' + $src) } else {")
+		ps.append("  [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($dst)) | Out-Null")
+		ps.append("  $ok = $false; for ($i = 0; $i -lt 30 -and -not $ok; $i++) { try { [IO.File]::Copy($src, $dst, $true); $ok = $true } catch { $err = $_.Exception.Message; Start-Sleep -Seconds 1 } }")
+		ps.append("  if ($ok) { Log ('replaced: ' + $dst); try { [IO.File]::Delete($src) } catch {} } else { Log ('FAILED: ' + $dst + ': ' + $err) }")
+		ps.append("}")
+	ps.append("try { $si = New-Object Diagnostics.ProcessStartInfo %s; $si.WorkingDirectory = %s; $si.UseShellExecute = $true; [Diagnostics.Process]::Start($si) | Out-Null; Log 'launcher started' } catch { Log ('could not start the launcher: ' + $_.Exception.Message) }" % [_ps(start), _ps(install)])
+	ps.append("try { [IO.File]::Delete($PSCommandPath) } catch {}")
 	return "\r\n".join(ps) + "\r\n"
 
 

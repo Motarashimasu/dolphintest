@@ -851,5 +851,6 @@
  "Check now": "今すぐ確認",
  "Log in to DRAGON NET to get updates (Ranked Match > Profile).": "アップデートを受け取るには DRAGON NET にログインしてください（ランクマッチ > プロフィール）。",
  "Updates aren't set up in this build.": "このビルドではアップデートが設定されていません。",
- "Updates aren't set up on the server yet.": "サーバーでアップデートがまだ設定されていません。"
+ "Updates aren't set up on the server yet.": "サーバーでアップデートがまだ設定されていません。",
+ "The update couldn't replace the launcher's files (in use, or blocked by antivirus?). Close other copies of the launcher and try again, or reinstall.": "アップデートでランチャーのファイルを置き換えられませんでした（使用中か、ウイルス対策ソフトにブロックされた可能性があります）。ほかに起動しているランチャーを閉じてもう一度試すか、再インストールしてください。"
 }

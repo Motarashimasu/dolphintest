@@ -277,6 +277,13 @@ def main():
               read(os.path.join(install, "Launcher.pck")) == b"menus v1")
         script = os.path.join(install, "SparkingData/update/finish_update.sh")
         check("restart script written", os.path.exists(script))
+        check("downloads are kept under their final names (nothing to rename)",
+              not any(n.endswith(".part") for n in os.listdir(os.path.join(install, "SparkingData/update/download"))))
+        # The restart happened but the files didn't get in (Windows held them): starting again must
+        # not restart again (it looped: restart, same update, restart...).
+        res = run_launcher()
+        check(f"a restart that didn't install the files doesn't loop {res}",
+              res.get("state") == "failed" and "couldn't replace" in res.get("error", "") and not res.get("restarted"))
         if os.path.exists(script):
             subprocess.run(["/bin/sh", script], check=True, timeout=30)   # (the launcher has exited)
         check("restart script put the new .pck in", read(os.path.join(install, "Launcher.pck")) == b"menus v2")
