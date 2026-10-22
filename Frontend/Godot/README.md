@@ -217,6 +217,22 @@ tutorial open it on A.
 The menus take controller and keyboard only: the mouse is hidden and ignored, so it can't
 steal the selection.
 
+**Protecting the .pck.** Exports can encrypt the `.pck` (scripts, scenes, pictures, music) with
+a 256-bit key compiled into the `.exe`, so the usual extraction tools find nothing. It slows
+people down rather than locking them out: the key is inside the `.exe`, and a determined person
+can dig it out. Set up once:
+1. `powershell -ExecutionPolicy Bypass -File Tools\build_encrypted_template.ps1`. It makes the
+   key (`C:\SparkingKeys\godot_pck_key.txt`: secret, backed up, never in the repo) and builds
+   Godot's Windows export template at the editor's exact version with the key compiled in
+   (Git, Python, Visual Studio C++; 20-60 minutes).
+2. Editor > Project > Export > Windows Desktop: Options > Custom Template > Release = the built
+   `godot.windows.template_release.x86_64.exe`; Encryption: Encrypt Exported PCK, Encrypt Index,
+   filters `*`, Encryption Key = the key. The editor keeps the key in `.godot/export_credentials.cfg`
+   (not committed).
+3. Export as usual. The first encrypted export changes the `.exe` too (your template), so that
+   update downloads the `.exe` once. Then it's only the `.pck` again.
+A new Godot version needs the template rebuilt (`-Tag`), with the same key.
+
 **Automatic updates.** Logged-in players get new builds by themselves at start (or Options >
 Updates): `scripts/updater.gd`, the Update screen `scripts/screens/update.gd`. Setup and
 publishing: `Docs/UPDATES.md`.
