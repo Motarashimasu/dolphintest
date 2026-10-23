@@ -698,6 +698,8 @@ func _on_dolphin_event(name: String, data: Dictionary) -> void:
 			show_window()
 		"menu_request":
 			open_ingame_menu()
+		"boot_hung":
+			toast(tr("The game didn't start within %d seconds, so it was closed. Try again.") % int(data.get("seconds", 10)), 6.0)
 		"alert":
 			# Dolphin's own warnings and errors (it answers them itself): show them here too.
 			if String(data.get("severity", "")) in ["warning", "critical"]:

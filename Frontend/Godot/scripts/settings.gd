@@ -107,7 +107,8 @@ var defaults := {
 		"training_input_display_other": false,   # the other port's in Buffer Training
 		"show_fps": false, "minimize_while_playing": true, "music_volume": 7,
 		"discord": true, "sfx_volume": 7,
-		"language": ""},          # en / es / it ("" = ask at first launch)         # Discord Rich Presence (scripts/presence.gd)
+		"language": "",           # en / es / it / ja ("" = ask at first launch)
+		"boot_timeout": 10},      # seconds a starting game may show nothing before it's closed (0 = off)
 	"netplay": {"mode": "single", "find_mode": "any", "public": true, "traversal": true,
 		"buffer": 4, "public_address": "",
 		"buffer_auto": false,    # host: pad buffer picked from the pings (match start + after each KO)

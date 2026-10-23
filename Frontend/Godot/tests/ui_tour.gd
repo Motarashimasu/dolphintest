@@ -1071,6 +1071,27 @@ func _tour() -> void:
 	await frames(10)
 	check("music resumes after the game closes", Music.is_audible() and Music.current_track() == "game_menu")
 
+	# --- Boot watchdog: a game that shows nothing for the set seconds is closed. (The test
+	# "game" never draws a frame: it hangs, as far as the watchdog can tell.) -----------------
+	Dolphin.boot_watch_override = 3.0
+	await choose("Play Offline")
+	check("the boot watchdog is armed for an offline game", Dolphin.boot_watching())
+	await wait_for("a hung start is killed", func(): return not Dolphin.is_running(), 12)
+	check("and the player is told", "didn't start within 3 seconds" in String(app._toast.text))
+	check("the watchdog said why (log)", "\n".join(Dolphin.log_lines).contains("boot watchdog"))
+	await wait_for("back at the game menu after the hung start", func(): return app._title.text == "Tenkaichi 3", 10)
+	# Frames on screen (the stats Dolphin sends every second) mean it started: no kill.
+	await choose("Play Offline")
+	play = top()
+	Dolphin._watch_boot("stats", {"event": "stats", "fps": 59.9, "vps": 60.0})
+	check("the first frames disarm it", not Dolphin.boot_watching())
+	await frames(240)
+	check("a started game keeps running", Dolphin.is_running())
+	await pick("stop", play.list)
+	await wait_for("Dolphin exited (watchdog test)", func(): return not Dolphin.is_running(), 10)
+	await wait_for("back at the game menu", func(): return app._title.text == "Tenkaichi 3", 10)
+	Dolphin.boot_watch_override = -1.0
+
 	await choose("Modifications")
 	check("modifications submenu", app._title.text == "Modifications")
 	await shot("modifications_menu")

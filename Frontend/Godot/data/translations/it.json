@@ -897,5 +897,6 @@
  "Pick the %s version you want to play, then your disc.\nMore versions later: Options > Game Copies.": "Scegli la versione di %s che vuoi giocare, poi il tuo disco.\nAltre versioni più tardi: Opzioni > Copie del gioco.",
  "Play %s %s. It's built from your original %s disc (%s):\nnext, pick that disc's file.": "Gioca a %s %s. Si crea dal tuo disco %s originale (%s):\npoi scegli il file di quel disco.",
  "Play %s %s: next, pick your %s disc's file (%s).": "Gioca a %s %s: poi scegli il file del tuo disco %s (%s).",
- "Back to the setup.": "Torna alla configurazione."
+ "Back to the setup.": "Torna alla configurazione.",
+ "The game didn't start within %d seconds, so it was closed. Try again.": "Il gioco non è partito entro %d secondi, quindi è stato chiuso. Riprova."
 }

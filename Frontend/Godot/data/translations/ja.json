@@ -897,5 +897,6 @@
  "Pick the %s version you want to play, then your disc.\nMore versions later: Options > Game Copies.": "プレイしたい%sのバージョンを選んでから、ディスクを選んでください。\n他のバージョンは後から追加できます: オプション > ゲームのコピー。",
  "Play %s %s. It's built from your original %s disc (%s):\nnext, pick that disc's file.": "%s %sをプレイします。オリジナルの%sディスク（%s）から作成します:\n次に、そのディスクのファイルを選んでください。",
  "Play %s %s: next, pick your %s disc's file (%s).": "%s %sをプレイします: 次に、%sディスクのファイルを選んでください（%s）。",
- "Back to the setup.": "セットアップに戻ります。"
+ "Back to the setup.": "セットアップに戻ります。",
+ "The game didn't start within %d seconds, so it was closed. Try again.": "%d秒以内にゲームが起動しなかったため、終了しました。もう一度お試しください。"
 }

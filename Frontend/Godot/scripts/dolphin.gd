@@ -104,6 +104,58 @@ var log_lines: PackedStringArray = []  # last events, for the debug panel
 ## A game is booting or being played (offline or netplay): the controller belongs to the game.
 var in_game := false
 
+## Boot watchdog: a game that hasn't drawn a frame `boot_timeout` seconds (options; default 10,
+## 0 = off) after it starts booting is hung (black or frozen window): Dolphin is killed and
+## "boot_hung" is emitted. Armed at launch for a game (-e: offline, replays) and at
+## "game_booting" for netplay; paused while netplay syncs saves; disarmed by the first "stats"
+## with frames drawn (fps > 0), or when the boot ends any other way.
+var _boot_deadline := 0      # Time.get_ticks_msec() to give up at; 0 = not watching
+var _boot_paused := false    # (netplay save sync: re-armed at its end)
+var boot_watch_override := -1.0   # tests: seconds instead of the setting (-1 = the setting)
+
+
+func _boot_timeout() -> float:
+	if boot_watch_override >= 0.0:
+		return boot_watch_override
+	return float(Settings.get_value("options", "boot_timeout"))
+
+
+func _arm_boot_watch() -> void:
+	_boot_paused = false
+	var t := _boot_timeout()
+	_boot_deadline = Time.get_ticks_msec() + int(t * 1000.0) if t > 0.0 else 0
+
+
+func _disarm_boot_watch() -> void:
+	_boot_deadline = 0
+	_boot_paused = false
+
+
+## True while a starting game is being watched (tests, debug).
+func boot_watching() -> bool:
+	return _boot_deadline > 0 or _boot_paused
+
+
+func _watch_boot(name: String, data: Dictionary) -> void:
+	match name:
+		"game_booting":
+			_arm_boot_watch()
+		"sync_begin":
+			if _boot_deadline > 0:
+				_boot_deadline = 0
+				_boot_paused = true
+		"sync_end":
+			if _boot_paused:
+				_arm_boot_watch()
+		"stats":
+			if float(data.get("fps", 0)) > 0.0:
+				_disarm_boot_watch()   # frames on screen: it started
+		"game_stopped", "game_start_aborted", "boot_failed":
+			_disarm_boot_watch()
+		"error":
+			if String(data.get("code", "")) == "boot_failed":
+				_disarm_boot_watch()
+
 
 func is_running() -> bool:
 	return _session != null
@@ -117,11 +169,20 @@ func launch(args: PackedStringArray) -> bool:
 		return false
 	# The chosen controller preset goes into GCPadNew.ini before every game.
 	Controllers.apply_selected()
+	# Dolphin reports the frame rate every second while a game runs: the boot watchdog's sign
+	# that the game really started.
+	if not "--stats-interval" in args:
+		args = args.duplicate()
+		args.append_array(["--stats-interval", "1000"])
 	var p := Proc.new()
 	if not p.start(Settings.dolphin_path(), args):
 		return false
 	_session = p
 	_log("launch: " + " ".join(args))
+	if "-e" in args and not "--netplay-host" in args and not "--netplay-game" in args:
+		_arm_boot_watch()      # offline game / replay: booting now
+	else:
+		_disarm_boot_watch()   # netplay: armed when the game boots ("game_booting")
 	# Handshake: from now on, if this frontend closes, Dolphin quits too.
 	p.send("hello")
 	return true
@@ -198,12 +259,21 @@ func _process(_delta: float) -> void:
 		for raw in _session.take_lines():
 			var data = JSON.parse_string(raw)
 			if data is Dictionary and data.has("event"):
-				_log(raw)
+				if data["event"] != "stats":
+					_log(raw)
 				_track_game(String(data["event"]))
+				_watch_boot(String(data["event"]), data)
 				event.emit(String(data["event"]), data)
+		if _boot_deadline > 0 and Time.get_ticks_msec() > _boot_deadline and not _session.is_finished():
+			var secs := _boot_timeout()
+			_disarm_boot_watch()
+			_log("boot watchdog: no frame after %.0f s, killing Dolphin" % secs)
+			event.emit("boot_hung", {"event": "boot_hung", "seconds": secs})
+			OS.kill(_session.pid)
 		if _session.is_finished():
 			var p := _session
 			_session = null
+			_disarm_boot_watch()
 			p.close()
 			var code := 0
 			in_game = false

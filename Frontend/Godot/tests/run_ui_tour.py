@@ -297,7 +297,8 @@ def main():
                 "player": {"nickname": "Goku", "region": "EU"},
                 "netplay": {"public": True, "mode": "single", "traversal": True,
                             "public_address": "127.0.0.1", "find_mode": "any", "buffer": 4},
-                "options": {"minimize_while_playing": False, "buttons": "Vanilla", "language": "en"},
+                "options": {"minimize_while_playing": False, "buttons": "Vanilla", "language": "en",
+                            "boot_timeout": 0},   # (the test "game" never draws: no watchdog, except its own check)
                 "controller": {"preset": "keep"},
                 "terminology": {"source": doc_url + "/doc/mobilebasic"},
                 "ranked": {"server": ranked.url},
