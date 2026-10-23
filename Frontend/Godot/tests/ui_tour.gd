@@ -894,6 +894,9 @@ func _tour() -> void:
 	lb.on_value("board_mode", "single")
 	lb.on_value("board_region", "global")
 	await back()
+	check("no Profile in the Ranked Match menu",
+			not top().carousel.items.any(func(it): return String(it.get("label", "")) == "Profile"))
+	await back()   # Ranked Match -> DRAGON NET: the profile is there now
 	await choose("Profile")
 	await wait_for("profile loaded", func(): return top()._status == "", 15)
 	await shot("ranked_profile")
@@ -919,7 +922,8 @@ func _tour() -> void:
 	check("the account has its picture now", Ranked.picture().contains("pic.php?id="))
 	await frames(20)
 	await shot("ranked_profile_picture")
-	await back()
+	await back()   # Profile -> DRAGON NET
+	await choose("Ranked Match")
 	# Replays: the ranked match above was recorded by Dolphin; watch it back to its end.
 	await choose("Replays")
 	var rp: Control = top()

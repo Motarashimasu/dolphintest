@@ -492,6 +492,9 @@ func _netplay_menu() -> Control:
 			"desc": "Rated 1-on-1 matches with a leaderboard. Single Battle is first to 2 wins\n(FT2), Team Battle is one match. Needs a DRAGON NET account.",
 			"action": func(): push(_ranked_menu())},
 		_friends_item(),
+		{"label": "Profile", "glyph": "P", "color": "#5865f2",
+			"desc": "Your DRAGON NET account, ratings and records.",
+			"action": func(): open("ranked_account")},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the game menu."},
 	], "netplay")
@@ -507,7 +510,7 @@ func open_buffer_training() -> void:
 
 
 ## Ranked Match: its own lobby browser, host and find (ranked lobbies only, 2 players, no
-## spectators), the leaderboard, and the Discord profile. Everything but the leaderboard needs
+## spectators), the leaderboard and replays. (The profile is in the DRAGON NET menu.) Everything but the leaderboard needs
 ## the DRAGON NET account first.
 func _ranked_menu() -> Control:
 	return _menu("Ranked Match", [
@@ -529,9 +532,6 @@ func _ranked_menu() -> Control:
 		{"label": "Replay Search", "glyph": "S", "color": "#c86bfa",
 			"desc": "Everyone's shared ranked replays: search by player name,\ndownload one and watch it.",
 			"action": func(): open("replay_search")},
-		{"label": "Profile", "glyph": "P", "color": "#5865f2",
-			"desc": "Your DRAGON NET account, ratings and records.",
-			"action": func(): open("ranked_account")},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the DRAGON NET menu."},
 	], "netplay")
