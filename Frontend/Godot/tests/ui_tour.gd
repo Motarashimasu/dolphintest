@@ -1327,6 +1327,36 @@ func _tour() -> void:
 	top().on_value("resolution", 1)
 	check("480p (1x, native) reaches Dolphin", ca.call("--resolution") == "1")
 	top().on_value("resolution", 3)
+	# A file picker closed without a pick (Cancel, its X, clicked away) never leaves the menus
+	# stuck ignoring input.
+	var form: Control = top()
+	var picked := {"path": ""}
+	# (Godot's own picker is only the fallback: players get the system's, in its language.
+	# Its texts aren't the launcher's to translate.)
+	var seen_before: Dictionary = recorder.seen.duplicate()
+	for how in ["cancel", "close", "hide", "pick"]:
+		form.pick_path(false, ["* ; All files"], "", "test", func(p): picked["path"] = p)
+		var dlg: FileDialog = null
+		for child in form.get_children():
+			if child is FileDialog:
+				dlg = child
+		check("picker open (%s): the menus wait" % how, form.picking() and dlg != null)
+		if dlg == null:
+			continue
+		match how:
+			"cancel":
+				dlg.canceled.emit()
+			"close":
+				dlg.close_requested.emit()
+			"hide":
+				dlg.hide()
+			"pick":
+				dlg.file_selected.emit("/tmp/some file.iso")
+		await frames(4)
+		check("picker closed by %s: the menus take input again" % how, not form.picking()
+				and (how != "pick" or picked["path"] == "/tmp/some file.iso"))
+	await frames(4)
+	recorder.seen = seen_before
 	top().on_value("antialiasing", "off")
 	top().on_value("anisotropy", -1)
 	top().on_value("vsync", false)
