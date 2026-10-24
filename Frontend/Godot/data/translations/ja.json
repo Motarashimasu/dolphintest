@@ -903,5 +903,6 @@
  "revision": "リビジョン",
  "Copy details": "詳細をコピー",
  "Copies what went wrong (your disc's ID, revision and the files that differ)\nto paste in the support channel.": "問題の内容（ディスクのID、リビジョン、一致しないファイル）をコピーします。\nサポートチャンネルに貼り付けてください。",
- "Copied: paste it in the support channel.": "コピーしました。サポートチャンネルに貼り付けてください。"
+ "Copied: paste it in the support channel.": "コピーしました。サポートチャンネルに貼り付けてください。",
+ "Copies your %s copy's details (state, fingerprint, the disc it was built from)\nto paste in the support channel.": "%sのコピーの詳細（状態、フィンガープリント、作成元のディスク）をコピーします。\nサポートチャンネルに貼り付けてください。"
 }

@@ -903,5 +903,6 @@
  "revision": "revisione",
  "Copy details": "Copia i dettagli",
  "Copies what went wrong (your disc's ID, revision and the files that differ)\nto paste in the support channel.": "Copia cosa è andato storto (ID e revisione del disco e i file diversi)\nda incollare nel canale di supporto.",
- "Copied: paste it in the support channel.": "Copiato: incollalo nel canale di supporto."
+ "Copied: paste it in the support channel.": "Copiato: incollalo nel canale di supporto.",
+ "Copies your %s copy's details (state, fingerprint, the disc it was built from)\nto paste in the support channel.": "Copia i dettagli della tua copia di %s (stato, impronta, il disco da cui è stata creata)\nda incollare nel canale di supporto."
 }

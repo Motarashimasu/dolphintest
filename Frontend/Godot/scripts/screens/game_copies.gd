@@ -142,6 +142,11 @@ func _built_menu(k: String, id: String) -> void:
 		"action": func():
 			app.pop()
 			DiscBuild.pick_and_build(self, key, k, refresh)})
+	items.append({"label": "Copy details", "glyph": "D", "color": "#8a9bb0",
+		"desc": tr("Copies your %s copy's details (state, fingerprint, the disc it was built from)\nto paste in the support channel.") % name,
+		"action": func():
+			DisplayServer.clipboard_set(copy_report(key, k))
+			app.toast(tr("Copied: paste it in the support channel."), 4.0)})
 	if st != "missing":
 		items.append({"label": "Remove", "glyph": "X", "color": "#e8663d",
 			"desc": tr("Delete the launcher's %s copy (your disc file stays).") % name,
@@ -150,6 +155,25 @@ func _built_menu(k: String, id: String) -> void:
 				app.pop()})
 	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true, "desc": "Keep it as it is."})
 	app.push(app.menu("Game Copy", items, "main_menu"))
+
+
+## A built copy, for support: same disc for everyone means the same fingerprint (SHA-256).
+static func copy_report(game_key: String, ver: String) -> String:
+	var id := String(Settings.GAMES[game_key]["versions"][ver])
+	var info := Discs.info(id)
+	var sha := String(Settings._cfg.get_value("discs", id + "_sha256", ""))
+	var renderer := String(Settings.get_value("video", "renderer"))
+	return "\n".join(PackedStringArray([
+		"DRAGON BALL Sparking! Collection: game copy",
+		"Launcher: %s, %s" % [Updater.installed_version(), OS.get_name()],
+		"Version: %s %s (%s, revision %d, recipe %s)" % [Settings.GAMES[game_key]["title"],
+			Settings.version_name(game_key, ver), id, int(info.get("revision", 0)), info.get("made", "?")],
+		"State: %s" % Discs.state(id),
+		"Fingerprint: %s" % (sha.left(16) if sha != "" else "-"),
+		"Built from: %s" % (Discs.original(id).get_file() if Discs.original(id) != "" else "-"),
+		"Renderer: %s, graphics %s" % [renderer, Settings.get_value("options", "graphics")],
+		"GPU: %s" % RenderingServer.get_video_adapter_name(),
+	]))
 
 
 func _pick(ver: String) -> void:

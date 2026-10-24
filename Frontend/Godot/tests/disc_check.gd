@@ -71,6 +71,9 @@ func _run() -> void:
 	Settings.use_game("bt3", "PAL")
 	check(Settings.game_path() == built, "the game runs the built copy")
 	check(Discs.pending().is_empty(), "nothing pending")
+	var copy_rep := GameCopies.copy_report("bt3", "PAL")
+	check("State: ready" in copy_rep and "Fingerprint: " + String(Settings._cfg.get_value("discs", "RDSPAF_sha256")).left(16) in copy_rep,
+			"Game Copies' Copy details: state and fingerprint", copy_rep)
 
 	# Its date changes (copied, restored from a backup...): checked by hash, still the same.
 	var bytes := FileAccess.get_file_as_bytes(built)
