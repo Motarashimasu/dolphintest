@@ -1,7 +1,7 @@
 <?php
 // DRAGON NET Ranked admin panel (browser). Sign in with the admin_key from config.php.
 //   Players: search, edit this season's rating / wins / losses per mode, ban / unban, remove a
-//            profile picture.
+//            profile picture, reset a forgotten password (a temporary one, shown once).
 //   Matches: recent matches; Void undoes a counted match (ratings and records).
 //   Seasons: start a new season (final standings archived, everyone back to 1000 and 0-0; the
 //            all-time record keeps counting), and see past seasons' final standings.
@@ -140,6 +140,27 @@ try {
                 admin_log('ban', $name_of($pid) . ($reason !== '' ? ": $reason" : ''));
                 back("p=player&id=$pid", $name_of($pid) . ' is banned from ranked.');
 
+            case 'reset_password':
+                // Passwords are only stored hashed: nobody can read one back. This sets a new,
+                // temporary one, shown here once, for the player to log in with.
+                $st = $db->prepare('SELECT username FROM players WHERE id = ?');
+                $st->execute([$pid]);
+                $uname = (string)$st->fetchColumn();
+                if ($uname === '') {
+                    back("p=player&id=$pid", 'That player has no DRAGON NET account (username) yet.');
+                }
+                $abc = 'abcdefghjkmnpqrstuvwxyz23456789';   // (no look-alikes: 0 O 1 l i)
+                $temp = '';
+                for ($i = 0; $i < 10; $i++) {
+                    $temp .= $abc[random_int(0, strlen($abc) - 1)];
+                }
+                $db->prepare('UPDATE players SET pass_hash = ? WHERE id = ?')
+                    ->execute([password_hash($temp, PASSWORD_DEFAULT), $pid]);
+                $db->prepare('DELETE FROM sessions WHERE player_id = ?')->execute([$pid]);   // logged out everywhere
+                $db->prepare('DELETE FROM login_fails WHERE k = ?')->execute(['u:' . strtolower(substr($uname, 0, 40))]);
+                admin_log('reset_password', $name_of($pid));
+                back("p=player&id=$pid", "New temporary password for $uname: $temp (shown only now: give it to them privately).");
+
             case 'unban':
                 $db->prepare('UPDATE players SET banned = 0, ban_reason = NULL WHERE id = ?')->execute([$pid]);
                 admin_log('unban', $name_of($pid));
@@ -254,6 +275,12 @@ try {
             } else {
                 $body .= "<form method=post class=row onsubmit=\"return confirm('Ban this player from ranked?')\">$csrf<input type=hidden name=player value=$id>"
                     . "<input name=reason placeholder='reason (shown to them)' size=40><button class=bad name=a value=ban>Ban from ranked</button></form>";
+            }
+            if ((string)$pl['username'] !== '') {
+                $body .= "<form method=post class=row onsubmit=\"return confirm('Give " . $h($pl['username'])
+                    . " a new temporary password? Their old one stops working and they are logged out.')\">$csrf"
+                    . "<input type=hidden name=player value=$id><span class=muted>Username: " . $h($pl['username'])
+                    . "</span><button name=a value=reset_password>Reset password</button></form>";
             }
             if ((int)$pl['pic'] > 0) {
                 $body .= "<div class=row><img src='pic.php?id=$id&v=" . (int)$pl['pic'] . "' width=64 height=64 alt=''>"

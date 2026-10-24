@@ -420,6 +420,22 @@ def admin_checks(server, check, tokens):
     _, kme = call(server, "me.php", k2["token"])
     check("admin: unban", kme["player"]["banned"] is False)
 
+    # A forgotten password: reset to a temporary one, shown once; the old one stops working,
+    # the player is logged out, and the temporary one logs in.
+    _, b = call(server, "account.php", action="register", username="Forgetful", password="pw-forgot-123")
+    check(f"admin: a player who'll forget their password ({b.get('error', 'ok')})", b.get("ok") is True)
+    bid = call(server, "me.php", b.get("token", ""))[1].get("player", {}).get("id", 0)
+    out = act(a="reset_password", player=bid)
+    m = re.search(r"New temporary password for Forgetful: ([a-z2-9]{10})", out)
+    check("admin: reset password shows a temporary one", m is not None)
+    code, _ = call(server, "me.php", b.get("token", ""))
+    check(f"admin: reset logs the player out everywhere ({code})", code == 401)
+    _, r = call(server, "account.php", action="login", username="Forgetful", password="pw-forgot-123")
+    check("admin: the old password stops working", r.get("error") == "wrong_login")
+    _, r = call(server, "account.php", action="login", username="forgetful", password=m.group(1) if m else "")
+    check("admin: the temporary password logs in", r.get("ok") is True)
+    check("admin: the password itself isn't in the log", m is None or m.group(1) not in page("?p=log"))
+
     life = me("goku")["lifetime"]
     out = act(a="season", name="Season 2", confirm="nope")
     check("admin: new season needs RESET typed", "Type RESET" in out and me("vegeta")["ratings"]["single"]["rating"] == 1234)
@@ -446,7 +462,7 @@ def admin_checks(server, check, tokens):
     act(a="message_off", message=msgs[0]["id"])
     check("switched off: nobody else gets it", call(server, "social.php", tokens["goku"], action="poll")[1]["messages"] == [])
     log = page("?p=log")
-    check("admin: every action logged", all(w in log for w in ("edit_stats", "void_match", "ban", "unban", "new_season", "message")))
+    check("admin: every action logged", all(w in log for w in ("edit_stats", "void_match", "ban", "unban", "new_season", "message", "reset_password")))
     server.write_config(admin_key="")
 
 
