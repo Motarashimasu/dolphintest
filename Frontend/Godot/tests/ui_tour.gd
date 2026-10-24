@@ -1299,6 +1299,26 @@ func _tour() -> void:
 	top().on_value("smooth_motion", false)
 	await pick("window", top().list)
 	await shot("video_settings")
+	# Dolphin's other picture settings: always given to Dolphin (Dolphin's defaults to start with).
+	var va := " ".join(Settings.video_args())
+	check("video settings start at Dolphin's defaults", "Graphics.Settings.MSAA=1" in va
+			and "Graphics.Settings.SSAA=False" in va and "Graphics.Enhancements.MaxAnisotropy=-1" in va
+			and "Graphics.Enhancements.ForceTrueColor=True" in va and "Graphics.Hardware.VSync=False" in va
+			and "Graphics.Settings.ShaderCompilationMode=0" in va)
+	check("and every game launch gets them", " ".join(Settings.common_args()).contains("Graphics.Settings.MSAA=1"))
+	top().on_value("antialiasing", "ssaa4")
+	top().on_value("anisotropy", 4)
+	top().on_value("vsync", true)
+	va = " ".join(Settings.video_args())
+	check("4x SSAA, 16x anisotropic, V-Sync reach Dolphin", "Graphics.Settings.MSAA=4" in va
+			and "Graphics.Settings.SSAA=True" in va and "Graphics.Enhancements.MaxAnisotropy=4" in va
+			and "Graphics.Hardware.VSync=True" in va)
+	top().list.set_rows(top().build_rows(), "anisotropy")
+	await frames(10)
+	await shot("video_settings_more")
+	top().on_value("antialiasing", "off")
+	top().on_value("anisotropy", -1)
+	top().on_value("vsync", false)
 	await back()
 	await choose("Options")
 	await shot("options")

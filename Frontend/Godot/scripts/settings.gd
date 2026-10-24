@@ -71,6 +71,18 @@ var GAME: Dictionary:
 		return g
 
 const RENDERERS := ["Vulkan", "OGL"]                        # Dolphin -v names
+## Anti-aliasing: Dolphin's MSAA sample count, SSAA on top.
+const ANTIALIASING := ["off", "msaa2", "msaa4", "msaa8", "ssaa2", "ssaa4", "ssaa8"]
+const ANTIALIASING_NAMES := ["Off", "2x MSAA", "4x MSAA", "8x MSAA", "2x SSAA", "4x SSAA", "8x SSAA"]
+const ANISOTROPY := [-1, 0, 1, 2, 3, 4]
+const ANISOTROPY_NAMES := ["Default", "1x", "2x", "4x", "8x", "16x"]
+const TEXTURE_FILTERING := [0, 1, 2]
+const TEXTURE_FILTERING_NAMES := ["Default", "Nearest", "Linear"]
+const OUTPUT_RESAMPLING := [0, 1, 2, 3, 4, 5, 6]
+const OUTPUT_RESAMPLING_NAMES := ["Default", "Bilinear", "B-Spline", "Mitchell-Netravali",
+	"Catmull-Rom", "Sharp Bilinear", "Area Sampling"]
+const SHADER_MODES := [0, 1, 2, 3]
+const SHADER_MODE_NAMES := ["Specialized", "Exclusive Ubershaders", "Hybrid Ubershaders", "Skip Drawing"]
 const RENDERER_NAMES := ["Vulkan", "OpenGL"]
 const RESOLUTIONS := [2, 3, 4, 6]                            # internal resolution multiplier
 const RESOLUTION_NAMES := ["720p (2x)", "1080p (3x)", "1440p (4x)", "4K (6x)"]
@@ -97,7 +109,21 @@ var defaults := {
 	"player": {"nickname": "Player", "region": "NA"},
 	"video": {"renderer": "Vulkan", "resolution": 3, "window": "1280x720", "borderless": false,
 		"smooth_motion": false,   # frame interpolation (Dolphin's --smooth-motion)
-		"menu_display": "fullscreen"},   # these menus: fullscreen (borderless) or window
+		"menu_display": "fullscreen",    # these menus: fullscreen (borderless) or window
+		# Dolphin's other picture settings (only those that can't desync a netplay match; Dolphin
+		# only syncs these in its "strict" mode, which DRAGON NET doesn't use). Dolphin's defaults.
+		"vsync": false,
+		"antialiasing": "off",           # ANTIALIASING
+		"anisotropy": -1,                # -1 = the game's own, 0..4 = 1x..16x
+		"texture_filtering": 0,          # 0 default, 1 nearest, 2 linear
+		"output_resampling": 0,          # OUTPUT_RESAMPLING
+		"shader_compilation": 0,         # SHADER_MODES
+		"disable_fog": false,
+		"crop": false,                   # crop the picture's edges to the aspect ratio
+		"true_color": true,              # force 24-bit color
+		"copy_filter_off": true,         # disable the copy filter (sharper)
+		"arbitrary_mipmaps": false,      # arbitrary mipmap detection
+		"backend_multithreading": true},
 	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9",
 		"hud": false,             # score bar offline (netplay always shows it)
 		"hud_health": true,       # health % in the corners
@@ -511,7 +537,35 @@ func common_args() -> PackedStringArray:
 	a.append_array(["--textures", "Buttons=" + get_value("options", "buttons")])
 	if get_value("options", "show_fps"):
 		a.append_array(["-C", "Graphics.Settings.ShowFPS=True"])
+	a.append_array(video_args())
 	a.append_array(_extra_args())
+	return a
+
+
+## Dolphin's picture settings (Options > Video Settings), always given, so the launcher's
+## choice wins over whatever the profile's Dolphin settings say.
+func video_args() -> PackedStringArray:
+	var b := func(key: String) -> String: return "True" if get_value("video", key) else "False"
+	var aa := String(get_value("video", "antialiasing"))
+	var samples := 1 if aa == "off" else int(aa.right(1))
+	var c := PackedStringArray([
+		"Graphics.Hardware.VSync=" + b.call("vsync"),
+		"Graphics.Settings.MSAA=%d" % samples,
+		"Graphics.Settings.SSAA=" + ("True" if aa.begins_with("ssaa") else "False"),
+		"Graphics.Enhancements.MaxAnisotropy=%d" % int(get_value("video", "anisotropy")),
+		"Graphics.Enhancements.ForceTextureFiltering=%d" % int(get_value("video", "texture_filtering")),
+		"Graphics.Enhancements.OutputResampling=%d" % int(get_value("video", "output_resampling")),
+		"Graphics.Settings.ShaderCompilationMode=%d" % int(get_value("video", "shader_compilation")),
+		"Graphics.Settings.DisableFog=" + b.call("disable_fog"),
+		"Graphics.Settings.Crop=" + b.call("crop"),
+		"Graphics.Enhancements.ForceTrueColor=" + b.call("true_color"),
+		"Graphics.Enhancements.DisableCopyFilter=" + b.call("copy_filter_off"),
+		"Graphics.Enhancements.ArbitraryMipmapDetection=" + b.call("arbitrary_mipmaps"),
+		"Graphics.Settings.BackendMultithreading=" + b.call("backend_multithreading"),
+	])
+	var a := PackedStringArray()
+	for x in c:
+		a.append_array(["-C", x])
 	return a
 
 

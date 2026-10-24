@@ -1,6 +1,7 @@
 extends "res://scripts/screens/form_screen.gd"
-## Renderer, internal resolution, Smooth Motion (frame interpolation), game window. Applied at
-## the next game launch.
+## Renderer, internal resolution, Smooth Motion (frame interpolation), game window, and Dolphin's
+## other picture settings that can't desync an online match (Settings.video_args). Applied at the
+## next game launch.
 
 
 func screen_title() -> String:
@@ -36,8 +37,40 @@ func build_rows() -> Array:
 		{"type": "choice", "key": "menu_display", "label": "Menu display", "values": ["fullscreen", "window"],
 			"names": ["Borderless fullscreen", "Window"], "value": Settings.get_value("video", "menu_display"),
 			"desc": "These menus: borderless fullscreen or a 1280 x 720 window.\nChanges right away."},
+		_toggle("vsync", "V-Sync", "Waits for your monitor's refresh: no tearing, a little more input delay."),
+		{"type": "choice", "key": "antialiasing", "label": "Anti-aliasing",
+			"values": Settings.ANTIALIASING, "names": Settings.ANTIALIASING_NAMES,
+			"value": Settings.get_value("video", "antialiasing"),
+			"desc": "Smooths jagged edges. MSAA is lighter; SSAA is sharper but much heavier.\nOnly your screen: it can't desync an online match."},
+		{"type": "choice", "key": "anisotropy", "label": "Anisotropic filtering",
+			"values": Settings.ANISOTROPY, "names": Settings.ANISOTROPY_NAMES,
+			"value": Settings.get_value("video", "anisotropy"),
+			"desc": "Sharper ground and walls seen at an angle.\n16x looks best and costs little on most graphics cards."},
+		{"type": "choice", "key": "texture_filtering", "label": "Texture filtering",
+			"values": Settings.TEXTURE_FILTERING, "names": Settings.TEXTURE_FILTERING_NAMES,
+			"value": Settings.get_value("video", "texture_filtering"),
+			"desc": "Default: as the game draws it. Nearest: pixelated. Linear: smoother."},
+		{"type": "choice", "key": "output_resampling", "label": "Output resampling",
+			"values": Settings.OUTPUT_RESAMPLING, "names": Settings.OUTPUT_RESAMPLING_NAMES,
+			"value": Settings.get_value("video", "output_resampling"),
+			"desc": "How the picture is scaled to your window or screen.\nArea Sampling is best when the resolution is higher than your screen."},
+		{"type": "choice", "key": "shader_compilation", "label": "Shader compilation",
+			"values": Settings.SHADER_MODES, "names": Settings.SHADER_MODE_NAMES,
+			"value": Settings.get_value("video", "shader_compilation"),
+			"desc": "Hybrid Ubershaders: fewer stutters the first time effects appear (needs a\ngood graphics card). Skip Drawing: no stutter, effects can be missing for a moment."},
+		_toggle("disable_fog", "Disable fog", "Removes the game's distance fog. Some stages can look different."),
+		_toggle("crop", "Crop", "Cuts off the picture's edges to fit the aspect ratio exactly."),
+		_toggle("true_color", "Force 24-bit color", "Removes color banding in gradients. Recommended."),
+		_toggle("copy_filter_off", "Disable copy filter", "Sharper picture without the game's blur filter. Recommended."),
+		_toggle("arbitrary_mipmaps", "Arbitrary mipmap detection", "Makes some textures sharper at a distance.\nCan cause a small stutter when they first load."),
+		_toggle("backend_multithreading", "Multithreaded graphics", "Uses more CPU cores for graphics (Vulkan).\nTurn off only if the game crashes or flickers."),
 		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the main menu."},
 	]
+
+
+func _toggle(key: String, label: String, desc: String) -> Dictionary:
+	return {"type": "toggle", "key": key, "label": label, "value": Settings.get_value("video", key),
+		"on_text": "On", "off_text": "Off", "desc": desc}
 
 
 func on_value(key: String, value: Variant) -> void:
