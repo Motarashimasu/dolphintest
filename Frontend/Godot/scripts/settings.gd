@@ -70,7 +70,7 @@ var GAME: Dictionary:
 		g["path"] = copy_path(game, v)
 		return g
 
-const RENDERERS := ["Vulkan", "OGL"]                        # Dolphin -v names
+const RENDERERS := ["Vulkan", "OGL", "D3D12", "D3D"]       # Dolphin -v names (D3D: Windows only)
 ## Anti-aliasing: Dolphin's MSAA sample count, SSAA on top.
 const ANTIALIASING := ["off", "msaa2", "msaa4", "msaa8", "ssaa2", "ssaa4", "ssaa8"]
 const ANTIALIASING_NAMES := ["Off", "2x MSAA", "4x MSAA", "8x MSAA", "2x SSAA", "4x SSAA", "8x SSAA"]
@@ -83,9 +83,9 @@ const OUTPUT_RESAMPLING_NAMES := ["Default", "Bilinear", "B-Spline", "Mitchell-N
 	"Catmull-Rom", "Sharp Bilinear", "Area Sampling"]
 const SHADER_MODES := [0, 1, 2, 3]
 const SHADER_MODE_NAMES := ["Specialized", "Exclusive Ubershaders", "Hybrid Ubershaders", "Skip Drawing"]
-const RENDERER_NAMES := ["Vulkan", "OpenGL"]
-const RESOLUTIONS := [2, 3, 4, 6]                            # internal resolution multiplier
-const RESOLUTION_NAMES := ["720p (2x)", "1080p (3x)", "1440p (4x)", "4K (6x)"]
+const RENDERER_NAMES := ["Vulkan", "OpenGL", "Direct3D 12", "Direct3D 11"]
+const RESOLUTIONS := [1, 2, 3, 4, 6]                            # internal resolution multiplier
+const RESOLUTION_NAMES := ["480p (1x, native)", "720p (2x)", "1080p (3x)", "1440p (4x)", "4K (6x)"]
 const WINDOW_SIZES := ["1280x720", "1600x900", "1920x1080", "2560x1440",
 	"2560x1080", "3440x1440"]   # (the last two: 21:9)
 ## Texture variant groups of the texture pack (folders @Graphics/<option>, @Buttons/<option>).
@@ -524,7 +524,7 @@ func _extra_args() -> PackedStringArray:
 func common_args() -> PackedStringArray:
 	var a := PackedStringArray()
 	a.append_array(["-u", data_path(get_value("paths", "profile"))])
-	a.append_array(["-v", get_value("video", "renderer")])
+	a.append_array(["-v", renderer()])
 	a.append_array(["--resolution", str(get_value("video", "resolution"))])
 	a.append_array(["--smooth-motion", "on" if get_value("video", "smooth_motion") else "off"])
 	a.append_array(["--window", get_value("video", "window")])
@@ -540,6 +540,22 @@ func common_args() -> PackedStringArray:
 	a.append_array(video_args())
 	a.append_array(_extra_args())
 	return a
+
+
+## The renderers this system has: Direct3D only on Windows.
+func renderers() -> Array:
+	return RENDERERS if OS.get_name() == "Windows" else RENDERERS.filter(func(r): return not String(r).begins_with("D3D"))
+
+
+func renderer_names() -> Array:
+	return renderers().map(func(r): return RENDERER_NAMES[RENDERERS.find(r)])
+
+
+## The renderer to use: the chosen one if this system has it (settings copied from Windows to
+## Linux), else Vulkan.
+func renderer() -> String:
+	var r := String(get_value("video", "renderer"))
+	return r if r in renderers() else "Vulkan"
 
 
 ## Dolphin's picture settings (Options > Video Settings), always given, so the launcher's

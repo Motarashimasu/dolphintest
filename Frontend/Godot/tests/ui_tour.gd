@@ -1316,6 +1316,17 @@ func _tour() -> void:
 	top().list.set_rows(top().build_rows(), "anisotropy")
 	await frames(10)
 	await shot("video_settings_more")
+	# Direct3D is offered on Windows only; a Windows choice on another system falls back to Vulkan.
+	var ca := func(flag: String) -> String:
+		var a: PackedStringArray = Settings.common_args()
+		return a[a.find(flag) + 1]
+	check("renderers: Direct3D only on Windows", Settings.renderers().has("D3D12") == (OS.get_name() == "Windows"))
+	top().on_value("renderer", "D3D12")
+	check("a Direct3D choice runs Vulkan where there's no Direct3D", OS.get_name() == "Windows" or ca.call("-v") == "Vulkan")
+	top().on_value("renderer", "Vulkan")
+	top().on_value("resolution", 1)
+	check("480p (1x, native) reaches Dolphin", ca.call("--resolution") == "1")
+	top().on_value("resolution", 3)
 	top().on_value("antialiasing", "off")
 	top().on_value("anisotropy", -1)
 	top().on_value("vsync", false)

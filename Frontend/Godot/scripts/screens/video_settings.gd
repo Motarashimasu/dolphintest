@@ -21,13 +21,14 @@ func build_rows() -> Array:
 	window_names.append("Borderless fullscreen")
 	return [
 		{"type": "choice", "key": "renderer", "label": "Graphics renderer",
-			"values": Settings.RENDERERS, "names": Settings.RENDERER_NAMES,
-			"value": Settings.get_value("video", "renderer"),
-			"desc": "Vulkan is usually faster with fewer stutters.\nTry OpenGL if Vulkan has problems on your PC."},
+			"values": Settings.renderers(), "names": Settings.renderer_names(),
+			"value": Settings.renderer(),
+			"desc": ("Vulkan is usually faster with fewer stutters. If it has problems on your PC,\ntry Direct3D 12, Direct3D 11 (older graphics cards) or OpenGL.") if OS.get_name() == "Windows" \
+				else "Vulkan is usually faster with fewer stutters.\nTry OpenGL if Vulkan has problems on your PC."},
 		{"type": "choice", "key": "resolution", "label": "Resolution",
 			"values": Settings.RESOLUTIONS, "names": Settings.RESOLUTION_NAMES,
 			"value": Settings.get_value("video", "resolution"),
-			"desc": "Internal rendering resolution. 1080p is the default;\nhigher needs a stronger graphics card."},
+			"desc": "Internal rendering resolution. 1080p is the default; higher needs a stronger\ngraphics card. 480p (1x) is the Wii's own: for weak PCs and laptops."},
 		{"type": "toggle", "key": "smooth_motion", "label": "Smooth Motion",
 			"value": Settings.get_value("video", "smooth_motion"), "on_text": "On", "off_text": "Off",
 			"desc": "Frame interpolation: in-between frames make 30 fps fights look like 60 fps.\nAdds about one frame of input delay; very fast effects can smear."},

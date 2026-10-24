@@ -952,5 +952,10 @@
  "Arbitrary mipmap detection": "Rilevamento mipmap arbitrari",
  "Makes some textures sharper at a distance.\nCan cause a small stutter when they first load.": "Rende alcune texture più nitide in lontananza.\nPuò causare un piccolo scatto quando vengono caricate la prima volta.",
  "Multithreaded graphics": "Grafica multithread",
- "Uses more CPU cores for graphics (Vulkan).\nTurn off only if the game crashes or flickers.": "Usa più core del processore per la grafica (Vulkan).\nDisattivalo solo se il gioco si chiude o sfarfalla."
+ "Uses more CPU cores for graphics (Vulkan).\nTurn off only if the game crashes or flickers.": "Usa più core del processore per la grafica (Vulkan).\nDisattivalo solo se il gioco si chiude o sfarfalla.",
+ "480p (1x, native)": "480p (1x, nativa)",
+ "Direct3D 12": "Direct3D 12",
+ "Direct3D 11": "Direct3D 11",
+ "Vulkan is usually faster with fewer stutters. If it has problems on your PC,\ntry Direct3D 12, Direct3D 11 (older graphics cards) or OpenGL.": "Vulkan di solito è più veloce e scatta meno. Se dà problemi sul tuo PC,\nprova Direct3D 12, Direct3D 11 (schede video più vecchie) o OpenGL.",
+ "Internal rendering resolution. 1080p is the default; higher needs a stronger\ngraphics card. 480p (1x) is the Wii's own: for weak PCs and laptops.": "Risoluzione interna di rendering. 1080p è la predefinita; più alta richiede una scheda\nvideo più potente. 480p (1x) è quella della Wii: per PC e portatili poco potenti."
 }

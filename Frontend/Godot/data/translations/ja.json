@@ -952,5 +952,10 @@
  "Arbitrary mipmap detection": "任意ミップマップ検出",
  "Makes some textures sharper at a distance.\nCan cause a small stutter when they first load.": "一部のテクスチャを遠くでもくっきり表示します。\n初めて読み込むときに少しカクつくことがあります。",
  "Multithreaded graphics": "マルチスレッド描画",
- "Uses more CPU cores for graphics (Vulkan).\nTurn off only if the game crashes or flickers.": "グラフィックに複数のCPUコアを使います（Vulkan）。\nゲームが落ちたりちらついたりする場合のみオフにしてください。"
+ "Uses more CPU cores for graphics (Vulkan).\nTurn off only if the game crashes or flickers.": "グラフィックに複数のCPUコアを使います（Vulkan）。\nゲームが落ちたりちらついたりする場合のみオフにしてください。",
+ "480p (1x, native)": "480p（1x、ネイティブ）",
+ "Direct3D 12": "Direct3D 12",
+ "Direct3D 11": "Direct3D 11",
+ "Vulkan is usually faster with fewer stutters. If it has problems on your PC,\ntry Direct3D 12, Direct3D 11 (older graphics cards) or OpenGL.": "通常はVulkanが速く、カクつきも少なめです。PCで問題がある場合は、\nDirect3D 12、Direct3D 11（古いグラフィックカード向け）、OpenGLを試してください。",
+ "Internal rendering resolution. 1080p is the default; higher needs a stronger\ngraphics card. 480p (1x) is the Wii's own: for weak PCs and laptops.": "内部解像度です。デフォルトは1080pで、高くするほど高性能なグラフィックカードが必要です。\n480p（1x）はWii本来の解像度で、性能の低いPCやノートPC向けです。"
 }
