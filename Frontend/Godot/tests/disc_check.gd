@@ -75,6 +75,50 @@ func _run() -> void:
 	check("State: ready" in copy_rep and "Fingerprint: " + String(Settings._cfg.get_value("discs", "RDSPAF_sha256")).left(16) in copy_rep,
 			"Game Copies' Copy details: state and fingerprint", copy_rep)
 
+	# A reinstall: new settings, the title folder kept (or put back). Found by its lock file,
+	# checked by hash, ready: not built again.
+	check(FileAccess.file_exists(Discs.sidecar_path(id)), "a lock file next to the copy")
+	var lock_text := FileAccess.get_file_as_string(Discs.sidecar_path(id))
+	Settings._cfg.erase_section("discs")
+	check(Discs.found(id) and Discs.pending().has(["bt3", "PAL"]), "after a reinstall the copy is found")
+	var reinstall_job = await _job(id, "")
+	check(reinstall_job.state == "done" and Discs.state(id) == "ready" and Discs.original(id) == orig,
+			"one hash check and it's ready again (original remembered)", "%s %s" % [reinstall_job.error, Discs.state(id)])
+	# The same copy and lock file on another PC: not taken (that player builds their own).
+	var other := JSON.parse_string(lock_text) as Dictionary
+	other["machine"] = "someone-elses-pc"
+	other["sig"] = Discs._sign(id, other)
+	var lf := FileAccess.open(Discs.sidecar_path(id), FileAccess.WRITE)
+	lf.store_string(JSON.stringify(other))
+	lf.close()
+	Settings._cfg.erase_section("discs")
+	check(Discs.state(id) == "missing" and not Discs.found(id), "another PC's copy isn't taken")
+	# A lock file edited by hand: not taken either.
+	var forged := JSON.parse_string(lock_text) as Dictionary
+	forged["sha256"] = "0".repeat(64)
+	lf = FileAccess.open(Discs.sidecar_path(id), FileAccess.WRITE)
+	lf.store_string(JSON.stringify(forged))
+	lf.close()
+	check(Discs.state(id) == "missing", "an edited lock file isn't taken")
+	lf = FileAccess.open(Discs.sidecar_path(id), FileAccess.WRITE)
+	lf.store_string(lock_text)
+	lf.close()
+	Settings._cfg.erase_section("discs")
+	reinstall_job = await _job(id, "")
+	check(Discs.state(id) == "ready", "the real lock file again: ready")
+	# SparkingData copied to another PC with its settings: the settings' copies are forgotten too.
+	var keep_paths := {}
+	for k in ["data", "dolphin"]:
+		keep_paths[k] = Settings.get_value("paths", k)
+	Settings.forget_this_pc_only()
+	check(not Settings._cfg.has_section("discs"), "settings moved to another PC forget the built copies")
+	for k in keep_paths:
+		Settings.set_value("paths", k, keep_paths[k])
+	Settings._cfg.erase_section("discs")
+	reinstall_job = await _job(id, "")
+	check(Discs.state(id) == "ready", "(back to ready on this PC)")
+	Settings._cfg.set_value("games", "bt3_PAL", orig)
+
 	# Its date changes (copied, restored from a backup...): checked by hash, still the same.
 	var bytes := FileAccess.get_file_as_bytes(built)
 	OS.delay_msec(1100)

@@ -67,6 +67,59 @@ static func _set_lock(id: String, fields: Dictionary) -> void:
 	for k in fields:
 		Settings._cfg.set_value("discs", "%s_%s" % [id, k], fields[k])
 	Settings._cfg.save(Settings._path)
+	if String(_lock(id, "sha256")) != "":
+		_write_sidecar(id)
+	elif FileAccess.file_exists(sidecar_path(id)):
+		DirAccess.remove_absolute(sidecar_path(id))
+
+
+# --- The lock file next to a copy (title/<ID>.lock) ---------------------------------------
+# The lock also lives next to the copy, signed and tied to this PC: after a reinstall (new
+# settings, the title folder kept or put back) the copy is found again and only hash-checked,
+# not rebuilt. A copy (and its lock) taken to another PC isn't taken: that player builds their
+# own from their disc.
+
+const _LOCK_KEY := "sparking-title-lock-1:7c1e4f0a9b2d4e6f8a3c5b7d9e1f2a4c"
+const _LOCK_FIELDS := ["sha256", "size", "recipe", "original"]
+
+
+static func sidecar_path(id: String) -> String:
+	return Settings.data_path("title/%s.lock" % id)
+
+
+static func _sign(id: String, d: Dictionary) -> String:
+	var text := "|".join(PackedStringArray([id, d.get("machine", "")] +
+			_LOCK_FIELDS.map(func(k): return str(int(d.get(k, 0))) if k == "size" else str(d.get(k, "")))))
+	return Crypto.new().hmac_digest(HashingContext.HASH_SHA256, _LOCK_KEY.to_utf8_buffer(),
+			text.to_utf8_buffer()).hex_encode()
+
+
+static func _write_sidecar(id: String) -> void:
+	var d := {"id": id, "machine": Settings.machine_id()}
+	for k in _LOCK_FIELDS:
+		d[k] = _lock(id, k)
+	d["size"] = int(d["size"])
+	d["sig"] = _sign(id, d)
+	var f := FileAccess.open(sidecar_path(id), FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(d, "\t"))
+
+
+## No lock in the settings but a copy with its lock file from this PC: take the lock back. The
+## copy's date changed (copied back), so it's "changed" next: the hash check confirms it.
+static func _adopt(id: String) -> bool:
+	if not FileAccess.file_exists(sidecar_path(id)) or not FileAccess.file_exists(built_path(id)):
+		return false
+	var d = JSON.parse_string(FileAccess.get_file_as_string(sidecar_path(id)))
+	if not d is Dictionary or String(d.get("sig", "")) != _sign(id, d):
+		return false
+	if String(d.get("machine", "")) != Settings.machine_id() or int(d.get("size", -1)) != _size(built_path(id)):
+		return false
+	for k in _LOCK_FIELDS:
+		Settings._cfg.set_value("discs", "%s_%s" % [id, k], d[k])
+	Settings._cfg.set_value("discs", id + "_mtime", -1)   # (not the file's: checked by hash)
+	Settings._cfg.save(Settings._path)
+	return true
 
 
 ## The player's original disc this copy was built from ("" = none yet).
@@ -80,13 +133,20 @@ static func state(id: String) -> String:
 	if not has_recipe(id):
 		return "none"
 	var p := built_path(id)
-	if String(_lock(id, "sha256")) == "" or not FileAccess.file_exists(p):
+	if String(_lock(id, "sha256")) == "" and not _adopt(id):
+		return "missing"
+	if not FileAccess.file_exists(p):
 		return "missing"
 	if _size(p) != int(_lock(id, "size")) or FileAccess.get_modified_time(p) != int(_lock(id, "mtime")):
 		return "changed"
 	if String(_lock(id, "recipe")) != FileAccess.get_sha256(recipe_path(id)):
 		return "outdated"
 	return "ready"
+
+
+## A copy found again after a reinstall (its lock file), waiting for its hash check.
+static func found(id: String) -> bool:
+	return state(id) == "changed" and int(_lock(id, "mtime")) == -1
 
 
 static func ready(id: String) -> bool:
@@ -190,6 +250,7 @@ class Job:
 	## Only the hash check of a copy whose date or size changed ("changed").
 	func start_check(disc_id: String) -> void:
 		id = disc_id
+		Discs.state(id)   # (takes a copy's lock file back after a reinstall, if there's no lock yet)
 		state = "hashing"
 		_hash_thread = Thread.new()
 		_hash_thread.start(func(): _hash = Discs.hash_file(Discs.built_path(id)))
@@ -261,6 +322,7 @@ class Job:
 		var expected := String(Discs._lock(id, "sha256"))
 		if disc == "" and expected != "" and _hash != expected:
 			_fail("changed", p)    # (the hash check: it really isn't the copy that was built)
+			Discs._set_lock(id, {"sha256": "", "mtime": 0})   # (not a copy: build it from the disc)
 			return
 		if disc == "" and expected == "":
 			_fail("changed", p)

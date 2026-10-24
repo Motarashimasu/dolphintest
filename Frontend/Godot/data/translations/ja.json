@@ -957,5 +957,7 @@
  "Direct3D 12": "Direct3D 12",
  "Direct3D 11": "Direct3D 11",
  "Vulkan is usually faster with fewer stutters. If it has problems on your PC,\ntry Direct3D 12, Direct3D 11 (older graphics cards) or OpenGL.": "通常はVulkanが速く、カクつきも少なめです。PCで問題がある場合は、\nDirect3D 12、Direct3D 11（古いグラフィックカード向け）、OpenGLを試してください。",
- "Internal rendering resolution. 1080p is the default; higher needs a stronger\ngraphics card. 480p (1x) is the Wii's own: for weak PCs and laptops.": "内部解像度です。デフォルトは1080pで、高くするほど高性能なグラフィックカードが必要です。\n480p（1x）はWii本来の解像度で、性能の低いPCやノートPC向けです。"
+ "Internal rendering resolution. 1080p is the default; higher needs a stronger\ngraphics card. 480p (1x) is the Wii's own: for weak PCs and laptops.": "内部解像度です。デフォルトは1080pで、高くするほど高性能なグラフィックカードが必要です。\n480p（1x）はWii本来の解像度で、性能の低いPCやノートPC向けです。",
+ "Found: checking it": "見つかりました: 確認中",
+ "Your %s copy was found in SparkingData/title.\nIt's checked once (a minute or so), then it's ready: no need to build it again.": "SparkingData/titleで%sのコピーが見つかりました。\n一度だけ確認（1分ほど）すれば準備完了です。作り直す必要はありません。"
 }
