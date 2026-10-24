@@ -260,6 +260,11 @@ static func _size(path: String) -> int:
 	return f.get_length() if f else -1
 
 
+## The build installed here ("" before the first update).
+func installed_version() -> String:
+	return String(_installed().get("version", ""))
+
+
 func _hashes_path() -> String:
 	return root().path_join("SparkingData/update/hashes.json")
 

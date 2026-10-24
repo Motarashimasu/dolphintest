@@ -51,6 +51,10 @@ func _run() -> void:
 
 	var job = await _job(id, OS.get_environment("DISC_MOD"))
 	check(job.state == "failed" and job.error == "modified", "a modded disc is refused", "%s %s" % [job.error, job.detail])
+	check("files differ from the original" in job.detail, "every differing file is listed, not just the first", job.detail)
+	var report: String = job.report("4.0")
+	check("Disc: RDSPAF, revision 0" in report and "Wanted: 4.0 (RDSPAF, revision 0)" in report
+			and "Result: modified" in report, "Copy details: the disc's ID, revision and what differs", report)
 	job = await _job(id, OS.get_environment("DISC_US"))
 	check(job.state == "failed" and job.error == "wrong_game" and job.detail == "RDSE70", "another version is refused")
 	check(not Settings.has_copy("bt3", "PAL"), "still no copy")

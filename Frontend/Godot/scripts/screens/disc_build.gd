@@ -73,9 +73,14 @@ func build_rows() -> Array:
 	if disc != "":
 		rows.append({"type": "info", "key": "disc", "label": "Your disc", "value": disc.get_file()})
 	rows.append({"type": "info", "key": "progress", "label": "Progress", "value": _progress()})
+	if job and not job.disc_info.is_empty():
+		rows.append({"type": "info", "key": "found", "label": "Disc found",
+			"value": "%s · %s %d" % [job.disc_info.get("game_id", "?"), tr("revision"), int(job.disc_info.get("revision", 0))]})
 	if job and job.state == "failed":
 		rows.append({"type": "action", "key": "pick", "label": "Pick another disc",
 			"desc": _status()})
+		rows.append({"type": "action", "key": "copy", "label": "Copy details",
+			"desc": tr("Copies what went wrong (your disc's ID, revision and the files that differ)\nto paste in the support channel.")})
 		if job.error in ["write", "crashed", "read"] and disc != "":
 			rows.append({"type": "action", "key": "retry", "label": "Try again", "desc": _status()})
 	rows.append({"type": "action", "key": "back", "label": "Back" if not _busy() else "Stop",
@@ -133,7 +138,7 @@ func _status() -> String:
 			return tr("That's another revision of the disc (%s). %s is built from revision %d.") % [
 				job.detail, n, int(Discs.info(orig_id).get("revision", 0))]
 		"modified":
-			return tr("That copy isn't the original disc: it's been modified or damaged\n(%s). Pick a clean copy of your own %s disc.") % [job.detail, ver]
+			return tr("That copy isn't the original disc: it's been modified or damaged\n(%s). Pick a clean copy of your own %s disc.") % [job.detail.left(220), ver]
 		"read", "crashed":
 			return tr("Your disc couldn't be read to the end (%s).\nThe file may be damaged or on a drive that was removed.") % job.detail
 		"open", "not_disc":
@@ -180,6 +185,9 @@ func on_press(k: String) -> void:
 		"retry":
 			set_process(true)
 			_start()
+		"copy":
+			DisplayServer.clipboard_set(job.report(_name()))
+			app.toast(tr("Copied: paste it in the support channel."), 4.0)
 		"back":
 			on_back()
 

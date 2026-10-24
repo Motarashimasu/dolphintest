@@ -296,7 +296,9 @@ def main() -> None:
     check(error_of(lines) == "error wrong_revision 1", "another revision: wrong_revision", error_of(lines))
 
     code, lines = sparking(tool, j("mod.iso"), recipe_path, j("no.rvz"), user)
-    check(error_of(lines).startswith("error modified"), "an already modded disc: modified", error_of(lines))
+    check(error_of(lines).startswith("error modified") and "files differ from the original" in error_of(lines),
+          "an already modded disc: modified, every differing file listed", error_of(lines))
+    check(any(l.startswith('info {"game_id":"RDSPAF"') for l in lines), "the disc's ID and revision are reported first")
 
     changed = dict(files)
     changed["sound/bgm.brstm"] = files["sound/bgm.brstm"][:-1] + b"\0"

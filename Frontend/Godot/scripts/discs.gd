@@ -153,6 +153,7 @@ class Job:
 	var progress := 0.0
 	var error := ""
 	var detail := ""
+	var disc_info := {}     # what the player's disc is (dolphin-tool's "info" line): ID, revision...
 	var pid := -1
 	var _thread: Thread
 	var _mutex := Mutex.new()
@@ -230,6 +231,10 @@ class Job:
 		for line: String in lines:
 			if line.begins_with("stage build"):
 				state = "building"
+			elif line.begins_with("info "):
+				var d = JSON.parse_string(line.substr(5))
+				if d is Dictionary:
+					disc_info = d
 			elif line.begins_with("progress "):
 				var f := float(line.get_slice(" ", 1))
 				progress = f * 0.3 if state == "checking" else 0.3 + f * 0.65
@@ -265,6 +270,23 @@ class Job:
 			"recipe": FileAccess.get_sha256(Discs.recipe_path(id)) if disc != "" else Discs._lock(id, "recipe")})
 		progress = 1.0
 		state = "done"
+
+	## Everything about this attempt, for the player to paste into a support channel.
+	func report(version_shown: String) -> String:
+		var info := Discs.info(id)
+		var lines := PackedStringArray([
+			"DRAGON BALL Sparking! Collection: disc check",
+			"Launcher: %s, %s" % [Updater.installed_version(), OS.get_name()],
+			"Wanted: %s (%s, revision %d)" % [version_shown, info.get("game_id", id), int(info.get("revision", 0))],
+		])
+		if disc != "":
+			var size := Discs._size(disc)
+			lines.append("Disc file: %s (%s, %.2f GB)" % [disc.get_file(), disc.get_extension().to_upper(), size / 1073741824.0])
+		if not disc_info.is_empty():
+			lines.append("Disc: %s, revision %d%s" % [disc_info.get("game_id", "?"), int(disc_info.get("revision", 0)),
+				", NKit" if disc_info.get("nkit", false) else ""])
+		lines.append("Result: %s%s" % [error if error != "" else state, (": " + detail) if detail != "" else ""])
+		return "\n".join(lines)
 
 	func stop() -> void:
 		if pid > 0 and OS.is_process_running(pid):

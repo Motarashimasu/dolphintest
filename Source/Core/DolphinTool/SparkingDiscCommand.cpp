@@ -520,16 +520,18 @@ int SparkingDiscCommand(const std::vector<std::string>& args)
   const std::string game_id = volume->GetGameID(partition);
   const int revision = volume->GetRevision(partition).value_or(0);
 
-  if (options.get("info"))
   {
+    // Always first: what this disc is (the launcher shows it when a disc is refused).
     picojson::object o;
     o["game_id"] = picojson::value(game_id);
     o["revision"] = picojson::value(static_cast<double>(revision));
     o["wii"] = picojson::value(volume->GetVolumeType() == DiscIO::Platform::WiiDisc);
+    o["nkit"] = picojson::value(volume->IsNKit());
     o["partition_offset"] = picojson::value(static_cast<double>(partition.offset));
     Say("info " + picojson::value(o).serialize());
-    return EXIT_SUCCESS;
   }
+  if (options.get("info"))
+    return EXIT_SUCCESS;
 
   std::map<std::string, DiscFile> files;
   std::vector<std::string> empty_dirs;
@@ -576,6 +578,8 @@ int SparkingDiscCommand(const std::vector<std::string>& args)
     return Fail("wrong_game", game_id);
   if (revision != recipe.revision)
     return Fail("wrong_revision", std::to_string(revision));
+  // Every difference, not just the first: which files differ tells which copy this is.
+  std::vector<std::string> problems;
   std::set<std::string> on_disc;
   for (const auto& [path, f] : files)
     on_disc.insert(path);
@@ -584,22 +588,37 @@ int SparkingDiscCommand(const std::vector<std::string>& args)
   {
     const auto it = files.find(e.path);
     if (it == files.end())
-      return Fail("modified", e.path + " is missing");
-    if (it->second.size != e.size)
-      return Fail("modified", e.path + " has another size");
+      problems.push_back(e.path + " is missing");
+    else if (it->second.size != e.size)
+      problems.push_back(e.path + " has another size");
+    else
+      total += e.size;
     on_disc.erase(e.path);
-    total += e.size;
   }
-  if (!on_disc.empty())
-    return Fail("modified", *on_disc.begin() + " isn't on the original disc");
+  for (const std::string& extra : on_disc)
+    problems.push_back(extra + " isn't on the original disc");
   Progress progress(total);
   for (const Entry& e : recipe.source)
   {
-    const auto sha1 = HashFile(*volume, partition, e.path, files.at(e.path), &progress);
+    const auto it = files.find(e.path);
+    if (it == files.end() || it->second.size != e.size)
+      continue;
+    const auto sha1 = HashFile(*volume, partition, e.path, it->second, &progress);
     if (!sha1)
       return Fail("read", e.path + " can't be read (damaged copy?)");
     if (*sha1 != e.sha1)
-      return Fail("modified", e.path + " isn't the original's");
+      problems.push_back(e.path + " isn't the original's");
+  }
+  if (problems.size() == 1)
+    return Fail("modified", problems[0]);
+  if (!problems.empty())
+  {
+    std::string list;
+    for (size_t i = 0; i < problems.size() && i < 8; ++i)
+      list += (i ? "; " : "") + problems[i];
+    if (problems.size() > 8)
+      list += fmt::format("; and {} more", problems.size() - 8);
+    return Fail("modified", fmt::format("{} files differ from the original: {}", problems.size(), list));
   }
   Progress::Set(1.0);
   if (options.get("check"))

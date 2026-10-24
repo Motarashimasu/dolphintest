@@ -898,5 +898,10 @@
  "Play %s %s. It's built from your original %s disc (%s):\nnext, pick that disc's file.": "Gioca a %s %s. Si crea dal tuo disco %s originale (%s):\npoi scegli il file di quel disco.",
  "Play %s %s: next, pick your %s disc's file (%s).": "Gioca a %s %s: poi scegli il file del tuo disco %s (%s).",
  "Back to the setup.": "Torna alla configurazione.",
- "The game didn't start within %d seconds, so it was closed. Try again.": "Il gioco non è partito entro %d secondi, quindi è stato chiuso. Riprova."
+ "The game didn't start within %d seconds, so it was closed. Try again.": "Il gioco non è partito entro %d secondi, quindi è stato chiuso. Riprova.",
+ "Disc found": "Disco trovato",
+ "revision": "revisione",
+ "Copy details": "Copia i dettagli",
+ "Copies what went wrong (your disc's ID, revision and the files that differ)\nto paste in the support channel.": "Copia cosa è andato storto (ID e revisione del disco e i file diversi)\nda incollare nel canale di supporto.",
+ "Copied: paste it in the support channel.": "Copiato: incollalo nel canale di supporto."
 }
