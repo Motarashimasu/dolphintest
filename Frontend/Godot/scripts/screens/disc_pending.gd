@@ -33,10 +33,7 @@ func build_rows() -> Array:
 		var from := Discs.candidate(key, ver)
 		var value := ""
 		var desc := ""
-		match Discs.state(id) if not Discs.found(id) else "found":
-			"found":
-				value = tr("Found: checking it")
-				desc = tr("Your %s copy was found in SparkingData/title.\nIt's checked once (a minute or so), then it's ready: no need to build it again.") % name
+		match Discs.state(id):
 			"changed":
 				value = tr("Changed: check it")
 				desc = tr("Your %s copy isn't the one that was built (its file changed).\nCheck it, or build it again from your disc.") % name
@@ -53,32 +50,11 @@ func build_rows() -> Array:
 	return rows
 
 
-func on_enter() -> void:
-	super()
-	_check_found.call_deferred()
-
-
 func on_resume() -> void:
 	if Discs.pending().is_empty():
 		app.pop()
 		return
 	super()
-	_check_found.call_deferred()
-
-
-## Copies found again after a reinstall are checked right away, one after the other.
-func _check_found() -> void:
-	if not is_inside_tree() or app.top() != self:
-		return
-	for kv in Discs.pending():
-		var id := String(Settings.GAMES[kv[0]]["versions"][kv[1]])
-		if Discs.found(id) and not _checked.has(id):
-			_checked[id] = true   # (once: if it fails, the row offers to build it instead)
-			app.push(DiscBuild.new().setup(kv[0], kv[1], ""))
-			return
-
-
-var _checked := {}
 
 
 func on_press(k: String) -> void:

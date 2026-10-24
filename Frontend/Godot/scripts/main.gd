@@ -96,10 +96,6 @@ func _ready() -> void:
 		push(_language_menu(true))
 	elif Settings.needs_setup():
 		push(load(SCREENS % "setup").new())
-		# After a reinstall: copies found in SparkingData/title are checked first (then Setup).
-		var found := Discs.pending().filter(func(kv): return Discs.found(String(Settings.GAMES[kv[0]]["versions"][kv[1]])))
-		if not found.is_empty():
-			push(load(SCREENS % "disc_pending").new())
 	elif not Discs.pending().is_empty():
 		push(load(SCREENS % "disc_pending").new())   # a copy to build from the player's disc
 

@@ -216,9 +216,6 @@ static func machine_id() -> String:
 func forget_this_pc_only() -> void:
 	if _cfg.has_section("games"):
 		_cfg.erase_section("games")
-	# Built game copies are this PC's (scripts/discs.gd): another PC builds its own from its disc.
-	if _cfg.has_section("discs"):
-		_cfg.erase_section("discs")
 	for k in ["token", "name"]:
 		if _cfg.has_section_key("ranked", k):
 			_cfg.erase_section_key("ranked", k)

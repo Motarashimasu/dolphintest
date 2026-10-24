@@ -957,7 +957,5 @@
  "Direct3D 12": "Direct3D 12",
  "Direct3D 11": "Direct3D 11",
  "Vulkan is usually faster with fewer stutters. If it has problems on your PC,\ntry Direct3D 12, Direct3D 11 (older graphics cards) or OpenGL.": "Vulkan di solito è più veloce e scatta meno. Se dà problemi sul tuo PC,\nprova Direct3D 12, Direct3D 11 (schede video più vecchie) o OpenGL.",
- "Internal rendering resolution. 1080p is the default; higher needs a stronger\ngraphics card. 480p (1x) is the Wii's own: for weak PCs and laptops.": "Risoluzione interna di rendering. 1080p è la predefinita; più alta richiede una scheda\nvideo più potente. 480p (1x) è quella della Wii: per PC e portatili poco potenti.",
- "Found: checking it": "Trovata: controllo in corso",
- "Your %s copy was found in SparkingData/title.\nIt's checked once (a minute or so), then it's ready: no need to build it again.": "La tua copia di %s è stata trovata in SparkingData/title.\nViene controllata una volta (circa un minuto), poi è pronta: non serve crearla di nuovo."
+ "Internal rendering resolution. 1080p is the default; higher needs a stronger\ngraphics card. 480p (1x) is the Wii's own: for weak PCs and laptops.": "Risoluzione interna di rendering. 1080p è la predefinita; più alta richiede una scheda\nvideo più potente. 480p (1x) è quella della Wii: per PC e portatili poco potenti."
 }
