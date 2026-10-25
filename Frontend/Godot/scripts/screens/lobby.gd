@@ -72,6 +72,9 @@ var _ranked := {}             # last lobby status from the ranked server
 var _ranked_busy := false
 var _reported := false        # this match's result already sent
 var _announced := -1          # ranked match id whose result was already shown
+## Ranked: this lobby's set is over (a match counted). One set per lobby: no more matches here;
+## both players leave and a new ranked lobby is opened for the next set (the server refuses too).
+var _set_done := false
 var _ranked_timer: Timer
 
 var _info: Label
@@ -190,6 +193,8 @@ func _ranked_tick() -> void:
 		if _ranked.get(key) is Dictionary and int(_ranked[key].get("id", 0)) > _match_id:
 			_match_id = int(_ranked[key]["id"])
 	_announce_result(_ranked.get("last_match"))
+	if _ranked.get("set_done", false):
+		_end_set()
 	_refresh_all()
 
 
@@ -222,6 +227,9 @@ func _report(result: String, why := "") -> void:
 ## Ranked guest: the host wants to start. A question on screen: accept or decline.
 func _on_start_asked(host: String) -> void:
 	if _ask_menu and is_instance_valid(_ask_menu):
+		return
+	if _set_done:
+		Dolphin.send("answer_start no")   # (one set per lobby)
 		return
 	Sfx.play("player_join")
 	var state := {"answered": false}
@@ -258,6 +266,45 @@ func _on_start_asked(host: String) -> void:
 		app.pop()
 		if _ask_menu == menu:
 			_ask_menu = null
+
+
+## Players here with a DRAGON NET account who aren't friends yet (nor asked already).
+func _friend_candidates() -> Array:
+	if not Ranked.logged_in() or Ranked.needs_account:
+		return []
+	var me := Ranked.display_name().to_lower()
+	var asked: Array = Social.outgoing.map(func(o): return String(o.get("name", "")).to_lower())
+	var out: Array = []
+	for p in _players:
+		var acc := String(p.get("account", ""))
+		if acc != "" and acc.to_lower() != me and not Social.is_friend(acc) and not acc.to_lower() in asked \
+				and not acc in out:
+			out.append(acc)
+	return out
+
+
+## Add friend: pick a player in the lobby, they get a friend request.
+func _add_friend_menu() -> void:
+	var items: Array = []
+	for acc in _friend_candidates():
+		var name := String(acc)
+		items.append({"label": name, "glyph": name.left(1).to_upper(), "color": "#3fbf6b",
+			"desc": tr("Send %s a friend request.") % name,
+			"action": func():
+				app.pop()
+				var res: Dictionary = await Social.act("request", {"name": name})
+				if not is_inside_tree():
+					return
+				if res.get("ok", false):
+					_system((tr("You and %s are friends now.") if String(res.get("state", "")) == "friends"
+						else tr("Friend request sent to %s.")) % name, "#3fbf6b")
+				else:
+					_system(Ranked.error_text(String(res.get("error", ""))), "#e8663d")
+				_refresh_all()})
+	items.append({"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true, "desc": "Back to the lobby."})
+	var m: Control = app.menu("Add friend", items, "netplay")
+	m.notices = false
+	app.push(m)
 
 
 ## A friend (their DRAGON NET account) is in this lobby: the yellow pop-up, once per lobby.
@@ -301,6 +348,16 @@ func _on_replay_saved(data: Dictionary) -> void:
 		_system("Couldn't send the replay to DRAGON NET yet: it's sent automatically later.", "#e8663d")
 
 
+## Ranked: the set counted. No more matches in this lobby.
+func _end_set() -> void:
+	if _set_done:
+		return
+	_set_done = true
+	_asking = false
+	_system("The ranked set is over. To play another, leave the lobby and open (or join) a new ranked lobby.", "#f2b531")
+	_refresh_actions()
+
+
 func _announce_result(m: Variant) -> void:
 	if typeof(m) != TYPE_DICTIONARY or int(m.get("id", -1)) == _announced:
 		return
@@ -313,6 +370,7 @@ func _announce_result(m: Variant) -> void:
 			else:
 				_system(tr("Ranked loss. Rating %+d.") % d, "#e8663d")
 			Ranked.refresh()
+			_end_set()
 		"void":
 			_announced = int(m["id"])
 			_system("That ranked match didn't count (the two results didn't match).", "#e8663d")
@@ -634,11 +692,19 @@ func _action_rows(in_game_menu: bool) -> Array:
 	elif host:
 		var can_start: bool = _koth_line_size() >= 2 and String(_koth.get("state", "")) in ["ready", "next"] if koth \
 				else _playing().size() >= (1 if is_training() else 2)
-		rows.append({"type": "action", "key": "start", "label": "Start Training" if is_training() else "Start Match",
-			"color": "#3fbf6b", "disabled": _phase == "playing" or not can_start or _asking})
+		var start_row := {"type": "action", "key": "start", "label": "Start Training" if is_training() else "Start Match",
+			"color": "#3fbf6b", "disabled": _phase == "playing" or not can_start or _asking or (ranked and _set_done)}
+		if ranked and _set_done:
+			start_row["desc"] = tr("The ranked set is over: one set per lobby.\nLeave and open a new ranked lobby to play again.")
+		rows.append(start_row)
 	if not is_training():   # nobody to talk to in a solo session
 		rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": tr("Press %s to type") % Pad.prompt("accept")["key"],
 			"max_length": 200})
+	var to_add := _friend_candidates()
+	if not to_add.is_empty():
+		rows.append({"type": "action", "key": "add_friend", "label": "Add friend",
+			"value": "   ·   ".join(to_add) if to_add.size() <= 2 else tr("%d players") % to_add.size(),
+			"desc": "Send a friend request to a player in this lobby (their DRAGON NET account)."})
 	if host and is_training():
 		# The point of the mode: any buffer, changed live (no automatic mode, there's no ping).
 		rows.append({"type": "number", "key": "buffer", "label": "Pad buffer", "min": 1, "max": 20, "step": 1,
@@ -795,6 +861,8 @@ func _on_press(key: String) -> void:
 				_start_ranked()
 			else:
 				Dolphin.send("start")
+		"add_friend":
+			_add_friend_menu()
 		"copy":
 			DisplayServer.clipboard_set(String(_room.get("code", "")))
 			app.toast("Room code copied")
@@ -828,6 +896,9 @@ func _on_press(key: String) -> void:
 
 ## Ranked: the server opens the match first (both players checked in), then Dolphin starts it.
 func _start_ranked() -> void:
+	if _set_done:
+		_system("The ranked set is over. To play another, leave the lobby and open (or join) a new ranked lobby.", "#f2b531")
+		return
 	if ranked_lobby <= 0:
 		_system("The ranked lobby isn't listed yet. Try again in a moment.", "#e8663d")
 		return

@@ -41,6 +41,7 @@ What's in here
   admin.php        the admin panel (above)
   index.php        the leaderboard web page (mode, region, all-time record)
   leaderboard.php  the same as JSON for the launcher
+  online.php       how many players are online now (the launcher's DRAGON NET menu)
   account.php      DRAGON NET accounts: register / login (username + password) / claim,
                    profile picture (128 x 128; stored in pics/, closed to browsers)
   pic.php          shows a profile picture

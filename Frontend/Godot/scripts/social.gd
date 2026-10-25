@@ -24,6 +24,13 @@ var friends: Array = []      # [{id, name, online}]
 var incoming: Array = []     # [{id, name}]: asked to be our friend
 var outgoing: Array = []     # [{id, name}]: we asked
 var polled := false          # the lists are from the server (since logging in)
+## DRAGON NET players online now (Server/ranked/online.php; -1 = not known). Asked every
+## ONLINE_EVERY s, logged in or not.
+var online_count := -1
+signal online_changed
+const ONLINE_EVERY := 30.0
+var _online_timer := 0.0
+var _online_busy := false
 
 var _since := {}             # id -> when that friend came online, as last seen (0 = offline)
 var _started := false        # told the server this launcher run started
@@ -57,12 +64,26 @@ func _on_login_changed() -> void:
 
 
 func _process(delta: float) -> void:
+	_online_timer -= delta
+	if _online_timer <= 0.0 and not _online_busy and Ranked.server() != "":
+		_online_timer = ONLINE_EVERY
+		_ask_online()
 	if not Ranked.logged_in() or Ranked.needs_account:
 		return
 	_timer -= delta
 	if _timer <= 0.0 and not _busy:
 		_timer = POLL_EVERY
 		poll()
+
+
+func _ask_online() -> void:
+	_online_busy = true
+	var res: Dictionary = await Ranked.api("online.php")
+	_online_busy = false
+	var n := int(res.get("online", -1)) if res.get("ok", false) else -1
+	if n != online_count:
+		online_count = n
+		online_changed.emit()
 
 
 ## Asks the server now (after the poll already running, if any, so the answer is fresh).

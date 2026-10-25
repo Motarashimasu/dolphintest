@@ -46,6 +46,7 @@ func _ready() -> void:
 		get_window().mode = menu_window_mode()
 	_build_backdrop()
 	Dolphin.event.connect(_on_dolphin_event)
+	Social.online_changed.connect(_on_online_changed)
 	Presence.joined_from_discord.connect(_on_discord_join)
 	Pad.kind_changed.connect(func(_k): _refresh_hints())
 	var user_args := OS.get_cmdline_user_args()
@@ -471,10 +472,31 @@ func _modifications_menu() -> Control:
 	return menu
 
 
-func _netplay_menu() -> Control:
+## The DRAGON NET menu's title: the version (when there's more than one) and players online.
+func _netplay_title() -> String:
 	var title := "DRAGON NET"
 	if Settings.owned_versions(Settings.game).size() > 1:
 		title = "DRAGON NET (%s)" % Settings.version_name(Settings.game, Settings.current_version())
+	if Social.online_count >= 0:
+		title += "   ·   " + tr("%d online") % Social.online_count
+	return title
+
+
+func _on_online_changed() -> void:
+	var t := top()
+	if t and t.get_meta("netplay_menu", false):
+		t.title = _netplay_title()
+		set_title(t.title)
+
+
+func _netplay_menu() -> Control:
+	var title := _netplay_title()
+	var m := _netplay_menu_items(title)
+	m.set_meta("netplay_menu", true)
+	return m
+
+
+func _netplay_menu_items(title: String) -> Control:
 	return _menu(title, [
 		{"label": "Lobby Browser", "glyph": "L", "color": "#3fa9f5",
 			"desc": "Public lobbies of players on this same version:\nmode, host, region and connection. Pick one to join.",

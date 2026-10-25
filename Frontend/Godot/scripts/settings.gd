@@ -81,6 +81,13 @@ const TEXTURE_FILTERING_NAMES := ["Default", "Nearest", "Linear"]
 const OUTPUT_RESAMPLING := [0, 1, 2, 3, 4, 5, 6]
 const OUTPUT_RESAMPLING_NAMES := ["Default", "Bilinear", "B-Spline", "Mitchell-Netravali",
 	"Catmull-Rom", "Sharp Bilinear", "Area Sampling"]
+const CC_COLOR_SPACES := ["off", "0", "1", "2"]   # off, or the region's color space (Dolphin's ColorCorrectionRegion)
+const CC_COLOR_SPACE_NAMES := ["Off", "NTSC-M (SMPTE 170M)", "NTSC-J (ARIB TR-B9)", "PAL (EBU)"]
+const CC_GAMMAS := ["off", "2.2", "2.35", "2.5"]
+const CC_GAMMA_NAMES := ["Off", "2.2", "2.35 (CRT TV)", "2.5"]
+const CC_DISPLAY_GAMMAS := ["srgb", "2.2", "2.4"]
+const CC_DISPLAY_GAMMA_NAMES := ["sRGB", "2.2", "2.4"]
+const HDR_PAPER_WHITES := [80, 120, 203, 300, 400, 500]
 const SHADER_MODES := [0, 1, 2, 3]
 const SHADER_MODE_NAMES := ["Specialized", "Exclusive Ubershaders", "Hybrid Ubershaders", "Skip Drawing"]
 const RENDERER_NAMES := ["Vulkan", "OpenGL", "Direct3D 12", "Direct3D 11"]
@@ -123,7 +130,13 @@ var defaults := {
 		"true_color": true,              # force 24-bit color
 		"copy_filter_off": true,         # disable the copy filter (sharper)
 		"arbitrary_mipmaps": false,      # arbitrary mipmap detection
-		"backend_multithreading": true},
+		"backend_multithreading": true,
+		# Dolphin's Color Correction (Graphics > Enhancements > Color Correction).
+		"cc_color_space": "off",         # CC_COLOR_SPACES
+		"cc_game_gamma": "off",          # CC_GAMMAS: correct the game's gamma to this
+		"cc_display_gamma": "srgb",      # CC_DISPLAY_GAMMAS
+		"hdr": false,                    # HDR output (an HDR monitor, Vulkan / Direct3D)
+		"hdr_paper_white": 203},         # HDR_PAPER_WHITES (nits)
 	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9",
 		"hud": false,             # score bar offline (netplay always shows it)
 		"hud_health": true,       # health % in the corners
@@ -578,6 +591,14 @@ func video_args() -> PackedStringArray:
 		"Graphics.Enhancements.DisableCopyFilter=" + b.call("copy_filter_off"),
 		"Graphics.Enhancements.ArbitraryMipmapDetection=" + b.call("arbitrary_mipmaps"),
 		"Graphics.Settings.BackendMultithreading=" + b.call("backend_multithreading"),
+		"Graphics.ColorCorrection.CorrectColorSpace=" + ("False" if String(get_value("video", "cc_color_space")) == "off" else "True"),
+		"Graphics.ColorCorrection.GameColorSpace=" + (String(get_value("video", "cc_color_space")) if String(get_value("video", "cc_color_space")) != "off" else "0"),
+		"Graphics.ColorCorrection.CorrectGamma=" + ("False" if String(get_value("video", "cc_game_gamma")) == "off" else "True"),
+		"Graphics.ColorCorrection.GameGamma=" + (String(get_value("video", "cc_game_gamma")) if String(get_value("video", "cc_game_gamma")) != "off" else "2.35"),
+		"Graphics.ColorCorrection.SDRDisplayGammaSRGB=" + ("True" if String(get_value("video", "cc_display_gamma")) == "srgb" else "False"),
+		"Graphics.ColorCorrection.SDRDisplayCustomGamma=" + (String(get_value("video", "cc_display_gamma")) if String(get_value("video", "cc_display_gamma")) != "srgb" else "2.2"),
+		"Graphics.Enhancements.HDROutput=" + b.call("hdr"),
+		"Graphics.ColorCorrection.HDRPaperWhiteNits=%d" % int(get_value("video", "hdr_paper_white")),
 	])
 	var a := PackedStringArray()
 	for x in c:

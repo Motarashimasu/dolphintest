@@ -358,7 +358,7 @@ func games_and_versions() -> void:
 			and top().carousel.items.size() == 3)
 	await shot("bt2_version_picker")
 	await choose("PAL")
-	check("DRAGON NET on BT2 PAL", app._title.text == "DRAGON NET (PAL)" and Settings.GAME["id"] == "RDBPAF"
+	check("DRAGON NET on BT2 PAL", app._title.text.begins_with("DRAGON NET (PAL)") and Settings.GAME["id"] == "RDBPAF"
 			and Settings.host_args("single", false, false)[-1] == wbfs)
 	check("BT2's netplay music track", app.music_for_stack() == "bt2_netplay")
 	await shot("bt2_netplay_menu")
@@ -599,7 +599,9 @@ func _tour() -> void:
 	check("game menu", app._title.text == "Tenkaichi 3")
 	await shot("game_menu")
 	await choose("DRAGON NET")
-	check("DRAGON NET menu", app._title.text == "DRAGON NET")
+	check("DRAGON NET menu", app._title.text.begins_with("DRAGON NET"))
+	await wait_for("players online shown in the DRAGON NET title (%s)" % app._title.text, func():
+		return Social.online_count >= 0 and app._title.text.ends_with(tr("%d online") % Social.online_count), 40)
 	# Fast presses: rows must end up where the wheel says, whatever was still animating.
 	for i in 3:
 		await press("ui_down")
@@ -866,6 +868,33 @@ func _tour() -> void:
 			return "\n".join(rl._chat).contains(tr("Ranked win! Rating %+d.") % 16), 60)
 		await wait_for("profile shows the new rating", func(): return Ranked.rating("single") == 1016, 20)
 		await wait_for("back in the ranked lobby", func(): return rl._phase == "lobby", 30)
+		check("one set per lobby: the set is over, the players are told",
+				rl._set_done and "\n".join(rl._chat).contains(tr("The ranked set is over. To play another, leave the lobby and open (or join) a new ranked lobby.")))
+		check("ranked: Start Match is locked after the set", rl._action_rows(false).filter(
+				func(r): return r.get("key") == "start" and not r.get("disabled", false)).is_empty())
+		# Add friend: lobby players with a DRAGON NET account who aren't friends yet (Vegeta is one
+		# already; a made-up "Trunks" isn't), never yourself.
+		var real_players: Array = rl._players.duplicate(true)
+		rl._players = real_players + [{"name": "Trunks", "account": "Trunks"}, {"name": "Me", "account": "goku"}]
+		var cands: Array = rl._friend_candidates()
+		check("Add friend lists only non-friends with an account, never yourself (%s)" % str(cands),
+				"Trunks" in cands and not "goku" in cands and not "Goku" in cands
+				and ("Vegeta" in cands) == (not Social.is_friend("Vegeta")))
+		rl._refresh_actions()
+		check("Add friend row in the lobby", not rl._actions.row("add_friend").is_empty())
+		rl._add_friend_menu()   # (right away: Dolphin's next player list would replace the made-up one)
+		await frames(4)
+		check("Add friend: a menu of those players", app._title.text == tr("Add friend"))
+		var fm: Control = top()
+		var labels: Array = fm.items.map(func(it): return String(it.get("label", "")))
+		check("the menu lists them (%s)" % str(labels), "Trunks" in labels and not "goku" in labels)
+		for it in fm.items:
+			if String(it.get("label", "")) == "Trunks":
+				it["action"].call()
+		await wait_for("the request goes to the server (no such account here)", func():
+			return "\n".join(rl._chat).contains(tr("No player with that username.")), 15)
+		rl._players = real_players
+		rl._refresh_actions()
 		await wait_for("the ranked replay is shared on DRAGON NET by itself", func():
 			return "\n".join(rl._chat).contains(tr("Replay shared on DRAGON NET (Replay Search).")), 60)
 		await frames(20)
@@ -1357,6 +1386,15 @@ func _tour() -> void:
 				and (how != "pick" or picked["path"] == "/tmp/some file.iso"))
 	await frames(4)
 	recorder.seen = seen_before
+	top().on_value("cc_color_space", "2")
+	top().on_value("cc_game_gamma", "2.35")
+	va = " ".join(Settings.video_args())
+	check("color correction reaches Dolphin (PAL color space, game gamma 2.35)",
+			"Graphics.ColorCorrection.CorrectColorSpace=True" in va and "Graphics.ColorCorrection.GameColorSpace=2" in va
+			and "Graphics.ColorCorrection.CorrectGamma=True" in va and "Graphics.ColorCorrection.GameGamma=2.35" in va)
+	top().on_value("cc_color_space", "off")
+	top().on_value("cc_game_gamma", "off")
+	check("color correction off by default", " ".join(Settings.video_args()).contains("Graphics.ColorCorrection.CorrectColorSpace=False"))
 	top().on_value("antialiasing", "off")
 	top().on_value("anisotropy", -1)
 	top().on_value("vsync", false)

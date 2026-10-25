@@ -262,6 +262,7 @@ static func error_text(code: String) -> String:
 		"cancelled": "Discord login cancelled.",
 		"token_exchange": "Discord didn't accept the login. Try again later.",
 		"lobby_full": "That ranked lobby already has 2 players.",
+		"set_done": "That ranked lobby's set is over: open or join a new ranked lobby.",
 		"lobby_gone": "That ranked lobby is gone.",
 		"own_lobby": "That's your own lobby.",
 		"no_opponent": "Your opponent hasn't checked in with the ranked server yet.",

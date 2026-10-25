@@ -547,6 +547,8 @@ def main():
         check("notices: Spanish line", nt["notices"]["blue"].startswith("¡Bienvenido"))
         _, nt = call(server, "notices.php", lang="xx")
         check("notices: unknown language = English", nt["lang"] == "en")
+        _, on = call(server, "online.php")
+        check(f"players online now, public ({on})", on.get("ok") and on.get("online", 0) >= 2)
         g2, _ = login(server, "goku")
         _, me2 = call(server, "me.php", g2["token"])
         check("logging in again is the same profile", me2["player"]["id"] == me["player"]["id"])
@@ -571,6 +573,13 @@ def main():
         code, _ = call(server, "match.php", V, action="start", lobby=lob)
         check("only the host starts a match", code == 403)
 
+        def fresh_lobby():
+            """One set per lobby: a new lobby for the next scenario (Goku hosts, Vegeta joins)."""
+            _, o2 = call(server, "lobby.php", G, action="open", mode="single", region="NA",
+                         join="ABCDEFGH", link="wired")
+            call(server, "lobby.php", V, action="join", lobby=o2["lobby"]["id"])
+            return o2["lobby"]["id"]
+
         def play(reports, wait=0):
             _, s = call(server, "match.php", G, action="start", lobby=lob)
             for tok, res in reports:
@@ -591,9 +600,23 @@ def main():
         check(f"Vegeta 984, 0-1 {vme['ratings']['single']}",
               vme["ratings"]["single"] == {"rating": 984, "wins": 0, "losses": 1})
 
+        # One set per lobby: once a match counted, no more matches in it, it's off the list,
+        # and nobody new can take the seat.
+        check("the lobby's set is over", st.get("set_done") is True)
+        code, again = call(server, "match.php", G, action="start", lobby=lob)
+        check(f"no second set in the same lobby ({code} {again.get('error')})", code == 409 and again.get("error") == "set_done")
+        _, ls = call(server, "lobby.php", K, action="list", mode="single")
+        check("a finished lobby isn't listed", all(x["id"] != lob for x in ls["lobbies"]))
+        call(server, "lobby.php", V, action="leave", lobby=lob)
+        code, jk = call(server, "lobby.php", K, action="join", lobby=lob)
+        check(f"nobody new joins a finished lobby ({code})", code == 409 and jk.get("error") == "set_done")
+        call(server, "lobby.php", G, action="close", lobby=lob)
+
+        lob = fresh_lobby()
         mid, st = play([(G, "win"), (V, "win")])
         check("reports disagree: void, no rating change",
-              st["last_match"]["state"] == "void" and st["last_match"]["reason"] == "disagree")
+              st["last_match"]["state"] == "void" and st["last_match"]["reason"] == "disagree"
+              and not st.get("set_done"))
         mid, st = play([(V, "win")])
         check("one report: not decided yet", st["match"] and st["match"]["state"] == "live")
         time.sleep(4)
@@ -602,6 +625,8 @@ def main():
         check(f"lone report counts after the grace period {st.get('last_match')}",
               st["last_match"]["state"] == "done" and st["last_match"]["you_won"] is False
               and st["last_match"]["reason"] == "single_report")
+        call(server, "lobby.php", G, action="close", lobby=lob)
+        lob = fresh_lobby()
         mid, st = play([(V, "forfeit"), (G, "win")])
         check("leaving a running match is a loss", st["last_match"]["you_won"] is True
               and st["last_match"]["reason"] == "agreed")

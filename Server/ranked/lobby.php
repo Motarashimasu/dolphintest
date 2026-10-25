@@ -11,6 +11,7 @@
 //   join {lobby}                      guest: take the seat (then join the room in Dolphin)
 //   status {lobby}                    host or guest: who's in, the running / last match
 //   leave {lobby}                     guest: give the seat back
+// One set per lobby: once a match has counted, the lobby can't start another (set_done).
 require __DIR__ . '/lib.php';
 
 function lobby_row(int $id): array
@@ -22,6 +23,17 @@ function lobby_row(int $id): array
         fail('lobby_gone', 404);
     }
     return $l;
+}
+
+// A ranked lobby plays one set: once a match in it has counted, it can't start another (both
+// players leave; a new lobby is opened for the next set). A voided match doesn't use it up.
+function set_done(array $l): bool
+{
+    if ($l['last_match'] === null) {
+        return false;
+    }
+    $m = get_match((int)$l['last_match']);
+    return $m !== null && $m['state'] === 'done';
 }
 
 function guest_present(array $l): bool
@@ -42,6 +54,7 @@ function lobby_status(array $l, int $me): array
         'guest' => guest_present($l) ? player_brief((int)$l['guest_id'], $mode) : null,
         'match' => match_json(get_match($l['match_id'] ? (int)$l['match_id'] : null), $me),
         'last_match' => match_json(get_match($l['last_match'] ? (int)$l['last_match'] : null), $me),
+        'set_done' => set_done($l),
     ]];
 }
 
@@ -107,6 +120,9 @@ guard(function () {
             $st->execute($params);
             $rows = [];
             foreach ($st->fetchAll() as $l) {
+                if (set_done($l) && (int)$l['host_id'] !== $me) {
+                    continue;   // its set is over: nothing to join
+                }
                 $host = player_brief((int)$l['host_id'], $l['mode']);
                 if (!$host) {
                     continue;
@@ -127,6 +143,9 @@ guard(function () {
             }
             if (guest_present($l) && (int)$l['guest_id'] !== $me) {
                 fail('lobby_full', 409);
+            }
+            if (set_done($l) && (int)$l['guest_id'] !== $me) {
+                fail('set_done', 409);
             }
             $db->prepare('UPDATE lobbies SET guest_id = ?, guest_seen = ? WHERE id = ?')
                 ->execute([$me, now(), $l['id']]);

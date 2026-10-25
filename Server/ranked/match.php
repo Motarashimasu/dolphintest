@@ -1,6 +1,7 @@
 <?php
 // Ranked matches.
-//   start {lobby}                 host, when it presses Start Match: opens the match (2 players)
+//   start {lobby}                 host, when it presses Start Match: opens the match (2 players);
+//                                 refused (set_done) once a match in the lobby has counted
 //   report {lobby, result}        both players: result = win | loss (from their own side)
 //   forfeit {lobby}               a player leaving a running match: counts as their loss
 // A match counts when both reports agree. One report alone counts after `report_grace`
@@ -56,6 +57,13 @@ guard(function () {
                 $m = get_match((int)$l['match_id']);
                 if ($m && $m['state'] === 'live') {
                     out(['ok' => true, 'match' => match_json($m, $me)]);  // already started
+                }
+            }
+            // One set per lobby: after a counted match, both leave and a new lobby is opened.
+            if ($l['last_match'] !== null) {
+                $last = get_match((int)$l['last_match']);
+                if ($last && $last['state'] === 'done') {
+                    fail('set_done', 409);
                 }
             }
             $db->prepare("INSERT INTO matches (lobby_id, mode, region, p1, p2, state, created, season)
