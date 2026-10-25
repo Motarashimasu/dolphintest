@@ -983,5 +983,20 @@
  "Send a friend request to a player in this lobby (their DRAGON NET account).": "Envía una solicitud de amistad a un jugador de esta sala (su cuenta de DRAGON NET).",
  "Send %s a friend request.": "Enviar a %s una solicitud de amistad.",
  "You and %s are friends now.": "%s y tú ya sois amigos.",
- "Back to the lobby.": "Volver a la sala."
+ "Back to the lobby.": "Volver a la sala.",
+ "Record matches": "Grabar partidas",
+ "Saves your matches here as replays (Replays), from the next match on.\nKept on this PC only: never uploaded.": "Guarda tus partidas como repeticiones (Repeticiones), desde la próxima.\nSolo en este PC: nunca se suben.",
+ "Recording your matches (kept on this PC only).": "Grabando tus partidas (solo en este PC).",
+ "Not recording matches.": "Sin grabar partidas.",
+ "Match recorded: Replays (on this PC only).": "Partida grabada: Repeticiones (solo en este PC).",
+ "On this PC only (Player Match, Battle Lounge)": "Solo en este PC (Partida de jugadores, Battle Lounge)",
+ "Recorded with Record matches on in their lobby. Never uploaded.": "Grabadas con Grabar partidas activado en su sala. Nunca se suben.",
+ "%s, %s. Kept on this PC only (never uploaded).\nPress to watch or delete it.": "%s, %s. Solo en este PC (nunca se sube).\nPulsa para verla o borrarla.",
+ "Every ranked match you finish is saved here automatically;\nPlayer Match and Battle Lounge too, with Record matches on in the lobby.": "Cada partida clasificatoria que termines se guarda aquí automáticamente;\nPartida de jugadores y Battle Lounge también, con Grabar partidas activado en la sala.",
+ "Watch it from the first round to the end.": "Mírala desde la primera ronda hasta el final.",
+ "Delete it from this PC.": "Bórrala de este PC.",
+ "Your recorded matches, newest first. Pick one to watch it,\nshare it (ranked) or delete it.": "Tus partidas grabadas, las más recientes primero. Elige una para verla,\ncompartirla (clasificatorias) o borrarla.",
+ "Back to the menu.": "Volver al menú.",
+ "Your recorded matches: ranked ones, and Player Match / Battle Lounge\ngames recorded with Record matches on (those stay on this PC).": "Tus partidas grabadas: las clasificatorias, y las de Partida de jugadores / Battle Lounge\ngrabadas con Grabar partidas activado (esas se quedan en este PC).",
+ "%s  vs  %s": "%s  vs  %s"
 }

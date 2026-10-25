@@ -34,6 +34,10 @@ static func _sha1(path: String) -> String:
 static func upload(info: Dictionary, progress := Callable()) -> Dictionary:
 	if not Ranked.logged_in():
 		return {"ok": false, "error": "login_required"}
+	# Player Match / Battle Lounge recordings stay on this PC, whatever asks.
+	if info.get("local", false) or String(info.get("kind", "ranked")) != "ranked" \
+			or "/replays/local/" in String(info.get("path", "")).replace("\\", "/"):
+		return {"ok": false, "error": "local_replay"}
 	var dtm := String(info.get("path", ""))
 	while _uploading.has(dtm):   # already being sent (after the match / pending): wait for it
 		await Ranked.get_tree().create_timer(0.5).timeout

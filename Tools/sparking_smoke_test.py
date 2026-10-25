@@ -755,6 +755,7 @@ def main():
         gecko_state_check(exe, dol, work, game_id)
         ranked_check(exe, dol, work, game_id)
         replay_check(exe, dol, work, game_id)
+        local_replay_check(exe, dol, work, game_id)
         rollback_test_check(exe, work)
         rollback_ios_check(exe, work)
         rollback_fs_check(exe, work)
@@ -1161,6 +1162,91 @@ def replay_check(exe, dol, work, game_id):
         end = play.wait_for("replay_ended", timeout=120)
         check("replay plays to its end and stops, like a demo", end["frames"] == sh["frames"])
         play.wait_for("exit", timeout=30)
+    finally:
+        for inst in insts:
+            if inst.proc.poll() is None:
+                inst.proc.kill()
+
+
+def local_replay_check(exe, dol, work, game_id):
+    """Player Match recordings (the launcher's Record matches: kept on that PC): switched on in
+    the lobby with the record_replays command, a Player Match (no sets) is saved when the game
+    stops, marked kind player_match with no winner; switched off, the next game isn't recorded.
+    Buffer Training is never recorded."""
+    print("netplay: Player Match recordings (local)")
+    common = ["-p", "headless", "-v", "Null"]
+    FULL = "42C80000"
+    HP1, HP2 = "80001100", "80001104"
+
+    def setup(name):
+        d = os.path.join(work, "lr-" + name)
+        os.makedirs(os.path.join(d, "Config"), exist_ok=True)
+        os.makedirs(os.path.join(d, "GameSettings"), exist_ok=True)
+        with open(os.path.join(d, "Config", "Dolphin.ini"), "w") as f:
+            f.write("[NetPlay]\nTraversalChoice = direct\nHostPort = 26351\nSyncSaves = False\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        with open(os.path.join(d, "GameSettings", f"{game_id}.ini"), "w") as f:
+            f.write("[Sparking.Watch]\np1_health_pct = f32 0x80001100\np2_health_pct = f32 0x80001104\n")
+        return ["-u", d, "--nand", os.path.join(work, "lr-nand-" + name), "--test-hooks"]
+
+    local = os.path.join(work, "lr-local-replays")
+    host = Instance("lr-host", [exe, *common, *setup("host"), "--netplay-host", dol, "--netplay-direct",
+                                "--mode", "single", "--nickname", "Goku", "--automap", "gc"])
+    insts = [host]
+
+    def count(inst, event, pred=lambda e: True):
+        return len([e for e in list(inst.history) if e["event"] == event and pred(e)])
+
+    def play_round_and_stop():
+        host.send("start")
+        for inst in (host, vegeta):
+            n = count(inst, "game_started")
+            deadline = time.time() + 40
+            while count(inst, "game_started") <= n - 1 and time.time() < deadline:
+                time.sleep(0.1)
+            inst.wait_for("game_started", timeout=40)
+        for addr in (HP1, HP2):
+            for inst in (host, vegeta):
+                inst.send(f"poke {addr} {FULL}")
+                inst.wait_for("poked", lambda e: e["address"] == addr)
+        time.sleep(2)
+        host.send("stop")
+        for inst in (host, vegeta):
+            inst.wait_for("game_stopped", timeout=30)
+
+    try:
+        host.send("hello")
+        host.wait_for("lobby_ready")
+        vegeta = Instance("lr-Vegeta", [exe, *common, *setup("Vegeta"), "--netplay-join", "127.0.0.1:26351",
+                                        "--netplay-game", dol, "--nickname", "Vegeta"])
+        insts.append(vegeta)
+        vegeta.send("hello")
+        host.seen("players", lambda e: len(e["players"]) == 2 and
+                  all(p["save_status"] == "ok" for p in e["players"] if not p["is_host"]), timeout=20)
+
+        host.send(f"record_replays {local}")
+        check("record_replays switches recording on in the lobby",
+              host.wait_for("record_replays")["enabled"] is True)
+        play_round_and_stop()
+        saved = host.seen("replay_saved", timeout=30)
+        with open(saved["json"]) as f:
+            meta = json.load(f)
+        check(f"a Player Match is kept when it's stopped (no set result) {meta.get('kind')} {meta.get('winner')!r}",
+              os.path.isfile(saved["dtm"]) and os.path.isfile(saved["dtm"] + ".sav")
+              and meta["kind"] == "player_match" and meta["winner"] == "" and meta["players"] == ["Goku", "Vegeta"]
+              and os.path.dirname(saved["dtm"]) == local)
+        check("only the player who switched it on records", count(vegeta, "replay_saved") == 0)
+
+        host.send("record_replays off")
+        check("record_replays off", host.wait_for("record_replays", lambda e: e["enabled"] is False)["enabled"] is False)
+        files = len(os.listdir(local))
+        play_round_and_stop()
+        time.sleep(2)
+        check("switched off: the next game isn't recorded",
+              count(host, "replay_saved") == 1 and len(os.listdir(local)) == files)
+        for inst in (host, vegeta):
+            inst.send("quit")
+            inst.proc.wait(timeout=20)
     finally:
         for inst in insts:
             if inst.proc.poll() is None:

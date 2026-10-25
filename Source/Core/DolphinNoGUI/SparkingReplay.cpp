@@ -210,7 +210,7 @@ void ReplayFinish()
   if (!movie.IsRecordingInput())
     return;
 
-  if (!decided)
+  if (!decided && !match->keep_undecided)
   {
     Core::CPUThreadGuard guard(system);
     movie.EndPlayInput(false);
@@ -250,6 +250,7 @@ void ReplayFinish()
           .Add("game_id", match->game_id)
           .Add("revision", match->revision)
           .Add("mode", match->mode)
+          .Add("kind", match->kind)
           .AddRaw("players", JsonArray({Json::Escape(match->players[0]),
                                         Json::Escape(match->players[1])}))
           .AddRaw("wins", fmt::format("[{},{}]", wins[0], wins[1]))

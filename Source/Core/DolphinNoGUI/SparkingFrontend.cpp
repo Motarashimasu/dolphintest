@@ -357,6 +357,20 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     return;
   }
 
+  // Recording netplay games from now on: "record_replays <folder>" or "record_replays off"
+  // (the next game that starts is recorded, or not). "record_replays_state" answers.
+  if (cmd.name == "record_replays")
+  {
+    if (cmd.arg.empty())
+    {
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      return;
+    }
+    SetReplayDir(cmd.arg == "off" ? std::string() : cmd.arg);
+    Emit("record_replays", Json().Add("enabled", cmd.arg != "off"));
+    return;
+  }
+
   // Input history bar: "input_display on|off|toggle"; "clear" empties it, "dump" sends it
   // ("input_history" event).
   if (cmd.name == "input_display")

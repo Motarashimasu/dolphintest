@@ -983,5 +983,20 @@
  "Send a friend request to a player in this lobby (their DRAGON NET account).": "このロビーのプレイヤーにフレンド申請を送ります（DRAGON NETアカウント宛て）。",
  "Send %s a friend request.": "%sにフレンド申請を送ります。",
  "You and %s are friends now.": "%sとフレンドになりました。",
- "Back to the lobby.": "ロビーに戻ります。"
+ "Back to the lobby.": "ロビーに戻ります。",
+ "Record matches": "対戦を録画",
+ "Saves your matches here as replays (Replays), from the next match on.\nKept on this PC only: never uploaded.": "次の対戦から、対戦をリプレイとして保存します（リプレイ）。\nこのPCにだけ保存され、アップロードされません。",
+ "Recording your matches (kept on this PC only).": "対戦を録画しています（このPCにだけ保存）。",
+ "Not recording matches.": "対戦を録画していません。",
+ "Match recorded: Replays (on this PC only).": "対戦を録画しました: リプレイ（このPCのみ）。",
+ "On this PC only (Player Match, Battle Lounge)": "このPCのみ（プレイヤーマッチ、バトルラウンジ）",
+ "Recorded with Record matches on in their lobby. Never uploaded.": "ロビーで「対戦を録画」をオンにして録画したものです。アップロードされません。",
+ "%s, %s. Kept on this PC only (never uploaded).\nPress to watch or delete it.": "%s、%s。このPCにだけ保存（アップロードなし）。\n押すと再生または削除できます。",
+ "Every ranked match you finish is saved here automatically;\nPlayer Match and Battle Lounge too, with Record matches on in the lobby.": "終えたランクマッチはすべてここに自動で保存されます。\nロビーで「対戦を録画」をオンにすれば、プレイヤーマッチとバトルラウンジも保存されます。",
+ "Watch it from the first round to the end.": "最初のラウンドから最後まで再生します。",
+ "Delete it from this PC.": "このPCから削除します。",
+ "Your recorded matches, newest first. Pick one to watch it,\nshare it (ranked) or delete it.": "録画した対戦（新しい順）。選ぶと再生、共有（ランクマッチ）、\n削除ができます。",
+ "Back to the menu.": "メニューに戻ります。",
+ "Your recorded matches: ranked ones, and Player Match / Battle Lounge\ngames recorded with Record matches on (those stay on this PC).": "録画した対戦: ランクマッチと、「対戦を録画」をオンにして録画した\nプレイヤーマッチ／バトルラウンジ（このPCにだけ保存）。",
+ "%s  vs  %s": "%s  vs  %s"
 }

@@ -149,6 +149,7 @@ var defaults := {
 		"language": "",           # en / es / it / ja ("" = ask at first launch)
 		"boot_timeout": 10},      # seconds a starting game may show nothing before it's closed (0 = off)
 	"netplay": {"mode": "single", "find_mode": "any", "public": true, "traversal": true,
+		"record_matches": false,   # record Player Match / Battle Lounge games (kept on this PC only)
 		"buffer": 4, "public_address": "",
 		"buffer_auto": false,    # host: pad buffer picked from the pings (match start + after each KO)
 		"neocode": false},       # host: NEOcode (hidden: PgUp + PgDn together in the lobby)
@@ -674,9 +675,23 @@ func _netplay_base(nickname := "") -> PackedStringArray:
 	return a
 
 
+## Record matches (a lobby's switch, remembered): Player Match / Battle Lounge games go to
+## replays/local, on this PC only (never uploaded; ranked ones are recorded anyway).
+func local_replay_args() -> PackedStringArray:
+	if not get_value("netplay", "record_matches"):
+		return PackedStringArray()
+	return PackedStringArray(["--record-replays", local_replay_dir()])
+
+
+func local_replay_dir() -> String:
+	return data_path("replays").path_join("local")
+
+
 func host_args(mode: String, public: bool, traversal: bool, koth := false) -> PackedStringArray:
 	var a := _netplay_base()
 	a.append_array(["--mode", mode])
+	if mode != "training":
+		a.append_array(local_replay_args())
 	if koth:
 		a.append("--koth")   # Battle Lounge lobby
 	if not traversal:
@@ -705,6 +720,7 @@ func ranked_host_args(mode: String, traversal: bool) -> PackedStringArray:
 func ranked_join_args(target: String) -> PackedStringArray:
 	var a := _netplay_base(ranked_nickname())
 	a.append_array(["--record-replays", data_path("replays")])   # decided matches are saved
+	a.append("--ranked")   # (a guest: its recordings are the ranked kind)
 	a.append_array(["--netplay-game", game_path(), "--netplay-join", target])
 	return a
 
@@ -732,6 +748,7 @@ static func input_display_key(training: bool, other := false) -> String:
 
 func join_args(target: String, koth := false) -> PackedStringArray:
 	var a := _netplay_base()
+	a.append_array(local_replay_args())
 	a.append_array(["--netplay-game", game_path(), "--netplay-join", target])
 	if koth:
 		a.append("--koth")   # joining during a set waits for it to end
@@ -748,6 +765,7 @@ func watch_args(target: String, koth := false) -> PackedStringArray:
 
 func find_args(mode: String, koth := false) -> PackedStringArray:
 	var a := _netplay_base()
+	a.append_array(local_replay_args())
 	a.append_array(["--netplay-find", mode, "--region", get_value("player", "region")])
 	if koth:
 		a.append("--koth")

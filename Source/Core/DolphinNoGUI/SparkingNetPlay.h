@@ -402,6 +402,7 @@ private:
   void EmitKoth(const KothView& view);
   bool m_koth = false;
   bool m_ranked = false;
+  bool m_ranked_lobby = false;  // a ranked lobby (host or guest): its replays are the ranked ones
   std::atomic<int> m_seen_koth_cap{0};       // joiner: the set's win cap from the host
   std::vector<std::string> m_active_gecko;  // this player's Gecko codes this game (replays)
   int m_koth_cap = 2;

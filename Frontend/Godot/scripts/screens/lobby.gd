@@ -328,6 +328,18 @@ func _on_replay_saved(data: Dictionary) -> void:
 		return
 	info["path"] = String(data.get("dtm", ""))
 	info["json_path"] = jp
+	if not ranked:
+		# Player Match / Battle Lounge: on this PC only, never uploaded.
+		info["local"] = true
+		var lf := FileAccess.open(jp, FileAccess.WRITE)
+		if lf:
+			var keep_local: Dictionary = info.duplicate()
+			keep_local.erase("path")
+			keep_local.erase("json_path")
+			lf.store_string(JSON.stringify(keep_local, "\t"))
+			lf.close()
+		_system("Match recorded: Replays (on this PC only).", "#cfe9ee")
+		return
 	if _match_id > 0:
 		info["match_id"] = _match_id
 		var f := FileAccess.open(jp, FileAccess.WRITE)
@@ -700,6 +712,10 @@ func _action_rows(in_game_menu: bool) -> Array:
 	if not is_training():   # nobody to talk to in a solo session
 		rows.append({"type": "text", "key": "chat", "label": "Message", "value": "", "placeholder": tr("Press %s to type") % Pad.prompt("accept")["key"],
 			"max_length": 200})
+	if not ranked and not is_training() and not is_spectating():
+		rows.append({"type": "toggle", "key": "record", "label": "Record matches",
+			"value": bool(Settings.get_value("netplay", "record_matches")), "on_text": "On", "off_text": "Off",
+			"desc": "Saves your matches here as replays (Replays), from the next match on.\nKept on this PC only: never uploaded."})
 	var to_add := _friend_candidates()
 	if not to_add.is_empty():
 		rows.append({"type": "action", "key": "add_friend", "label": "Add friend",
@@ -945,6 +961,11 @@ func _on_start_answered(data: Dictionary) -> void:
 
 func _on_value(key: String, value: Variant) -> void:
 	match key:
+		"record":
+			var on := bool(value)
+			Settings.set_value("netplay", "record_matches", on)
+			Dolphin.send("record_replays " + (Settings.local_replay_dir() if on else "off"))
+			_system("Recording your matches (kept on this PC only)." if on else "Not recording matches.", "#cfe9ee")
 		"chat":
 			var text := String(value).strip_edges()
 			if text != "":

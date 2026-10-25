@@ -223,6 +223,7 @@ bool NetPlaySession::Start(const NetPlayOptions& options)
   m_automap = options.automap;
   m_spectate = options.spectate && !options.host_game_path;
   m_ranked = options.ranked && options.host_game_path.has_value() && m_mode != "training";
+  m_ranked_lobby = options.ranked;
   m_koth = (options.koth || m_ranked) && m_mode != "training";
   if (m_ranked)
     m_public = false;  // listed by the ranked server instead
@@ -1229,8 +1230,10 @@ void NetPlaySession::BootGame(const std::string& filename,
                              .AddRaw("codes", JsonArray(active))
                              .AddRaw("missing", JsonArray(miss)));
   }
-  // Ranked replays (--record-replays): this game may be recorded from its first round.
-  if (ReplaysEnabled() && !m_neocode)  // (not with NEOcode yet: it records guessed inputs)
+  // Replays (--record-replays, or the record_replays command): this game may be recorded from
+  // its first round. Ranked and Battle Lounge keep it once the set is decided; Player Match (no
+  // sets) keeps it when the game stops. Never Buffer Training.
+  if (ReplaysEnabled() && !m_neocode && m_mode != "training")  // (NEOcode: it records guessed inputs)
   {
     ReplayMatch match;
     std::shared_ptr<const UICommon::GameFile> game;
@@ -1264,6 +1267,8 @@ void NetPlaySession::BootGame(const std::string& filename,
       }
     }
     match.gecko = m_active_gecko;
+    match.kind = m_ranked_lobby ? "ranked" : (m_koth || m_seen_koth_cap > 0) ? "battle_lounge" : "player_match";
+    match.keep_undecided = match.kind == "player_match";
     ReplayArm(match);
   }
 

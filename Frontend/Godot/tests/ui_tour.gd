@@ -1,5 +1,7 @@
 extends Node
 
+const ReplayShareT := preload("res://scripts/replay_share.gd")
+
 const Style := preload("res://scripts/ui/style.gd")
 ## Automated walk through every menu and the netplay flow, with screenshots. Started by
 ## tests/run_ui_tour.py (which supplies a fake lobby server and a second player):
@@ -638,6 +640,20 @@ func _tour() -> void:
 				icons.append(c.link)
 	check("lobby shows a connection icon per player (%s)" % [icons], icons.size() == 2 and "wireless" in icons)
 	await wait_for("chat from the joiner", func(): return "hello from Vegeta" in "\n".join(lobby._chat))
+	# Record matches (Player Match / Battle Lounge: kept on this PC only).
+	check("Record matches row in a Player Match lobby, off by default",
+			not lobby._actions.row("record").is_empty() and not lobby._actions.row("record").get("value", true))
+	lobby._on_value("record", true)
+	await wait_for("Record matches on: Dolphin records from the next match", func():
+		return "\n".join(Dolphin.log_lines).contains('"event":"record_replays","enabled":true'), 10)
+	check("the next lobbies record too (remembered)", " ".join(Settings.join_args("1.2.3.4:2626")).contains(
+			"--record-replays " + Settings.local_replay_dir()))
+	check("Buffer Training is never recorded", not "--record-replays" in Settings.training_args())
+	check("a ranked guest says it's ranked", "--ranked" in Settings.ranked_join_args("1.2.3.4:2626"))
+	lobby._on_value("record", false)
+	await wait_for("Record matches off", func():
+		return "\n".join(Dolphin.log_lines).contains('"event":"record_replays","enabled":false'), 10)
+	check("off: not recorded in the next lobbies", not "--record-replays" in Settings.join_args("1.2.3.4:2626"))
 	await type_into(lobby._actions, "chat", "Good luck!")
 	await wait_for("own chat line shown", func(): return "Good luck!" in "\n".join(lobby._chat))
 	print("TOUR_EVENT chat_sent")
@@ -962,6 +978,30 @@ func _tour() -> void:
 		if String(r.get("key", "")).begins_with("replay:") and "Goku" in String(r.get("label", "")):
 			rk = r["key"]
 	check("the ranked match was saved as a replay (%s)" % rp.list.row(rk).get("label", "none"), rk != "")
+	# A Player Match recording (kept on this PC): listed apart, Watch / Delete only, never uploaded.
+	var lr := Settings.local_replay_dir()
+	DirAccess.make_dir_recursive_absolute(lr)
+	for ext in [".dtm", ".dtm.sav"]:
+		var lfile := FileAccess.open(lr.path_join("2026-10-25_12-00-00_Goku_vs_Vegeta" + ext), FileAccess.WRITE)
+		lfile.store_string("x")
+		lfile.close()
+	var ljson := FileAccess.open(lr.path_join("2026-10-25_12-00-00_Goku_vs_Vegeta.json"), FileAccess.WRITE)
+	ljson.store_string(JSON.stringify({"players": ["Goku", "Vegeta"], "wins": [0, 0], "winner": "", "kind": "player_match",
+		"mode": "single", "date": "2026-10-25 12:00", "seconds": 95, "dtm": "2026-10-25_12-00-00_Goku_vs_Vegeta.dtm"}))
+	ljson.close()
+	rp.list.set_rows(rp.build_rows())
+	check("the local recording is listed apart (%s)" % rp.list.row("local:0").get("label", "none"),
+			rp.list.row("local:0").get("label", "") == "Goku  vs  Vegeta" and not rp.list.row("local_head").is_empty())
+	rp._local_menu(0)
+	await frames(4)
+	var lm_labels: Array = top().items.map(func(it): return String(it.get("label", "")))
+	check("its menu: Watch, Delete, no Share (%s)" % str(lm_labels), "Watch" in lm_labels and "Delete" in lm_labels and not "Share" in lm_labels)
+	app.pop()
+	await frames(4)
+	var up: Dictionary = await ReplayShareT.upload(rp._local[0])
+	check("a local recording is never uploaded (%s)" % up.get("error", ""), up.get("error", "") == "local_replay")
+	check("nor picked up by the automatic sharing", rp.load_all().all(func(i): return not i.get("local", false)))
+	await shot("replays_local")
 	await shot("replays")
 	check("the shared replay is marked shared", rk != "" and int(rp._replays[int(rk.get_slice(":", 1))].get("shared_id", 0)) > 0)
 	if rk != "":

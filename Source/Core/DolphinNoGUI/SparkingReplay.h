@@ -38,6 +38,9 @@ struct ReplayMatch
   std::array<std::string, 2> players;  // names on GameCube ports 1 and 2
   int local_port = 0;                  // 1-2: this player's port (0 = not playing: no replay)
   std::vector<std::string> gecko;      // this player's active Gecko codes (for playback)
+  std::string kind;                    // "ranked" / "battle_lounge" / "player_match"
+  bool keep_undecided = false;         // saved when the game stops even without a set result
+                                       // (Player Match: free play, no sets)
 };
 
 // A netplay game is booting (host thread). Arms the recorder for this game.
