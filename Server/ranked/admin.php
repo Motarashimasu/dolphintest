@@ -6,6 +6,9 @@
 //   Seasons: start a new season (final standings archived, everyone back to 1000 and 0-0; the
 //            all-time record keeps counting), and see past seasons' final standings.
 //   Replays: the shared replays (replays.php), newest first; Delete removes one.
+//   Board: the website's message board (board.php): pin, lock, delete topics; delete posts.
+//   Support: the website's support messages (support.php): answer (the player sees it there when
+//            logged in), close, reopen. Downloads: how often each was clicked.
 //   Log: every admin action.
 require __DIR__ . '/lib.php';
 
@@ -32,7 +35,7 @@ function page(string $title, string $body, bool $nav = true): never
         }
     }
     $links = $nav ? "<nav><a href='$self?p=players'>Players</a><a href='$self?p=matches'>Matches</a>"
-        . "<a href='$self?p=seasons'>Seasons</a><a href='$self?p=messages'>Messages</a><a href='$self?p=replays'>Replays</a><a href='$self?p=log'>Log</a>"
+        . "<a href='$self?p=seasons'>Seasons</a><a href='$self?p=messages'>Messages</a><a href='$self?p=replays'>Replays</a><a href='$self?p=board'>Board</a><a href='$self?p=support'>Support</a><a href='$self?p=log'>Log</a>"
         . "<form method=post class=inline><input type=hidden name=csrf value='" . $h($_SESSION['csrf'] ?? '') . "'>"
         . "<button name=a value=logout>Sign out</button></form></nav>" : '';
     $flash = '';
@@ -217,6 +220,58 @@ try {
                 }
                 back('p=replays', "Replay #$rid deleted.");
 
+            case 'topic_pin':
+            case 'topic_lock':
+            case 'topic_delete':
+                $tid = (int)($_POST['topic'] ?? 0);
+                $st = $db->prepare('SELECT * FROM board_topics WHERE id = ?');
+                $st->execute([$tid]);
+                $t = $st->fetch();
+                if (!$t) {
+                    back('p=board', 'No such topic.');
+                }
+                $col = ['topic_pin' => 'pinned', 'topic_lock' => 'locked', 'topic_delete' => 'deleted'][$_POST['a']];
+                $val = (int)$t[$col] ? 0 : 1;
+                $db->prepare("UPDATE board_topics SET $col = ? WHERE id = ?")->execute([$val, $tid]);
+                admin_log($_POST['a'], "#$tid {$t['title']}: $col=$val");
+                back('p=board', 'Topic "' . $t['title'] . "\" $col: " . ($val ? 'yes' : 'no') . '.');
+
+            case 'post_delete':
+                $pid2 = (int)($_POST['post'] ?? 0);
+                $st = $db->prepare('SELECT * FROM board_posts WHERE id = ?');
+                $st->execute([$pid2]);
+                $post = $st->fetch();
+                if (!$post) {
+                    back('p=board', 'No such post.');
+                }
+                $db->prepare('UPDATE board_posts SET deleted = 1 WHERE id = ?')->execute([$pid2]);
+                $st = $db->prepare('SELECT MIN(id) FROM board_posts WHERE topic_id = ?');
+                $st->execute([$post['topic_id']]);
+                if ((int)$st->fetchColumn() === $pid2) {   // the topic's first post: the topic goes
+                    $db->prepare('UPDATE board_topics SET deleted = 1 WHERE id = ?')->execute([$post['topic_id']]);
+                } else {
+                    $db->prepare('UPDATE board_topics SET replies = CASE WHEN replies > 0 THEN replies - 1 ELSE 0 END WHERE id = ?')
+                        ->execute([$post['topic_id']]);
+                }
+                admin_log('post_delete', "#$pid2 by " . $name_of((int)$post['author']) . ': ' . mb_substr((string)$post['body'], 0, 80));
+                back('p=board', "Post #$pid2 deleted.");
+
+            case 'support_reply':
+            case 'support_close':
+            case 'support_reopen':
+                $sid = (int)($_POST['ticket'] ?? 0);
+                $reply = trim(str_replace("\r\n", "\n", (string)($_POST['reply'] ?? '')));
+                if ($_POST['a'] === 'support_reopen') {
+                    $db->prepare("UPDATE support SET state = 'open' WHERE id = ?")->execute([$sid]);
+                } elseif ($reply !== '') {
+                    $db->prepare("UPDATE support SET state = 'closed', reply = ?, replied = ? WHERE id = ?")
+                        ->execute([mb_substr($reply, 0, 4000), now(), $sid]);
+                } else {
+                    $db->prepare("UPDATE support SET state = 'closed' WHERE id = ?")->execute([$sid]);
+                }
+                admin_log($_POST['a'], "#$sid" . ($reply !== '' ? ' (answered)' : ''));
+                back('p=support', "Support message #$sid " . ($_POST['a'] === 'support_reopen' ? 'reopened.' : 'closed.'));
+
             case 'season':
                 if (trim((string)($_POST['confirm'] ?? '')) !== 'RESET') {
                     back('p=seasons', 'Type RESET to confirm a new season.');
@@ -371,6 +426,58 @@ try {
                 . "<div class=row>Show for <input type=number name=days value=3 min=1 max=30> days <button name=a value=message>Send</button></div></form>";
             page('Messages', $form . '<table><tr><th>#</th><th>Sent</th><th>Text</th><th class=n>Closed by</th><th>Until</th><th></th></tr>'
                 . ($rows ?: '<tr><td colspan=6 class=muted>No messages yet.</td></tr>') . '</table>');
+
+        case 'board':
+            $rows = '';
+            foreach ($db->query('SELECT * FROM board_topics ORDER BY deleted ASC, pinned DESC, last_post DESC LIMIT 100')->fetchAll() as $t) {
+                $tid = (int)$t['id'];
+                $btn = fn($a, $on, $off) => "<form method=post class=inline>$csrf<input type=hidden name=topic value=$tid>"
+                    . "<button class=plain name=a value=$a>" . ((int)$t[['topic_pin' => 'pinned', 'topic_lock' => 'locked', 'topic_delete' => 'deleted'][$a]] ? $off : $on) . '</button></form>';
+                $rows .= '<tr' . ((int)$t['deleted'] ? ' class=muted' : '') . "><td>#$tid</td><td><a href='board.php?t=$tid' target=_blank>" . $h($t['title']) . '</a>'
+                    . ((int)$t['deleted'] ? ' <span class=ban>deleted</span>' : '') . '</td><td>' . $h($names[(int)$t['author']] ?? '?')
+                    . "</td><td class=n>{$t['replies']}</td><td>" . $when($t['last_post']) . '</td><td>'
+                    . $btn('topic_pin', 'Pin', 'Unpin') . ' ' . $btn('topic_lock', 'Lock', 'Unlock') . ' ' . $btn('topic_delete', 'Delete', 'Restore') . '</td></tr>';
+            }
+            $posts = '';
+            foreach ($db->query('SELECT p.*, t.title FROM board_posts p JOIN board_topics t ON t.id = p.topic_id
+                                 WHERE p.deleted = 0 ORDER BY p.id DESC LIMIT 60')->fetchAll() as $po) {
+                $posts .= "<tr><td>#{$po['id']}</td><td>" . $h($names[(int)$po['author']] ?? '?') . '</td><td>'
+                    . "<a href='board.php?t={$po['topic_id']}' target=_blank>" . $h($po['title']) . '</a><br><span class=muted>'
+                    . $h(mb_substr((string)$po['body'], 0, 200)) . '</span></td><td>' . $when($po['created']) . '</td>'
+                    . "<td><form method=post class=inline onsubmit=\"return confirm('Delete this post?')\">$csrf<input type=hidden name=post value={$po['id']}>"
+                    . '<button class=bad name=a value=post_delete>Delete</button></form></td></tr>';
+            }
+            page('Board', '<table><tr><th>#</th><th>Topic</th><th>By</th><th class=n>Replies</th><th>Latest</th><th></th></tr>'
+                . ($rows ?: '<tr><td colspan=6 class=muted>No topics yet.</td></tr>') . '</table><h2>Latest posts</h2>'
+                . '<table><tr><th>#</th><th>By</th><th>Post</th><th>When</th><th></th></tr>'
+                . ($posts ?: '<tr><td colspan=5 class=muted>No posts yet.</td></tr>') . '</table>');
+
+        case 'support':
+            $show = ($_GET['show'] ?? 'open') === 'all' ? 'all' : 'open';
+            $sql = 'SELECT * FROM support' . ($show === 'open' ? " WHERE state = 'open'" : '') . ' ORDER BY id DESC LIMIT 100';
+            $topics = ['bug' => 'Bug', 'account' => 'Account', 'disc' => 'Game copy', 'online' => 'Online', 'idea' => 'Idea', 'other' => 'Other'];
+            $list = '';
+            foreach ($db->query($sql)->fetchAll() as $t) {
+                $sid = (int)$t['id'];
+                $who = $t['player_id'] ? "<a href='?p=player&id=" . (int)$t['player_id'] . "'>" . $h($t['name']) . '</a> (DRAGON NET)' : $h($t['name']);
+                $open = $t['state'] === 'open';
+                $list .= "<div class=box><div class=row><b>#$sid · " . $h($topics[$t['topic']] ?? $t['topic']) . "</b><span class=muted>$who"
+                    . ($t['contact'] !== '' ? ' · reach them: <code>' . $h($t['contact']) . '</code>' : '') . ' · ' . $when($t['created']) . '</span>'
+                    . ($open ? '' : ' <span class=muted>(closed)</span>') . '</div><p>' . nl2br($h($t['body'])) . '</p>'
+                    . ((string)($t['reply'] ?? '') !== '' ? '<p class=muted><b>Your answer:</b> ' . nl2br($h($t['reply'])) . '</p>' : '')
+                    . "<form method=post>$csrf<input type=hidden name=ticket value=$sid>"
+                    . ($open ? "<textarea name=reply rows=3 cols=80 maxlength=4000 placeholder='Answer (the player sees it on the support page when logged in; "
+                        . "otherwise reach them yourself)'></textarea><div class=row><button name=a value=support_reply>Answer &amp; close</button>"
+                        . '<button class=plain name=a value=support_close>Close without answer</button></div>'
+                        : '<button class=plain name=a value=support_reopen>Reopen</button>') . '</form></div>';
+            }
+            $dl = [];
+            foreach ((cfg()['downloads'] ?? []) as $i => $d) {
+                $dl[] = $h(is_array($d) ? ($d['label'] ?? "#$i") : "#$i") . ': ' . (int)meta_get("downloads_$i", '0');
+            }
+            page('Support', "<div class=row><a href='?p=support'>Open</a> · <a href='?p=support&show=all'>All</a>"
+                . ($dl ? ' <span class=muted style="margin-left:auto">Downloads: ' . implode(' · ', $dl) . '</span>' : '') . '</div>'
+                . ($list ?: '<p class=muted>No ' . ($show === 'open' ? 'open ' : '') . 'support messages.</p>'));
 
         case 'replays':
             $rows = '';

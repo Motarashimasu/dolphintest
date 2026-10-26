@@ -18,26 +18,6 @@ function account_json(array $p): array
     return ['id' => (int)$p['id'], 'name' => $p['name'], 'username' => $p['username']];
 }
 
-function too_many_fails(string $key): bool
-{
-    $st = db()->prepare('SELECT n, until FROM login_fails WHERE k = ?');
-    $st->execute([$key]);
-    $f = $st->fetch();
-    return $f && (int)$f['n'] >= LOGIN_FAILS && now() < (int)$f['until'];
-}
-
-function note_fail(string $key): void
-{
-    $db = db();
-    $st = $db->prepare('SELECT n, until FROM login_fails WHERE k = ?');
-    $st->execute([$key]);
-    $f = $st->fetch();
-    $n = $f && now() < (int)$f['until'] + LOGIN_PAUSE ? (int)$f['n'] + 1 : 1;
-    $db->prepare('DELETE FROM login_fails WHERE k = ?')->execute([$key]);
-    $db->prepare('INSERT INTO login_fails (k, n, until) VALUES (?, ?, ?)')
-        ->execute([$key, $n, now() + LOGIN_PAUSE]);
-}
-
 guard(function () {
     $db = db();
     switch (arg('action')) {

@@ -38,4 +38,15 @@ return [
     // 'r2_secret_key' => '',
     // 'r2_bucket' => '',
     // 'update_prefix' => '',      // a folder inside the bucket, if the release script uses one
+
+    // The website's three download buttons (index.php; download.php counts the clicks, see
+    // admin.php > Support). Each one is a link ("url") or a file in the R2 bucket above ("r2":
+    // its name in the bucket; every click gets a link that works for 10 minutes). One with
+    // neither shows "Coming soon". "version" and "size" are only shown under the name.
+    // 'downloads' => [
+    //     ['label' => 'Windows', 'note' => 'Installer for Windows 10 / 11', 'version' => '212', 'size' => '420 MB',
+    //      'url' => 'https://example.com/SparkingSetup.exe'],
+    //     ['label' => 'Linux', 'note' => 'For Linux and Steam Deck', 'r2' => 'installers/Sparking-linux.tar.gz'],
+    //     ['label' => 'Portable', 'note' => 'Windows, no install (zip)'],
+    // ],
 ];

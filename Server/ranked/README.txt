@@ -39,8 +39,15 @@ Leave admin_key empty to switch the panel off.
 What's in here
 --------------
   admin.php        the admin panel (above)
-  index.php        the leaderboard web page (mode, region, all-time record)
-  leaderboard.php  the same as JSON for the launcher
+  index.php        the website's front page: 3 downloads, players online, top players, board
+  site.php         the website's shared layout, login session and helpers
+  ranks.php        the leaderboard web page (mode, region, all-time record)
+  player.php       players: search, and a player's page (ratings, record, latest matches)
+  board.php        the message board (DRAGON NET accounts post; moderate in admin.php > Board)
+  support.php      support & feedback form (answer in admin.php > Support)
+  login.php        website log in / log out with a DRAGON NET account
+  download.php     the download buttons (config "downloads"; counts clicks)
+  leaderboard.php  the leaderboard as JSON for the launcher
   online.php       how many players are online now (the launcher's DRAGON NET menu)
   account.php      DRAGON NET accounts: register / login (username + password) / claim,
                    profile picture (128 x 128; stored in pics/, closed to browsers)

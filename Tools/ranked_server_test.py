@@ -127,7 +127,13 @@ class RankedServer:
             "pic_dir": os.path.join(os.path.dirname(self.db), "pics"),
         }
         cfg.update(extra)
-        items = ",\n".join(f"    {json.dumps(k)} => {json.dumps(v)}" for k, v in cfg.items())
+        def php(v):   # (JSON is PHP for strings / numbers / lists, not for dicts)
+            if isinstance(v, dict):
+                return "[" + ", ".join(f"{json.dumps(k)} => {php(x)}" for k, x in v.items()) + "]"
+            if isinstance(v, list):
+                return "[" + ", ".join(php(x) for x in v) + "]"
+            return json.dumps(v)
+        items = ",\n".join(f"    {json.dumps(k)} => {php(v)}" for k, v in cfg.items())
         with open(self.config, "w") as f:
             f.write(f"<?php\nreturn [\n{items}\n];\n")
 
@@ -466,6 +472,145 @@ def admin_checks(server, check, tokens):
     server.write_config(admin_key="")
 
 
+def site_checks(server, check):
+    """The website: front page and downloads, leaderboard, players, login, the board (posting,
+    escaping, limits, moderation), support messages and their answers."""
+    import http.cookiejar
+    import re
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+
+    def browser(follow=True):
+        jar = http.cookiejar.CookieJar()
+        handlers = [urllib.request.HTTPCookieProcessor(jar)] + ([] if follow else [NoRedirect()])
+        op = urllib.request.build_opener(*handlers)
+
+        def get(path, **form):
+            data = urllib.parse.urlencode(form).encode() if form else None
+            try:
+                with op.open(server.url + path, data=data, timeout=10) as r:
+                    return r.status, r.read().decode(), dict(r.headers)
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode(), dict(e.headers)
+
+        def post(path, **form):
+            _, page, _ = get(path.split("#")[0] if "?" in path else path)
+            m = re.search(r"name=csrf value='([0-9a-f]+)'", page)
+            return get(path, csrf=m.group(1) if m else "", **form)
+        return get, post
+
+    server.write_config(admin_key="admin-test-key-123", r2_account_id="acct", r2_access_key="AKID",
+                        r2_secret_key="secret", r2_bucket="bucket",
+                        downloads=[{"label": "Windows", "note": "Installer", "url": "https://example.com/Setup.exe", "version": "212"},
+                                   {"label": "Linux", "r2": "installers/linux.tar.gz"}])
+    time.sleep(3)
+    get, post = browser()
+    code, home, hdr = get("index.php")
+    check(f"site: front page ({code})", code == 200 and "Sparking! Collection PC" in home and "online now" in home)
+    check("site: three download cards (two ready, one coming soon)",
+          home.count("download.php?i=") == 2 and "Coming soon" in home and "Version 212" in home)
+    check("site: no scripts allowed (Content-Security-Policy)", "script-src 'none'" in hdr.get("Content-Security-Policy", ""))
+    nget, _ = browser(follow=False)
+    c0, _, h0 = nget("download.php?i=0")
+    check(f"site: a download link goes to its file ({c0})", c0 == 302 and h0.get("Location") == "https://example.com/Setup.exe")
+    c1, _, h1 = nget("download.php?i=1")
+    loc = h1.get("Location", "")
+    check("site: an R2 download gets a signed, short-lived link",
+          c1 == 302 and "/bucket/installers/linux.tar.gz?" in loc and "X-Amz-Signature=" in loc and "X-Amz-Expires=600" in loc)
+    c2, _, h2 = nget("download.php?i=2")
+    check("site: a download that isn't set goes home", c2 == 303)
+    code, lb, _ = get("index.php?mode=all&region=global")   # (all-time: the admin test began a new season)
+    check("site: the launcher's leaderboard link still works", code == 200 and "<h1>Leaderboard</h1>" in lb and "player.php?id=" in lb)
+
+    goku = account_name("goku")
+    code, pg, _ = get("player.php?name=" + urllib.parse.quote(goku))
+    check(f"site: a player's page ({code})", code == 200 and goku in pg and "Single Battle FT2" in pg and "All-time record" in pg)
+    check("site: their ranked matches", "Latest ranked matches" in pg and ("<b class=ok>Win</b>" in pg or "<b class=err>Loss</b>" in pg))
+    _, srch, _ = get("player.php?q=" + urllib.parse.quote(goku[:2]))
+    check("site: player search", goku in srch)
+    _, srch, _ = get("player.php?q=" + urllib.parse.quote("%_!"))
+    check("site: search with wildcards in it finds nothing (and doesn't break)", "Nobody by that name" in srch)
+    _, none, _ = get("player.php?id=999999")
+    check("site: no such player", "No such player" in none)
+
+    # Login.
+    _, page, _ = post("login.php", username=goku, password="wrong")
+    check("site: wrong password refused", "Wrong username or password" in page)
+    _, page, _ = post("login.php?next=board.php", username=goku, password="pw-goku-123", next="board.php")
+    check("site: logged in, back to where they were", "Logged in as" in page and "New topic" in page)
+
+    # The board.
+    code, page, _ = get("board.php", a="new", title="sneaky", body="no token")
+    check("site: a post without the form's token is refused", "That form expired" in page)
+    _, page, _ = post("board.php?new=1", a="new", title="<script>alert(1)</script> Best team?",
+                      body="Who's the best?\n<b>bold</b> https://example.com/x")
+    check("site: a topic is posted", "Topic posted." in page)
+    check("site: what people type is shown as text, never as HTML",
+          "<script>alert(1)" not in page and "&lt;script&gt;" in page and "&lt;b&gt;bold" in page)
+    check("site: links and line breaks are kept",
+          'href="https://example.com/x"' in page and "<br>" in page)
+    tid = int(re.search(r"name=t value=(\d+)", page).group(1))
+    _, page, _ = post(f"board.php?t={tid}", a="reply", t=tid, body="Too quick")
+    check("site: one post every 20 seconds", "Slow down" in page)
+    server.write_config(admin_key="admin-test-key-123", time_offset=30)
+    time.sleep(3)
+    _, page, _ = post(f"board.php?t={tid}", a="reply", t=tid, body="Vegeta, obviously.")
+    check("site: a reply", "Vegeta, obviously." in page)
+    pid = max(int(x) for x in re.findall(r"name=post value=(\d+)", page))
+    _, page, _ = post(f"board.php?t={tid}", a="delete", t=tid, post=pid)
+    check("site: deleting your own post", "Post deleted." in page and "Vegeta, obviously." not in page)
+    anon_get, anon_post = browser()
+    _, page, _ = anon_get(f"board.php?t={tid}")
+    check("site: visitors read, but need to log in to post", "Best team?" in page and "Log in</a> with your DRAGON NET account" in page)
+
+    # Support.
+    _, page, _ = anon_post("support.php", topic="disc", body="My disc is refused: files differ.", name="Bulma", contact="bulma#1")
+    m = re.search(r"Your message is #(\d+)", page)
+    check("site: anyone can send a support message", m is not None)
+    _, page, _ = anon_post("support.php", topic="bug", body="I am a robot posting spam.", website="http://spam")
+    check("site: the robots' hidden field catches spam", "Your message is #" not in page)
+    _, page, _ = post("support.php", topic="account", body="How do I change my picture?")
+    mine = re.search(r"Your message is #(\d+)", page)
+    check("site: a logged-in player's message is listed for them", mine is not None and "Your messages" in page)
+
+    # The admin: board moderation, support answers.
+    jar = http.cookiejar.CookieJar()
+    adm = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+
+    def apage(q="", **form):
+        data = urllib.parse.urlencode(form).encode() if form else None
+        with adm.open(server.url + "admin.php" + q, data=data, timeout=10) as r:
+            return r.read().decode()
+
+    def act(**form):
+        csrf = re.search(r"name=csrf value='([0-9a-f]+)'", apage("?p=board")).group(1)
+        return apage("", csrf=csrf, **form)
+
+    apage("", a="login", key="admin-test-key-123")
+    sup = apage("?p=support")
+    check("admin: support messages listed", "My disc is refused" in sup and "bulma#1" in sup and "I am a robot" not in sup)
+    act(a="support_reply", ticket=mine.group(1), reply="Profile > Picture in the launcher.")
+    _, page, _ = get("support.php")
+    check("site: the player sees the answer", "Profile &gt; Picture in the launcher." in page and "answered" in page)
+    act(a="topic_pin", topic=tid)
+    act(a="topic_lock", topic=tid)
+    _, page, _ = get("board.php")
+    check("admin: a pinned topic", "📌" in page)
+    _, page, _ = post(f"board.php?t={tid}", a="reply", t=tid, body="still here?")
+    check("admin: a locked topic takes no replies", "That topic is locked." in page)
+    act(a="topic_delete", topic=tid)
+    _, page, _ = get(f"board.php?t={tid}")
+    check("admin: a deleted topic is gone", "That topic is gone" in page)
+    log = apage("?p=log")
+    check("admin: board and support actions logged", "topic_pin" in log and "support_reply" in log)
+    _, home, _ = get("index.php")
+    check("site: front page still fine with board data", "Sparking! Collection PC" in home)
+    _, page, _ = post("login.php", a="logout")
+    check("site: log out", "Logged out." in page and "Log in" in page)
+
+
 def main():
     work = tempfile.mkdtemp(prefix="ranked-")
     server = RankedServer(work)
@@ -704,7 +849,7 @@ def main():
         check("bad mode refused", bad.get("error") == "bad_mode")
         with urllib.request.urlopen(server.url + "index.php?mode=team&region=EU", timeout=10) as r:
             html = r.read().decode()
-        check("leaderboard web page", "DRAGON NET Ranked" in html and "Goku" in html and "1016" in html)
+        check("leaderboard web page", "<h1>Leaderboard</h1>" in html and "Goku" in html and "1016" in html)
 
         # Host closes; the lobby disappears.
         call(server, "lobby.php", G, action="close", lobby=lob)
@@ -716,6 +861,7 @@ def main():
         check("logged out", code == 401)
 
         admin_checks(server, check, {"goku": G2, "vegeta": V, "krillin": K})
+        site_checks(server, check)
 
         server.write_config(discord_client_secret="PUT-YOUR-DISCORD-CLIENT-SECRET-HERE")
         time.sleep(3)   # PHP's file cache notices the change after a moment

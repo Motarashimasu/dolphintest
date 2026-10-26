@@ -19,7 +19,7 @@
 // (the all-time record) never resets. Banned players can't play ranked and aren't listed.
 declare(strict_types=1);
 
-const SCHEMA_VERSION = '6';
+const SCHEMA_VERSION = '7';
 const MODES = ['single', 'team', 'b2single', 'b2team'];
 const GAME_MODES = ['bt3' => ['single', 'team'], 'bt2' => ['b2single', 'b2team']];
 const MODE_LABELS = ['single' => 'Single Battle FT2', 'team' => 'Team Battle',
@@ -133,6 +133,17 @@ function migrate(PDO $db): void
             meta TEXT NOT NULL, dtm_size INTEGER NOT NULL, sav_size INTEGER NOT NULL,
             dtm_sha CHAR(40) NOT NULL, sav_sha CHAR(40) NOT NULL, match_id INTEGER NULL,
             created INTEGER NOT NULL, downloads INTEGER NOT NULL DEFAULT 0)",
+        // Version 7: the website (site.php): message board, support messages, rate limits.
+        "board_topics (id $id, title VARCHAR(120) NOT NULL, author INTEGER NOT NULL,
+            created INTEGER NOT NULL, last_post INTEGER NOT NULL, last_author INTEGER NOT NULL,
+            replies INTEGER NOT NULL DEFAULT 0, pinned INTEGER NOT NULL DEFAULT 0,
+            locked INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0)",
+        "board_posts (id $id, topic_id INTEGER NOT NULL, author INTEGER NOT NULL, body TEXT NOT NULL,
+            created INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)",
+        "support (id $id, created INTEGER NOT NULL, player_id INTEGER NULL, name VARCHAR(64) NOT NULL,
+            contact VARCHAR(128) NOT NULL, topic VARCHAR(16) NOT NULL, body TEXT NOT NULL,
+            state VARCHAR(8) NOT NULL, reply TEXT NULL, replied INTEGER NULL, ip_hash CHAR(64) NOT NULL)",
+        "web_rate (k VARCHAR(80) PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL)",
         "matches (id $id, lobby_id INTEGER NOT NULL, mode VARCHAR(8) NOT NULL,
             region VARCHAR(4) NOT NULL, p1 INTEGER NOT NULL, p2 INTEGER NOT NULL,
             state VARCHAR(8) NOT NULL, r1 VARCHAR(8) NULL, r2 VARCHAR(8) NULL,
@@ -728,4 +739,110 @@ function replay_remove(array $r): void
         @unlink(replay_path((int)$r['id'], $w));
     }
     db()->prepare('DELETE FROM replays WHERE id = ?')->execute([$r['id']]);
+}
+
+
+// --- Wrong passwords (account.php, the website's login) ---------------------------------------
+
+function too_many_fails(string $key): bool
+{
+    $st = db()->prepare('SELECT n, until FROM login_fails WHERE k = ?');
+    $st->execute([$key]);
+    $f = $st->fetch();
+    return $f && (int)$f['n'] >= LOGIN_FAILS && now() < (int)$f['until'];
+}
+
+function note_fail(string $key): void
+{
+    $db = db();
+    $st = $db->prepare('SELECT n, until FROM login_fails WHERE k = ?');
+    $st->execute([$key]);
+    $f = $st->fetch();
+    $n = $f && now() < (int)$f['until'] + LOGIN_PAUSE ? (int)$f['n'] + 1 : 1;
+    $db->prepare('DELETE FROM login_fails WHERE k = ?')->execute([$key]);
+    $db->prepare('INSERT INTO login_fails (k, n, until) VALUES (?, ?, ?)')
+        ->execute([$key, $n, now() + LOGIN_PAUSE]);
+}
+
+
+// --- Rate limits (the website) ---------------------------------------------------------------
+
+/** Counts one more `key` event; false once there were `max` within `window` seconds. */
+function rate_ok(string $key, int $max, int $window): bool
+{
+    $db = db();
+    $st = $db->prepare('SELECT n, until FROM web_rate WHERE k = ?');
+    $st->execute([$key]);
+    $r = $st->fetch();
+    if ($r && now() < (int)$r['until']) {
+        if ((int)$r['n'] >= $max) {
+            return false;
+        }
+        $db->prepare('UPDATE web_rate SET n = n + 1 WHERE k = ?')->execute([$key]);
+        return true;
+    }
+    $db->prepare('DELETE FROM web_rate WHERE k = ?')->execute([$key]);
+    $db->prepare('INSERT INTO web_rate (k, n, until) VALUES (?, 1, ?)')->execute([$key, now() + $window]);
+    return true;
+}
+
+/** The visitor's address, hashed (support messages and limits keep no plain addresses). */
+function ip_hash(): string
+{
+    return hash('sha256', 'sparking-ip|' . ($_SERVER['REMOTE_ADDR'] ?? ''));
+}
+
+
+// --- Cloudflare R2 links (update.php, the website's downloads) -------------------------------
+
+/** The R2 settings from config.php, or null when they aren't set. */
+function r2_settings(): ?array
+{
+    $c = cfg();
+    foreach (['r2_account_id', 'r2_access_key', 'r2_secret_key', 'r2_bucket'] as $k) {
+        if (trim((string)($c[$k] ?? '')) === '') {
+            return null;
+        }
+    }
+    $endpoint = rtrim((string)($c['r2_endpoint'] ?? ''), '/');   // tests: a local S3 stand-in
+    if ($endpoint === '') {
+        $endpoint = 'https://' . $c['r2_account_id'] . '.r2.cloudflarestorage.com';
+    }
+    $prefix = trim((string)($c['update_prefix'] ?? ''), '/');
+    return ['endpoint' => $endpoint, 'bucket' => (string)$c['r2_bucket'],
+            'key' => (string)$c['r2_access_key'], 'secret' => (string)$c['r2_secret_key'],
+            'prefix' => $prefix === '' ? '' : $prefix . '/'];
+}
+
+/** A presigned GET link for one object (SigV4, query string, region "auto", path style).
+ *  ($region and an empty bucket = virtual-host style are only for the AWS test vectors.) */
+function presign(array $r2, string $object, int $seconds, ?int $at = null, string $region = 'auto'): string
+{
+    $at = $at ?? time();
+    $date = gmdate('Ymd', $at);
+    $stamp = gmdate('Ymd\THis\Z', $at);
+    $parts = parse_url($r2['endpoint']);
+    $host = $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+    $base = rtrim($parts['path'] ?? '', '/');
+    $path = $base . ($r2['bucket'] === '' ? '' : '/' . rawurlencode($r2['bucket'])) . '/'
+        . implode('/', array_map('rawurlencode', explode('/', $object)));
+    $scope = "$date/$region/s3/aws4_request";
+    $query = [
+        'X-Amz-Algorithm' => 'AWS4-HMAC-SHA256',
+        'X-Amz-Credential' => $r2['key'] . '/' . $scope,
+        'X-Amz-Date' => $stamp,
+        'X-Amz-Expires' => (string)$seconds,
+        'X-Amz-SignedHeaders' => 'host',
+    ];
+    ksort($query, SORT_STRING);
+    $qs = implode('&', array_map(fn($k, $v) => rawurlencode($k) . '=' . rawurlencode($v),
+                                 array_keys($query), $query));
+    $canonical = "GET\n$path\n$qs\nhost:$host\n\nhost\nUNSIGNED-PAYLOAD";
+    $to_sign = "AWS4-HMAC-SHA256\n$stamp\n$scope\n" . hash('sha256', $canonical);
+    $k = hash_hmac('sha256', $date, 'AWS4' . $r2['secret'], true);
+    $k = hash_hmac('sha256', $region, $k, true);
+    $k = hash_hmac('sha256', 's3', $k, true);
+    $k = hash_hmac('sha256', 'aws4_request', $k, true);
+    $sig = hash_hmac('sha256', $to_sign, $k);
+    return $parts['scheme'] . '://' . $host . $path . '?' . $qs . '&X-Amz-Signature=' . $sig;
 }
