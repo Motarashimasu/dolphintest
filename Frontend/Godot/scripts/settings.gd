@@ -149,7 +149,8 @@ var defaults := {
 		"discord": true, "sfx_volume": 7,
 		"language": "",           # en / es / it / ja ("" = ask at first launch)
 		"boot_timeout": 10},      # seconds a starting game may show nothing before it's closed (0 = off)
-	"netplay": {"mode": "single", "find_mode": "any", "public": true, "traversal": true,
+	"netplay": {"quick_direct": false,   # tests: Quick Match by IP (127.0.0.1), no room code server
+		"mode": "single", "find_mode": "any", "public": true, "traversal": true,
 		"record_matches": false,   # record Player Match / Battle Lounge games (kept on this PC only)
 		"buffer": 4, "public_address": "",
 		"buffer_auto": false,    # host: pad buffer picked from the pings (match start + after each KO)
@@ -756,6 +757,35 @@ func ranked_join_args(target: String) -> PackedStringArray:
 	var a := _netplay_base(ranked_nickname())
 	a.append_array(["--record-replays", data_path("replays")])   # decided matches are saved
 	a.append("--ranked")   # (a guest: its recordings are the ranked kind)
+	a.append_array(["--netplay-game", game_path(), "--netplay-join", target])
+	return a
+
+
+## Quick Match: the connection made once two players are paired, before either accepts (so both
+## see the real ping): a second Dolphin next to Buffer Training, room code only, never listed,
+## Single Battle. The host (picked by the server) gets pad 1. Its own port (2627), so it doesn't
+## clash with Buffer Training's (2626). On both accepting it becomes the match (Dolphin.adopt).
+const QUICK_PORT := 2627
+
+func quick_host_args() -> PackedStringArray:
+	var a := _netplay_base(ranked_nickname())
+	a.append_array(["--mode", "single"])
+	a.append_array(local_replay_args())
+	if get_value("netplay", "quick_direct"):
+		a.append_array(["--netplay-direct", "-C", "Dolphin.NetPlay.HostPort=%d" % QUICK_PORT])
+	else:
+		a.append_array(["-C", "Dolphin.NetPlay.TraversalChoice=traversal", "-C", "Dolphin.NetPlay.ListenPort=%d" % QUICK_PORT])
+	a.append_array(["--stats-interval", "1000"])   # (the boot watchdog, once it's the match)
+	a.append_array(["--netplay-host", game_path()])
+	return a
+
+
+func quick_join_args(target: String) -> PackedStringArray:
+	var a := _netplay_base(ranked_nickname())
+	a.append_array(local_replay_args())
+	if not get_value("netplay", "quick_direct"):
+		a.append_array(["-C", "Dolphin.NetPlay.TraversalChoice=traversal"])
+	a.append_array(["--stats-interval", "1000"])
 	a.append_array(["--netplay-game", game_path(), "--netplay-join", target])
 	return a
 

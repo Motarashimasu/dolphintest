@@ -98,6 +98,7 @@ def main():
     piccolo_user = user(os.path.join(work, "piccolo"), 26310)
     trunks_user = user(os.path.join(work, "trunks"), 26311)
     ranked_user = user(os.path.join(work, "rkvegeta"), 26312)
+    krillin_user = user(os.path.join(work, "krillin"), 26330)
 
     # The DOL's game ID, for its Gecko codes and texture pack.
     # It also captures the state Buffer Training boots ([Sparking.Modes] Training, below).
@@ -115,7 +116,7 @@ def main():
     probe.proc.wait(timeout=15)
     print("test game id:", game_id)
 
-    for u in (godot_user, joiner_user, piccolo_user, trunks_user, ranked_user):
+    for u in (godot_user, joiner_user, piccolo_user, trunks_user, ranked_user, krillin_user):
         os.makedirs(os.path.join(u, "GameSettings"), exist_ok=True)
         with open(os.path.join(u, "GameSettings", f"{game_id}.ini"), "w") as f:
             f.write("[Gecko]\n$Player 1 Splitscreen Remover\n04001000 00000001\n"
@@ -125,7 +126,7 @@ def main():
                     "[Sparking.Modes]\nTraining = training.sst\n")
     # The ranked host counts KOs from these health watches (the harness pokes them). The tour's
     # own Dolphin watches them too: its first full-health round starts the ranked replay.
-    for u in (ranked_user, godot_user):
+    for u in (ranked_user, godot_user, krillin_user):
         with open(os.path.join(u, "GameSettings", f"{game_id}.ini"), "a") as f:
             f.write("[Sparking.Watch]\np1_health_pct = f32 0x80001100\np2_health_pct = f32 0x80001104\n")
     # Texture pack with the frontend's variant groups (empty placeholder textures).
@@ -211,6 +212,64 @@ def main():
         rk_vegeta.seen("koth_set", timeout=20)
         ranked_call(ranked, "match.php", vegeta_token, action="report", lobby=rk_lobby, result="loss")
 
+    quick = {"inst": None}
+
+    def quick_opponent(version):
+        """Quick Match: Krillin's launcher, played by the harness. Searches the pool (the real
+        ranked server), and once paired with the tour opens or joins the room, accepts when both
+        are in it, says it's ready, and (as the host) starts the Single Battle."""
+        tok = ranked_login(ranked, "krillin")[0]["token"]
+        def qc(**kw):
+            return ranked_call(ranked, "quick.php", tok, **kw)[1]
+        qc(action="search", game="bt3", version=version, region="EU", link="wired")
+        m, end = None, time.time() + 120
+        while time.time() < end and not m:
+            m = qc(action="status").get("match")
+            time.sleep(1)
+        if not m:
+            print("TOUR_HARNESS: quick: never paired")
+            return
+        # (The same DRAGON NET save as the tour's: every player ships with it.)
+        args = [exe, *COMMON, "-u", krillin_user, "--nickname", "Krillin", "--link", "wired",
+                "--nand", os.path.join(data, "saves", "netplay", version), "--test-hooks", *netplay_codes]
+        if m["role"] == "host":
+            inst = Instance("qm-krillin", [*args, "--netplay-host", dol, "--netplay-direct", "--mode", "single"])
+            inst.send("hello")
+            inst.seen("lobby_ready")
+            qc(action="room", match=m["id"], room="127.0.0.1:26330")
+        else:
+            while not m.get("room"):
+                time.sleep(1)
+                m = qc(action="status").get("match") or m
+            inst = Instance("qm-krillin", [*args, "--netplay-game", dol, "--netplay-join", m["room"]])
+            inst.send("hello")
+            inst.seen("lobby_ready")
+        quick["inst"] = inst
+        inst.seen("players", lambda e: len(e["players"]) >= 2, timeout=60)
+        qc(action="answer", match=m["id"], accept=True)
+        end = time.time() + 90
+        while time.time() < end:
+            s = qc(action="status")
+            if (s.get("match") or {}).get("state") == "go":
+                break
+            time.sleep(1)
+        qc(action="ready", match=m["id"])
+        if m["role"] == "host":
+            while time.time() < end and not (qc(action="status").get("match") or {}).get("they_ready"):
+                time.sleep(1)
+            for _ in range(15):
+                inst.send("start")
+                try:
+                    inst.seen("game_started", timeout=3)
+                    break
+                except AssertionError:
+                    pass
+        try:
+            inst.seen("game_started", timeout=60)
+        except AssertionError:
+            print("QUICK_HARNESS role", m["role"], "\n   " + "\n   ".join(l[:300] for l in inst.log if '"event":"players"' not in l)[-6000:])
+        qc(action="leave")
+
     # A stand-in for the Terminology Google Doc ("mobilebasic" HTML: one table per category,
     # rows of term | definition | GIF). Images only answer at the "=s650" URL, so the
     # downloader's "=s0" (original size) attempt fails first, like a doc without originals.
@@ -295,7 +354,7 @@ def main():
                 "paths": {"dolphin": exe, "game": dol, "data": data, "profile": "user",
                           "extra_args": " ".join(COMMON + ["--test-hooks"])},   # (poke: ranked replay)
                 "player": {"nickname": "Goku", "region": "EU"},
-                "netplay": {"public": True, "mode": "single", "traversal": True,
+                "netplay": {"public": True, "mode": "single", "traversal": True, "quick_direct": True,
                             "public_address": "127.0.0.1", "find_mode": "any", "buffer": 4},
                 "options": {"minimize_while_playing": False, "buttons": "Vanilla", "language": "en",
                             "boot_timeout": 0},   # (the test "game" never draws: no watchdog, except its own check)
@@ -345,13 +404,17 @@ def main():
             joiner.send("chat hello from Vegeta")
         elif line in ("TOUR_EVENT joiner_leave", "TOUR_EVENT host_left") and joiner and joiner.proc.poll() is None:
             joiner.send("quit")
+        elif line.startswith("TOUR_EVENT quick_ready"):
+            threading.Thread(target=quick_opponent, args=(line.split()[2],), daemon=True).start()
+        elif line == "TOUR_EVENT quick_done" and quick["inst"] and quick["inst"].proc.poll() is None:
+            quick["inst"].send("quit")
         elif line == "TOUR_EVENT ranked_ready":
             threading.Thread(target=rk_match, daemon=True).start()
         elif line.startswith("TOUR_RESULT"):
             result = line.split()[1]
     tour.wait(timeout=30)
     ranked.stop()
-    for inst in (piccolo, trunks, joiner, rk_vegeta):
+    for inst in (piccolo, trunks, joiner, rk_vegeta, quick["inst"]):
         if inst and inst.proc.poll() is None:
             inst.send("quit")
             try:

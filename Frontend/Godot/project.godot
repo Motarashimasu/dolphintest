@@ -35,6 +35,7 @@ Lang="*res://scripts/lang.gd"
 Ranked="*res://scripts/ranked.gd"
 Social="*res://scripts/social.gd"
 Updater="*res://scripts/updater.gd"
+QuickMatch="*res://scripts/quick_match.gd"
 
 [display]
 

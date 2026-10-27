@@ -19,7 +19,7 @@
 // (the all-time record) never resets. Banned players can't play ranked and aren't listed.
 declare(strict_types=1);
 
-const SCHEMA_VERSION = '7';
+const SCHEMA_VERSION = '8';
 const MODES = ['single', 'team', 'b2single', 'b2team'];
 const GAME_MODES = ['bt3' => ['single', 'team'], 'bt2' => ['b2single', 'b2team']];
 const MODE_LABELS = ['single' => 'Single Battle FT2', 'team' => 'Team Battle',
@@ -144,6 +144,17 @@ function migrate(PDO $db): void
             contact VARCHAR(128) NOT NULL, topic VARCHAR(16) NOT NULL, body TEXT NOT NULL,
             state VARCHAR(8) NOT NULL, reply TEXT NULL, replied INTEGER NULL, ip_hash CHAR(64) NOT NULL)",
         "web_rate (k VARCHAR(80) PRIMARY KEY, n INTEGER NOT NULL, until INTEGER NOT NULL)",
+        // Version 8: Quick Match (quick.php): who's searching, the pairs it made (p1 hosts and
+        // gets pad 1), and pairs not to make again for a while (declined / couldn't connect).
+        "quick_queue (player_id INTEGER PRIMARY KEY, game VARCHAR(4) NOT NULL, version VARCHAR(8) NOT NULL,
+            region VARCHAR(4) NOT NULL, link VARCHAR(16) NOT NULL, joined INTEGER NOT NULL,
+            seen INTEGER NOT NULL, match_id INTEGER NULL, last_match INTEGER NULL)",
+        "quick_matches (id $id, p1 INTEGER NOT NULL, p2 INTEGER NOT NULL, game VARCHAR(4) NOT NULL,
+            version VARCHAR(8) NOT NULL, state VARCHAR(10) NOT NULL, room VARCHAR(128) NULL,
+            a1 VARCHAR(4) NULL, a2 VARCHAR(4) NULL, ready1 INTEGER NOT NULL DEFAULT 0,
+            ready2 INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, updated INTEGER NOT NULL,
+            reason VARCHAR(32) NULL, by_player INTEGER NULL)",
+        "quick_avoid (a INTEGER NOT NULL, b INTEGER NOT NULL, until INTEGER NOT NULL, PRIMARY KEY (a, b))",
         "matches (id $id, lobby_id INTEGER NOT NULL, mode VARCHAR(8) NOT NULL,
             region VARCHAR(4) NOT NULL, p1 INTEGER NOT NULL, p2 INTEGER NOT NULL,
             state VARCHAR(8) NOT NULL, r1 VARCHAR(8) NULL, r2 VARCHAR(8) NULL,

@@ -502,6 +502,9 @@ func _netplay_menu() -> Control:
 
 func _netplay_menu_items(title: String) -> Control:
 	return _menu(title, [
+		{"label": "Quick Match", "glyph": "Q", "color": "#3fbf6b",
+			"desc": "Single Battle against the next player who's searching. Play Buffer Training\nwhile you wait. Needs a DRAGON NET account.",
+			"action": func(): _open_ranked(func(): open("quick_match"))},
 		{"label": "Lobby Browser", "glyph": "L", "color": "#3fa9f5",
 			"desc": "Public lobbies of players on this same version:\nmode, host, region and connection. Pick one to join.",
 			"action": open_checked.bind("lobby_browser")},

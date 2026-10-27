@@ -48,6 +48,8 @@ What's in here
   login.php        website log in / log out with a DRAGON NET account
   download.php     the download buttons (config "downloads"; counts clicks)
   leaderboard.php  the leaderboard as JSON for the launcher
+  quick.php        Quick Match: the matchmaking pool (pairs two players, both accept, then
+                   they connect directly; nothing is rated)
   online.php       how many players are online now (the launcher's DRAGON NET menu)
   account.php      DRAGON NET accounts: register / login (username + password) / claim,
                    profile picture (128 x 128; stored in pics/, closed to browsers)

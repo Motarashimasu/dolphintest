@@ -232,6 +232,24 @@ func helper_send(handle: Object, line: String) -> void:
 		handle.send(line)
 
 
+## Makes a helper the session (Quick Match: the connection both players accepted becomes the
+## match): its events now come as `event` signals, and it's the process the menus control.
+## False if a session is still running or the helper is gone.
+func adopt_helper(handle: Object) -> bool:
+	if _session or handle == null:
+		return false
+	for h in _helpers:
+		if h["proc"] == handle:
+			if (handle as Proc).is_finished():
+				return false
+			_helpers.erase(h)
+			_session = handle
+			_disarm_boot_watch()   # (armed when its game boots, like any netplay session)
+			_log("adopted helper as the session")
+			return true
+	return false
+
+
 func stop_helper(handle: Object) -> void:
 	if handle == null:
 		return

@@ -454,9 +454,15 @@ func pick(key: String, list: Control = null) -> void:
 func type_into(list: Control, key: String, text: String) -> void:
 	await pick(key, list)
 	var edit: LineEdit = null
-	for n in list._nodes:
-		if n.edit and n.edit.has_focus():
-			edit = n.edit
+	for attempt in 3:
+		for n in list._nodes:
+			if n.edit and n.edit.has_focus():
+				edit = n.edit
+		if edit:
+			break
+		await frames(10)   # (a busy moment can swallow the Accept: press it again)
+		if not list._nodes.any(func(n): return n.edit and n.edit.has_focus()):
+			await press("ui_accept")
 	check("text field '%s' is editing" % key, edit != null)
 	if edit:
 		edit.text = text
@@ -996,6 +1002,41 @@ func _tour() -> void:
 	await frames(20)
 	await shot("ranked_profile_picture")
 	await back()   # Profile -> DRAGON NET
+
+	# --- Quick Match: the pool, Buffer Training while waiting, the question, the match ---------
+	await choose("Quick Match")
+	var qs: Control = top()
+	check("Quick Match screen: searching", app._title.text == tr("Quick Match") and QuickMatch.state == "searching")
+	await shot("quick_searching")
+	await pick("training", qs.list)
+	var qt: Control = top()
+	await wait_for("Buffer Training while searching", func(): return qt != qs and qt.kind == "training" and qt._phase == "playing", 60)
+	print("TOUR_EVENT quick_ready " + String(Settings.GAME["id"]))
+	await wait_for("a match is found: the question comes up over training", func(): return QuickMatch.state == "asking", 120)
+	await frames(10)
+	check("it names the opponent, with ping and connection (%s)" % QuickMatch._menu_desc(),
+			"krillin" in app._title.text.to_lower() and " ms" in QuickMatch._menu_desc() and "Wired" in QuickMatch._menu_desc())
+	await shot("quick_found")
+	await press("ui_accept")   # Accept
+	await wait_for("both accepted: training closes, the Quick Match lobby takes over", func():
+		return top().get("kind") == "quick", 60)
+	var ql: Control = top()
+	check("the Quick Match lobby", app._title.text == tr("Quick Match: %s") % Style.mode_name("single") and not ql._mode_bar.visible)
+	if not await _wait(func(): return ql._phase == "playing", 90):
+		var dl: Array = Array(Dolphin.log_lines).filter(func(l): return not '"event":"players"' in l)
+		print("QUICK_DEBUG role=%s log:\n%s" % [QuickMatch.role, "\n".join(dl.slice(maxi(0, dl.size() - 40)))])
+	check("the Single Battle starts", ql._phase == "playing")
+	check("one pad each (%s)" % [ql._players.map(func(p): return p.get("gc_slot"))],
+			ql._players.map(func(p): return int(p.get("gc_slot", -1))).has(1) and ql._players.map(func(p): return int(p.get("gc_slot", -1))).has(2))
+	await shot("quick_match_running")
+	ql._on_press("stop")
+	await wait_for("back in the Quick Match lobby", func(): return ql._phase == "lobby", 30)
+	ql._on_press("leave")
+	await wait_for("left: back on the Quick Match screen", func(): return top() == qs, 30)
+	await wait_for("Dolphin exited (Quick Match)", func(): return not Dolphin.is_running(), 10)
+	check("Search again offered", QuickMatch.state == "idle" and not qs.list.row("search").is_empty())
+	print("TOUR_EVENT quick_done")
+	await back()   # Quick Match -> DRAGON NET
 	await choose("Ranked Match")
 	# Replays: the ranked match above was recorded by Dolphin; watch it back to its end.
 	await choose("Replays")

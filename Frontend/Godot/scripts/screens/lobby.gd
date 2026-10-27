@@ -39,7 +39,8 @@ const ERRORS := {
 	"ranked_no_spectators": "Ranked matches can't be watched.",
 }
 
-var kind := "host"            # host, join, find, watch (spectator: never plays), training (solo)
+var kind := "host"            # host, join, find, watch (spectator: never plays), training (solo),
+                              # quick (Quick Match: the connection both players accepted, adopted)
 var mode := "any"
 var _args := PackedStringArray()
 var _closed_because := ""
@@ -80,6 +81,8 @@ var _announced := -1          # ranked match id whose result was already shown
 ## both players leave and a new ranked lobby is opened for the next set (the server refuses too).
 var _set_done := false
 var _ranked_timer: Timer
+var _adopted := false         # Quick Match: the session was already connected (adopt())
+var _quick_retries := 0       # Quick Match host: the start, retried while Dolphin is still checking
 
 var _info: Label
 var _info_right: Label
@@ -121,6 +124,8 @@ func screen_music() -> String:
 
 
 func screen_title() -> String:
+	if kind == "quick":
+		return tr("Quick Match: %s") % Style.mode_name(mode)
 	if ranked:
 		return tr("Ranked: %s") % Ranked.mode_title(mode)
 	if koth:
@@ -130,10 +135,30 @@ func screen_title() -> String:
 	return "Lobby" if mode == "any" else Style.mode_name(mode)
 
 
+## Quick Match: this lobby takes over a session that's already connected (Dolphin.adopt_helper):
+## its role, room and players so far. The host starts the Single Battle at once.
+func adopt(role: String, room: Dictionary, players: Array) -> void:
+	_adopted = true
+	_role = role
+	_room = room
+	_players = players
+
+
 func on_enter() -> void:
 	show_desc_bar = false
 	_build()
 	Dolphin.event.connect(_on_event)
+	if _adopted:
+		_phase = "lobby"
+		_status = "Match starting..." if _role == "host" else "Waiting for the host to start"
+		_system(tr("Quick Match: Single Battle against %s.") % String(QuickMatch.opponent.get("name", "?")), "#3fbf6b")
+		if _role == "host":
+			_buffer = int(Settings.get_value("netplay", "buffer"))
+			_send_buffer_mode()
+			Dolphin.send("players")
+			_quick_start.call_deferred()
+		_refresh_all()
+		return
 	_phase = "searching" if kind == "find" else "connecting"
 	_status = tr("Looking for a %s lobby...") % Style.mode_name(mode) if kind == "find" else "Connecting..."
 	if koth and kind == "find":
@@ -158,6 +183,8 @@ func on_enter() -> void:
 func _exit_tree() -> void:
 	if Dolphin.event.is_connected(_on_event):
 		Dolphin.event.disconnect(_on_event)
+	if kind == "quick":
+		QuickMatch.match_over()
 	if ranked and ranked_lobby > 0:
 		# Off the ranked list / give the seat back. (Ranked.api runs on the autoload: it outlives us.)
 		Ranked.api("lobby.php", {"action": "close" if _role == "host" else "leave", "lobby": ranked_lobby})
@@ -500,7 +527,7 @@ func _build_mode_bar() -> void:
 ## Player Match lobbies (not Battle Lounge, Ranked or Buffer Training) have the mode bar; the
 ## others give Messages the whole column.
 func has_mode_bar() -> bool:
-	return not (koth or ranked or is_training())
+	return not (koth or ranked or is_training() or kind == "quick")   # (Quick Match: Single Battle for now)
 
 
 func _refresh_mode_bar() -> void:
@@ -1089,6 +1116,12 @@ func _start_ranked() -> void:
 		_refresh_actions()
 
 
+func _quick_start() -> void:
+	if is_inside_tree() and _phase == "lobby" and _role == "host":
+		_quick_retries += 1
+		Dolphin.send("start")
+
+
 func _other_player_name() -> String:
 	for p in _players:
 		if not p.get("is_host", false) and String(p.get("role", "player")) == "player":
@@ -1366,6 +1399,12 @@ func _on_event(name: String, data: Dictionary) -> void:
 			var code := String(data.get("code", "error"))
 			# Battle Lounge: refused because a set is on. Dolphin retries; nothing to report.
 			if code == "game_running" or (_koth_waiting and code == "connect_failed"):
+				return
+			# Quick Match: the host's start, a moment before Dolphin finished checking everyone's
+			# game, save and battle state: try again shortly.
+			if kind == "quick" and _role == "host" and _phase == "lobby" and _quick_retries < 20 \
+					and code in ["save_data_mismatch", "battle_state_not_ready", "not_all_players_have_game"]:
+				get_tree().create_timer(1.0).timeout.connect(_quick_start)
 				return
 			# Buffer Training's own start, a moment before Dolphin finished checking the save /
 			# battle state (solo: nobody else's to mismatch): try again shortly, quietly.

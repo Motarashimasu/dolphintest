@@ -472,6 +472,79 @@ def admin_checks(server, check, tokens):
     server.write_config(admin_key="")
 
 
+def quick_checks(server, check):
+    """Quick Match: the pool pairs two players of the same game and version (same region first),
+    the host posts its room, both answer; a decline puts both back to searching and that pair
+    isn't made again for a while; both accepting, then both ready; leaving."""
+    toks = {w: login(server, w)[0]["token"] for w in ("qa_one", "qa_two", "qa_three", "qa_four")}
+    A, B, C, D = (toks[w] for w in ("qa_one", "qa_two", "qa_three", "qa_four"))
+    base = {"game": "bt3", "version": "RDSPAF", "link": "wired"}
+
+    def q(tok, **kw):
+        return call(server, "quick.php", tok, **kw)[1]
+
+    s = q(A, action="search", region="NA", **base)
+    check(f"quick: first player is searching alone {s.get('state')}", s["ok"] and s["state"] == "searching")
+    s = q(C, action="search", region="EU", **base)
+    check("quick: another region isn't paired at once", s["state"] == "searching")
+    s = q(D, action="search", region="NA", game="bt3", version="RDSJAF", link="wired")
+    check("quick: another disc version is never paired", s["state"] == "searching")
+    s = q(B, action="search", region="NA", **base)
+    check(f"quick: same region and version: paired {s.get('match', {}).get('opponent')}",
+          s["state"] == "match" and s["match"]["opponent"]["name"] == account_name("qa_one")
+          and s["match"]["state"] == "pairing")
+    m = s["match"]
+    host, guest = (B, A) if m["role"] == "host" else (A, B)
+    sa = q(A, action="status")
+    check("quick: both see the pair, one host and one guest",
+          sa["match"]["id"] == m["id"] and {sa["match"]["role"], m["role"]} == {"host", "guest"})
+    code, _ = call(server, "quick.php", guest, action="room", match=m["id"], room="ABCDEFGH")
+    check("quick: only the host posts the room", code == 400)
+    q(host, action="room", match=m["id"], room="ABCDEFGH")
+    check("quick: the guest gets the room code", q(guest, action="status")["match"]["room"] == "ABCDEFGH")
+    q(host, action="answer", match=m["id"], accept=True)
+    sg = q(guest, action="status")
+    check("quick: one accepted: the other sees it", sg["match"]["they_answered"] and not sg["match"]["you_answered"]
+          and sg["match"]["state"] == "pairing")
+    q(guest, action="answer", match=m["id"], accept=False)
+    sh = q(host, action="status")
+    check(f"quick: declined: the other is told and searching again {sh.get('ended')}",
+          sh["state"] == "searching" and sh["ended"]["state"] == "declined" and sh["ended"]["by_them"]
+          and q(guest, action="status")["ended"]["by_you"])
+    check("quick: that pair isn't made again right away", q(A, action="status")["state"] == "searching"
+          and q(B, action="status")["state"] == "searching")
+    # C (EU) waited long enough for another region: the next poll pairs it with A or B.
+    for _ in range(5):   # (polling, as the launcher does: a silent player drops out of the pool)
+        time.sleep(4.5)
+        for t in (A, B, D, C):
+            if q(t, action="status")["state"] == "match" and t == C:
+                break
+    sc = q(C, action="status")
+    check(f"quick: after a while another region is fine {sc.get('state')}", sc["state"] == "match")
+    m = sc["match"]
+    other = A if m["opponent"]["name"] == account_name("qa_one") else B
+    hostc = C if m["role"] == "host" else other
+    q(hostc, action="room", match=m["id"], room="1.2.3.4:2627")
+    q(C, action="answer", match=m["id"], accept=True)
+    so = q(other, action="answer", match=m["id"], accept=True)
+    check("quick: both accepted: go", so["match"]["state"] == "go")
+    code, _ = call(server, "quick.php", D, action="ready", match=m["id"])
+    check("quick: not your match: refused", code == 404)
+    q(C, action="ready", match=m["id"])
+    so = q(other, action="ready", match=m["id"])
+    check("quick: both ready", so["match"]["you_ready"] and so["match"]["they_ready"])
+    q(C, action="leave")
+    q(other, action="leave")
+    check("quick: after leaving the pool, the agreed match stands; idle",
+          q(C, action="status")["state"] == "idle")
+    # The last one searching leaves: a pair not agreed yet is called off for the other.
+    rest = B if other == A else A
+    q(rest, action="search", region="NA", **base)
+    q(D, action="leave")
+    check("quick: leave", q(D, action="status")["state"] == "idle")
+    q(rest, action="leave")
+
+
 def site_checks(server, check):
     """The website: front page and downloads, leaderboard, players, login, the board (posting,
     escaping, limits, moderation), support messages and their answers."""
@@ -862,6 +935,7 @@ def main():
 
         admin_checks(server, check, {"goku": G2, "vegeta": V, "krillin": K})
         site_checks(server, check)
+        quick_checks(server, check)
 
         server.write_config(discord_client_secret="PUT-YOUR-DISCORD-CLIENT-SECRET-HERE")
         time.sleep(3)   # PHP's file cache notices the change after a moment
