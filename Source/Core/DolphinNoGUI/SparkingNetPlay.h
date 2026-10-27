@@ -209,6 +209,9 @@ private:
   void HandleControlMessage(NetPlay::PlayerId from, const std::string& body);  // host thread
   void EmitBattleState();
   void SetLobbyCodes(const std::string& list);  // "Name A|Name B"
+  // Host, between matches (Player Match lobbies): the lobby's mode (single / team): its battle
+  // state and the public listing follow; everyone is told ("lobby_mode").
+  void SetMode(const std::string& mode);
   std::vector<std::string> LobbyCodesFor(const UICommon::GameFile& game);
   void BroadcastLobbyCodes();
   void EmitLobbyCodes();
@@ -257,6 +260,7 @@ private:
   std::map<NetPlay::PlayerId, std::string> m_state_acks;  // host: pid -> ok|missing|mismatch
   std::atomic<bool> m_rebroadcast_state{false};
   std::atomic<bool> m_rebroadcast_codes{false};
+  std::atomic<bool> m_rebroadcast_mode{false};
   std::vector<std::string> m_lobby_codes;  // the host's optional codes switched on (m_game_mutex)
 
   std::string m_host_save_hash;                          // last hash the host announced
@@ -366,6 +370,12 @@ private:
   std::string m_host_game_name;  // host: netplay name of the game it opened with
   bool m_index_failed = false;
   bool m_mode_state_applied = false;
+  // m_mode is written on the host thread (SetMode) and read there, and in BootGame (the netplay
+  // thread) under this lock. m_seen_mode: a joiner's copy of the host's mode ("mode" messages).
+  std::mutex m_mode_mutex;
+  std::string m_seen_mode;
+  // A mode change takes the public listing down; it's listed again (new name) from then on.
+  std::chrono::steady_clock::time_point m_relist_at{};
 
   // King of the Hill (host runs it, everyone is told with "koth" control messages).
   //  - The line: m_line[0] holds pad 1 (the champion), m_line[1] pad 2 (the challenger), the

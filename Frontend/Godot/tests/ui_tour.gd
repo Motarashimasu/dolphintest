@@ -148,6 +148,16 @@ func shot(name: String) -> void:
 	img.save_png(out_dir.path_join("%02d_%s.png" % [shots, name]))
 
 
+func key(code: Key) -> void:
+	for down in [true, false]:
+		var e := InputEventKey.new()
+		e.keycode = code
+		e.physical_keycode = code
+		e.pressed = down
+		Input.parse_input_event(e)
+		await frames(3)
+
+
 func press(action: String) -> void:
 	var e := InputEventAction.new()
 	e.action = action
@@ -621,6 +631,7 @@ func _tour() -> void:
 	await choose("Host")
 	check("host options", app._title.text == "Host a Lobby")
 	var list: Control = top().list
+	check("Player Match: no Mode row before the lobby (it's picked in the lobby)", list.row("mode").is_empty())
 	await pick("traversal", list)  # Accept on a choice = next value: Room code -> Direct IP
 	check("connection switched to Direct IP", Settings.get_value("netplay", "traversal") == false)
 	await shot("host_options")
@@ -666,6 +677,18 @@ func _tour() -> void:
 		return "\n".join(Dolphin.log_lines).contains('"event":"buffer_mode","auto":true'), 10)
 	check("buffer number locked while automatic", lobby._actions.row("buffer").get("disabled", false))
 	await shot("lobby_buffer_auto")
+	# The mode, switched in the lobby (the bar above Messages): E / RB = next.
+	check("mode bar shown, Single Battle lit", lobby._mode_bar.visible and lobby.mode == "single"
+			and lobby.can_switch_mode())
+	check("the lobby's hints say how to switch it", top().screen_hints()[0][2] == "Mode")
+	await key(KEY_E)
+	await wait_for("mode switched to Team Battle", func():
+		return lobby.mode == "team" and "\n".join(Dolphin.log_lines).contains('"event":"lobby_mode","mode":"team"'), 10)
+	check("title follows the mode", app._title.text == tr("Team Battle"))
+	check("the next lobby opens in it", Settings.get_value("netplay", "mode") == "team")
+	await shot("lobby_mode_team")
+	lobby._switch_mode("single")   # (a click on the tab does the same)
+	await wait_for("back to Single Battle", func(): return lobby.mode == "single", 10)
 	await wait_for("pings measured", func():
 		for p in lobby._players:
 			if not p.get("is_host", false) and String(p.get("quality", "measuring")) == "measuring":
@@ -681,6 +704,8 @@ func _tour() -> void:
 	await shot("lobby_neocode")
 	await pick("start", lobby._actions)
 	await wait_for("match running", func(): return lobby._phase == "playing", 30)
+	await key(KEY_E)
+	check("the mode can't be switched during a match", lobby.mode == "single" and not lobby.can_switch_mode())
 	await pgup_pgdn()
 	check("NEOcode can't be switched during a match", lobby._neocode and
 			tr("NEOcode can't be switched during a match.") in "\n".join(lobby._chat))
@@ -804,6 +829,7 @@ func _tour() -> void:
 		await pick(trunks, kb.list)
 		var kl: Control = top()
 		check("joined the Battle Lounge lobby", kl != kb and kl.koth and "--koth" in kl._args)
+		check("Battle Lounge lobby: no mode bar (picked before the lobby)", not kl._mode_bar.visible)
 		await wait_for("in Trunks' line, second", func():
 			return (kl._koth.get("line", []) as Array).size() == 2 and int(kl._koth.get("local_pos", -1)) == 1, 25)
 		check("Trunks holds pad 1", String(kl._koth.get("line", [{}])[0].get("name", "")) == "Trunks")
@@ -822,6 +848,7 @@ func _tour() -> void:
 	await back()   # browser -> Battle Lounge menu
 	await choose("Host")
 	check("Battle Lounge host options", app._title.text == "Host a Battle Lounge")
+	check("Battle Lounge: the Mode is picked before the lobby", not top().list.row("mode").is_empty())
 	check("host lobby is Battle Lounge", top().koth)
 	await shot("koth_host_options")
 	await back()   # -> Battle Lounge menu
@@ -861,6 +888,7 @@ func _tour() -> void:
 		await pick(vk, rb.list)
 		var rl: Control = top()
 		check("in a ranked lobby", rl != rb and rl.ranked)
+		check("ranked lobby: no mode bar", not rl._mode_bar.visible and not rl.can_switch_mode())
 		check("title says FT2", "FT2" in app._title.text)
 		check("ranked lobby has its own music track", Music.current_track() == "ranked")
 		check("players are told it's first to 2", "\n".join(rl._chat).contains("FT2"))

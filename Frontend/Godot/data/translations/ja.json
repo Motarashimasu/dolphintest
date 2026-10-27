@@ -1032,5 +1032,10 @@
  "The Enhanced textures aren't downloaded yet: Options > Enhanced textures.": "エンハンステクスチャはまだダウンロードされていません：オプション > エンハンステクスチャ。",
  "This download isn't on the update server.": "このダウンロードはアップデートサーバーにありません。",
  "Some files couldn't be replaced (in use?). Close the game and try again.": "一部のファイルを置き換えられませんでした（使用中？）。ゲームを閉じてもう一度お試しください。",
- "Xbox button prompts: A, B, X, Y.": "Xboxのボタン表示：A、B、X、Y。"
+ "Xbox button prompts: A, B, X, Y.": "Xboxのボタン表示：A、B、X、Y。",
+ "Mode: %s.": "モード：%s。",
+ "The mode can be changed between matches.": "モードは試合の合間に変更できます。",
+ "The host picks the mode.": "モードはホストが選びます。",
+ "Set up your lobby, then Start.\nYou pick the mode (Single or Team Battle) in the lobby.": "ロビーを設定して「開始」。\nモード（シングル／チームバトル）はロビーで選びます。",
+ "Host's pick": "ホストが選択"
 }

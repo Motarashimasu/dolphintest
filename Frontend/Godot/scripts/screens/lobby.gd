@@ -8,6 +8,10 @@ extends "res://scripts/screens/screen.gd"
 ## short break, and joining during a set waits for it to end.
 ## kind "training" is Buffer Training: a solo, unlisted lobby that boots straight into the training
 ## state, so the player can feel a pad buffer of their choice (set live, also from the menu).
+## Mode (Player Match): picked in the lobby, not before it. The bar above Messages shows it; the
+## host switches it between matches (LB / RB, Q / E, or a click): Dolphin's "mode" command loads
+## that mode's battle state for everyone. Battle Lounge and Ranked lobbies keep the mode they
+## were opened with (no bar).
 
 const OptionList := preload("res://scripts/ui/option_list.gd")
 const InGamePanel := preload("res://scripts/ui/ingame_panel.gd")
@@ -85,6 +89,10 @@ var _players_head: Label
 var _actions: Control
 var _chat_log: RichTextLabel
 var _panel: Control           # in-game menu, while open
+var _mode_bar: Control
+var _mode_tabs := {}          # mode -> {panel, label}
+var _mode_note: Label
+var _chat_panel: Control
 
 
 
@@ -430,9 +438,12 @@ func _build() -> void:
 	_actions.pressed.connect(_on_press)
 	_actions.value_changed.connect(_on_value)
 
+	_build_mode_bar()
+
 	var cp := Style.skin_panel(14)
-	Style.place(cp, 700, 180, 540, 520)
+	Style.place(cp, 700, 262, 540, 438)
 	add_child(cp)
+	_chat_panel = cp
 	var ch := Style.label("Messages", 24, Style.GOLD, 3, Style.DARK, true)
 	Style.place(ch, 18, 8, 300, 34)
 	cp.add_child(ch)
@@ -442,8 +453,123 @@ func _build() -> void:
 	_chat_log.add_theme_font_override("normal_font", Style.body_font())
 	_chat_log.add_theme_font_size_override("normal_font_size", 19)
 	_chat_log.add_theme_font_size_override("bold_font_size", 19)
-	Style.place(_chat_log, 18, 48, 504, 456)
+	Style.place(_chat_log, 18, 48, 504, 374)
 	cp.add_child(_chat_log)
+
+
+# --- Mode ----------------------------------------------------------------------------------
+
+const MODES := ["single", "team"]
+
+## The mode bar (right, above Messages): the lobby's two modes, the current one lit.
+func _build_mode_bar() -> void:
+	_mode_bar = Style.skin_panel(14)
+	Style.place(_mode_bar, 700, 180, 540, 70)
+	add_child(_mode_bar)
+	var head := Style.label("Mode", 22, Style.GOLD, 3, Style.DARK, true)
+	head.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	Style.place(head, 18, 0, 90, 70)
+	_mode_bar.add_child(head)
+	var x := 104.0
+	for m in MODES:
+		var p := Style.panel(Style.INK, 10, 3, Style.INK_LINE)
+		Style.place(p, x, 12, 184, 46)
+		p.mouse_filter = Control.MOUSE_FILTER_STOP
+		p.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		p.gui_input.connect(func(e):
+			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+				_switch_mode(m))
+		_mode_bar.add_child(p)
+		var l := Style.label("", 19, Color.WHITE, 3, Color.BLACK, true)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		Style.place(l, 0, 0, 184, 46)
+		p.add_child(l)
+		_mode_tabs[m] = {"panel": p, "label": l}
+		x += 192.0
+	_mode_note = Style.label("", 15, Style.INK_LINE, 0, Color.BLACK, true)
+	_mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mode_note.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_mode_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_mode_note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	Style.place(_mode_note, 486, 4, 50, 62)
+	_mode_bar.add_child(_mode_note)
+
+
+## Player Match lobbies (not Battle Lounge, Ranked or Buffer Training) have the mode bar; the
+## others give Messages the whole column.
+func has_mode_bar() -> bool:
+	return not (koth or ranked or is_training())
+
+
+func _refresh_mode_bar() -> void:
+	if not _mode_bar:
+		return
+	var shown := has_mode_bar()
+	if _mode_bar.visible != shown or _chat_panel.position.y != (262.0 if shown else 180.0):
+		_mode_bar.visible = shown
+		Style.place(_chat_panel, 700, 262 if shown else 180, 540, 438 if shown else 520)
+		Style.place(_chat_log, 18, 48, 504, 374 if shown else 456)
+	if not shown:
+		return
+	var can := can_switch_mode()
+	for m in _mode_tabs:
+		var t: Dictionary = _mode_tabs[m]
+		var on: bool = m == mode
+		(t["label"] as Label).text = Style.mode_name(m)
+		var sb: StyleBoxFlat = (t["panel"] as Panel).get_theme_stylebox("panel")
+		sb.bg_color = Style.GOOD if on else Style.INK
+		sb.border_color = Color("#fff27a") if on else Style.INK_LINE
+		(t["panel"] as Panel).modulate.a = 1.0 if on or can else 0.45
+		(t["panel"] as Panel).mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if can and not on \
+				else Control.CURSOR_ARROW
+	# Who can change it, and how: the pad's shoulder buttons (keyboard Q / E) for the host.
+	for c in _mode_note.get_children():
+		c.queue_free()
+	_mode_note.text = ""
+	if can:
+		var icons := Pad.prompt_icon_row("LB RB", 24)
+		if icons:
+			Style.place(icons, 0, 19, 50, 24)
+			_mode_note.add_child(icons)
+		else:
+			_mode_note.text = "Q E"
+	elif _role != "host" and _phase in ["lobby", "playing"]:
+		_mode_note.text = tr("Host's pick")
+
+
+## Player Match host, between matches: Single / Team can be switched.
+func can_switch_mode() -> bool:
+	return _role == "host" and has_mode_bar() and _phase == "lobby"
+
+
+func _switch_mode(to: String) -> void:
+	if to == mode or not to in MODES:
+		return
+	if not can_switch_mode():
+		if _role == "host" and _phase == "playing":
+			app.toast(tr("The mode can be changed between matches."), 2.5)
+		elif _role != "host" and _phase == "lobby" and has_mode_bar():
+			app.toast(tr("The host picks the mode."), 2.5)
+		return
+	Sfx.play("move")
+	Settings.set_value("netplay", "mode", to)   # the next lobby opens with it
+	Dolphin.send("mode " + to)
+
+
+func _step_mode(step: int) -> void:
+	_switch_mode(MODES[wrapi(MODES.find(mode) + step, 0, MODES.size())] if mode in MODES else MODES[0])
+
+
+func _on_lobby_mode(m: String) -> void:
+	if not m in MODES:
+		return
+	var changed := m != mode
+	mode = m
+	app.set_title(screen_title())
+	if changed:
+		_system(tr("Mode: %s.") % Style.mode_name(m), "#f2b531")
 
 
 func _refresh_all() -> void:
@@ -451,6 +577,20 @@ func _refresh_all() -> void:
 	_refresh_players()
 	_refresh_actions()
 	_refresh_panel()
+	_refresh_mode_bar()
+	var hints := screen_hints()
+	if hints != _hints_shown and app and app.top() == self:
+		_hints_shown = hints
+		app._refresh_hints()
+
+
+var _hints_shown: Array = []
+
+func screen_hints() -> Array:
+	var h: Array = [["▲▼", Style.INK_LINE, "Move"], ["A", Style.GOOD, "Select"], ["B", Style.POOR, "Back"]]
+	if can_switch_mode():
+		h.push_front(["LB RB", Style.INK_LINE, "Mode"])
+	return h
 
 
 func _refresh_info() -> void:
@@ -837,6 +977,22 @@ func make_ingame_panel() -> Control:
 # --- Input -------------------------------------------------------------------------------
 
 func on_input(event: InputEvent) -> bool:
+	# Host: LB / RB (keyboard Q / E, not while typing a message) switch the mode.
+	if not _actions.is_editing():
+		var step := 0
+		if event is InputEventJoypadButton and event.pressed:
+			if event.button_index == JOY_BUTTON_LEFT_SHOULDER:
+				step = -1
+			elif event.button_index == JOY_BUTTON_RIGHT_SHOULDER:
+				step = 1
+		elif event is InputEventKey and event.pressed and not event.echo:
+			if event.keycode == KEY_Q:
+				step = -1
+			elif event.keycode == KEY_E:
+				step = 1
+		if step != 0 and can_switch_mode():
+			_step_mode(step)
+			return true
 	# Hidden: PgUp + PgDn together switch NEOcode (host).
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.keycode in [KEY_PAGEUP, KEY_PAGEDOWN] \
@@ -1087,6 +1243,8 @@ func _on_event(name: String, data: Dictionary) -> void:
 			if data.has("mode") and String(data["mode"]) != "":
 				mode = String(data["mode"])
 				app.set_title(screen_title())
+		"lobby_mode":
+			_on_lobby_mode(String(data.get("mode", "")))
 		"public":
 			_public = data
 			if data.has("error"):

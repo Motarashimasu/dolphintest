@@ -1623,8 +1623,12 @@ static int RunNetPlay(const optparse::Values& options, const FrontendHooks& hook
     return 0;
   }
 
-  Emit("matchmaking", Json().Add("state", "hosting").Add("mode", np.mode));
   NetPlayOptions host = np;
+  // Searching any mode: the lobby opened instead starts as Single Battle (the host can switch it
+  // in the lobby: the "mode" command).
+  if (host.mode == "any")
+    host.mode = "single";
+  Emit("matchmaking", Json().Add("state", "hosting").Add("mode", host.mode));
   host.join_target.reset();
   host.host_game_path = host_path;
   host.is_public = true;

@@ -143,6 +143,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `lobbies` | `lobbies[]` of `{host, mode, format (classic/koth), link, region, game, game_id, players, spectators, in_game, joinable, watchable, method, join}` | `--list-lobbies` result. `join` is what `--netplay-join` takes. No version field: it only filters. |
 | `public` | `listed`, `mode`, `region`, `name` / `error` | Host: the lobby is (or failed to be) on the public list |
 | `mode` | `mode`, `battle_state` | Host: the lobby mode selected this battle state |
+| `lobby_mode` | `mode` (`single`/`team`) | The lobby's mode (host: after a `mode` command; joiners: when the host's changes, and on joining) |
 | `matchmaking` | `state` (`searching`, `candidates`+`count`, `joining`+`host`/`mode`/`region`/`link`, `retry`+`reason`, `hosting`, `matched`+`port`, `cancelled`, `lobby_server_unreachable`) | `--netplay-find` progress |
 | `menu_request` | `button`, `netplay` | The menu button was held: open the in-game menu |
 | `texture_groups` | `game_id`, `groups[]` of `{name, options[]}` | `--list-textures` result |
@@ -193,6 +194,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `kick <pid>` | host | Kick a player |
 | `automap wii\|gc\|none` | host | Auto-assign joiners to Wii Remote / GC slots in join order |
 | `battle_state <file.sst>` / `battle_state none` | host | Select the state everyone boots into |
+| `mode single` / `mode team` | host, between matches | Switch a Player Match lobby's mode: its battle state (`[Sparking.Modes]`) and the public listing's mode follow; everyone gets `lobby_mode`. Refused: `game_running` during a game; `not_allowed` in Battle Lounge, ranked and Buffer Training lobbies (their mode is picked before) |
 | `save_check` | host | Re-verify that every player's netplay save matches the host's |
 | `codes <Name A>\|<Name B>` / `codes none` | host, not during a match | Switch on the game's optional lobby codes (`[Sparking.LobbyCodes]`) for everyone; the rest go off. Unknown names and a second code of an exclusive group are ignored. Everyone re-runs the save check (it fingerprints the choice), so `start` waits until every player has it |
 | `players` | any | Re-send the `players` event now |

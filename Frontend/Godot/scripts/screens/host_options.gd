@@ -1,5 +1,7 @@
 extends "res://scripts/screens/form_screen.gd"
-## Player Match > Host: lobby options, then the lobby.
+## Player Match > Host: lobby options, then the lobby. A Player Match lobby's mode isn't picked
+## here: the host switches it in the lobby (it opens with the last one used). Battle Lounge and
+## Ranked lobbies pick it here and keep it.
 
 
 func screen_music() -> String:
@@ -32,7 +34,7 @@ func screen_desc() -> String:
 You play as your Discord name; leaving a match counts as a loss."
 	if koth:
 		return "Set up your Battle Lounge lobby, then Start.\nSingle Battle: first to 2 wins. Team Battle: 1 win."
-	return "Set up your lobby, then Start."
+	return "Set up your lobby, then Start.\nYou pick the mode (Single or Team Battle) in the lobby."
 
 
 func build_rows() -> Array:
@@ -67,6 +69,8 @@ func build_rows() -> Array:
 		{"type": "action", "key": "back", "label": "Back",
 			"desc": "Back to Battle Lounge." if koth else "Back to Player Match."},
 	]
+	if not ranked and not koth:
+		rows = rows.filter(func(r): return r["key"] != "mode")   # (switched in the lobby)
 	return _ranked_rows(rows) if ranked else rows
 
 
@@ -125,10 +129,13 @@ func on_press(key: String) -> void:
 			app.toast("A public Direct IP lobby needs your public IP.")
 			list.focus_key("public_address")
 			return
-		var args := Settings.host_args(Settings.get_value("netplay", "mode"),
-				Settings.get_value("netplay", "public"), Settings.get_value("netplay", "traversal"), koth)
+		var mode := String(Settings.get_value("netplay", "mode"))
+		if not mode in ["single", "team"]:
+			mode = "single"
+		var args := Settings.host_args(mode, Settings.get_value("netplay", "public"),
+				Settings.get_value("netplay", "traversal"), koth)
 		var lobby: Control = load("res://scripts/screens/lobby.gd").new()
 		lobby.koth = koth
-		app.push(lobby.setup("host", args, Settings.get_value("netplay", "mode")))
+		app.push(lobby.setup("host", args, mode))
 	else:
 		super(key)

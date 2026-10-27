@@ -1032,5 +1032,10 @@
  "The Enhanced textures aren't downloaded yet: Options > Enhanced textures.": "Las texturas mejoradas aún no están descargadas: Opciones > Texturas mejoradas.",
  "This download isn't on the update server.": "Esta descarga no está en el servidor de actualizaciones.",
  "Some files couldn't be replaced (in use?). Close the game and try again.": "Algunos archivos no se pudieron reemplazar (¿en uso?). Cierra el juego e inténtalo de nuevo.",
- "Xbox button prompts: A, B, X, Y.": "Iconos de Xbox: A, B, X, Y."
+ "Xbox button prompts: A, B, X, Y.": "Iconos de Xbox: A, B, X, Y.",
+ "Mode: %s.": "Modo: %s.",
+ "The mode can be changed between matches.": "El modo se puede cambiar entre combates.",
+ "The host picks the mode.": "El anfitrión elige el modo.",
+ "Set up your lobby, then Start.\nYou pick the mode (Single or Team Battle) in the lobby.": "Configura tu sala y luego Empezar.\nEl modo (Combate individual o por equipos) se elige en la sala.",
+ "Host's pick": "Lo elige el anfitrión"
 }

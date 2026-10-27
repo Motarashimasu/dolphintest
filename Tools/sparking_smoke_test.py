@@ -1925,6 +1925,11 @@ def koth_check(exe, dol, work, game_id):
               and kl[0]["joinable"] is True)
         check("regular browsing never shows it", list_lobbies() == [])
 
+        host.send("mode team")
+        check("Battle Lounge: the mode can't be switched in the lobby",
+              host.seen("error", lambda e: e.get("command") == "mode" and e["code"] == "not_allowed", timeout=10)
+              is not None and count(host, "lobby_mode") == 0)
+
         host.seen("players", lambda e: len(e["players"]) == 3 and
                   all(p["save_status"] == "ok" for p in e["players"] if not p["is_host"]), timeout=20)
         host.send("start")
@@ -2193,6 +2198,42 @@ def lobby_check(exe, dol, work, game_id):
     lob = list_lobbies()
     check(f"full lobby no longer joinable {[(l['players'], l['joinable']) for l in lob]}",
           lob and lob[0]["players"] == 2 and lob[0]["joinable"] is False)
+
+    # Player Match: the host switches the mode in the lobby. The joiner is told, the mode's battle
+    # state is selected for everyone, the public listing follows.
+    finder.seen("lobby_mode", lambda e: e["mode"] == "single", timeout=10)
+    check("a joiner is told the lobby's mode on joining", True)
+    with open(os.path.join(host_states, "team.sst"), "wb") as f:
+        f.write(b"fake team state")
+    host.send("mode team")
+    check("host: mode switched to team", host.seen("lobby_mode", lambda e: e["mode"] == "team", timeout=10) is not None)
+    finder.seen("lobby_mode", lambda e: e["mode"] == "team", timeout=10)
+    check("the joiner is told the new mode", True)
+    bs = host.seen("battle_state", lambda e: e.get("name") == "team.sst", timeout=10)
+    check(f"the Team battle state is selected {bs}", bs["active"] is True
+          and finder.seen("battle_state", lambda e: e.get("name") == "team.sst", timeout=10) is not None)
+    deadline = time.time() + 20
+    while time.time() < deadline:
+        lob = list_lobbies()
+        if lob and lob[0]["mode"] == "team":
+            break
+        time.sleep(1)
+    check(f"listed again as a team lobby {[(l['host'], l['mode']) for l in lob]}",
+          len(lob) == 1 and lob[0]["mode"] == "team" and lob[0]["host"] == "Goku")
+    host.send("mode bogus")
+    check("a bad mode is refused", host.seen("error", lambda e: e.get("command") == "mode"
+                                              and e["code"] == "bad_argument", timeout=10) is not None)
+    finder.send("mode single")
+    check("only the host switches the mode", finder.seen("error", lambda e: e.get("command") == "mode"
+                                                         and e["code"] == "host_only", timeout=10) is not None)
+    host.send("mode single")
+    host.seen("lobby_mode", lambda e: e["mode"] == "single", timeout=10)
+    deadline = time.time() + 10
+    while time.time() < deadline and len([e for e in list(finder.history)
+                                          if e["event"] == "lobby_mode" and e["mode"] == "single"]) < 2:
+        time.sleep(0.1)
+    check("switched back to single, the joiner too",
+          len([e for e in list(finder.history) if e["event"] == "lobby_mode" and e["mode"] == "single"]) >= 2)
 
     # Nobody hosting a team lobby: the finder hosts one and waits.
     solo = Instance("finder2", [exe, *common, "-u", user("finder2", 26284), "--netplay-find",

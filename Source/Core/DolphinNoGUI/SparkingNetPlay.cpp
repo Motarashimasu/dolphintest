@@ -380,7 +380,9 @@ void NetPlaySession::Pump()
   EmitRoom();
 
   if (m_server && m_rebroadcast_codes.exchange(false))
-    BroadcastLobbyCodes();  // (before the save check, whose fingerprint includes them)
+    BroadcastLobbyCodes();
+  if (m_server && m_rebroadcast_mode.exchange(false) && m_mode != "any" && m_mode != "training")
+    SendControl("mode " + m_mode);  // (before the save check, whose fingerprint includes them)
   if (m_server && m_rebroadcast_state.exchange(false))
     BroadcastBattleState();
   if (m_server && m_rebroadcast_save.exchange(false))
@@ -829,6 +831,23 @@ bool NetPlaySession::HandleCommand(const Command& cmd)
     if (host_only())
       CmdBattleState(cmd.arg);
   }
+  else if (cmd.name == "mode")
+  {
+    // Host: switch a Player Match lobby's mode between matches ("mode single" / "mode team").
+    // Battle Lounge and ranked lobbies keep the mode they opened with (their sets and ladders
+    // depend on it); never in Buffer Training.
+    if (host_only())
+    {
+      if (cmd.arg != "single" && cmd.arg != "team")
+        Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      else if (m_mode == "training" || m_koth || m_ranked)
+        Emit("error", Json().Add("code", "not_allowed").Add("command", cmd.name));
+      else if (m_game_running)
+        Emit("error", Json().Add("code", "game_running").Add("command", cmd.name));
+      else
+        SetMode(cmd.arg);
+    }
+  }
   else if (cmd.name == "players")
   {
     EmitPlayers();
@@ -1246,8 +1265,13 @@ void NetPlaySession::BootGame(const std::string& filename,
       match.game_id = game->GetGameID();
       match.revision = game->GetRevision();
     }
-    match.mode = m_mode;
-    if (match.mode == "any" && m_seen_koth_cap > 0)  // joiner: Team Battle is 1 win, Single FT2
+    {
+      std::lock_guard lk(m_mode_mutex);
+      match.mode = m_mode;
+      if (match.mode == "any" && !m_seen_mode.empty())  // joiner: the host's mode
+        match.mode = m_seen_mode;
+    }
+    if (match.mode == "any" && m_seen_koth_cap > 0)  // (a host from before "mode" messages)
       match.mode = m_seen_koth_cap == 1 ? "team" : "single";
     const auto& pad_map = m_client->GetPadMapping();
     for (const NetPlay::Player* p : m_client->GetPlayers())
@@ -1592,6 +1616,7 @@ void NetPlaySession::OnPlayerConnect(const std::string& player)
   m_rebroadcast_link = true;   // ...and need to know everyone's wired/Wi-Fi status
   m_rebroadcast_netcode = true;  // ...and the netcode
   m_rebroadcast_codes = true;    // ...and the lobby's optional codes
+  m_rebroadcast_mode = true;     // ...and the mode
   Emit("player_joined", Json().Add("name", player));
 }
 
@@ -1873,6 +1898,28 @@ void NetPlaySession::EmitLobbyCodes()
   Emit("lobby_codes", Json().AddRaw("available", JsonArray(available)).AddRaw("on", JsonArray(on)));
 }
 
+void NetPlaySession::SetMode(const std::string& mode)
+{
+  if (mode != m_mode)
+  {
+    {
+      std::lock_guard lk(m_mode_mutex);
+      m_mode = mode;
+    }
+    m_mode_state_applied = false;  // the mode's battle state, on the next pump (sent to everyone)
+    if (m_index)
+    {
+      // Listed again under the new mode a moment later (several switches: listed once).
+      m_index->Remove();
+      m_index.reset();
+      m_index_added = false;
+    }
+    m_relist_at = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  }
+  m_rebroadcast_mode = true;
+  Emit("lobby_mode", Json().Add("mode", m_mode));
+}
+
 void NetPlaySession::BroadcastBattleState()
 {
   std::optional<BattleState> state;
@@ -1922,6 +1969,20 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
     }
     SendControl(fmt::format("ack {} {}", wanted.sha1, status));
     EmitBattleState();
+  }
+  else if (parts[0] == "mode" && parts.size() == 2 && !m_server)
+  {
+    if (from != 1 || (parts[1] != "single" && parts[1] != "team"))
+      return;
+    bool changed;
+    {
+      std::lock_guard lk(m_mode_mutex);
+      changed = m_seen_mode != parts[1];
+      m_seen_mode = parts[1];
+    }
+    if (changed)
+      Emit("lobby_mode", Json().Add("mode", parts[1]));
+    return;
   }
   else if (parts[0] == "codes" && !m_server)
   {
@@ -2356,7 +2417,7 @@ int NetPlaySession::LocalGcPort()
 
 void NetPlaySession::UpdatePublicListing()
 {
-  if (!m_public || !m_server || m_index_failed)
+  if (!m_public || !m_server || m_index_failed || std::chrono::steady_clock::now() < m_relist_at)
     return;
 
   if (!m_index_added)
