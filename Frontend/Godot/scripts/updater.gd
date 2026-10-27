@@ -15,6 +15,13 @@ extends Node
 ## deleted. SparkingData/update/installed.json remembers each managed file's size, time and
 ## hash; SparkingData/update/hashes.json caches every managed file's hash by size and time, so
 ## unchanged files aren't hashed again on every start.
+##
+## Packs: optional parts of a build, like the Enhanced textures. Their files are in the same
+## signed list, each marked with its pack ("pack": "enhanced_textures"), and "packs" gives each
+## pack's name and size. A pack is left out of updates until the player downloads it (Options >
+## Enhanced textures: install_pack) or already has it: most of its files are in the folder (from
+## an older install, or copied in by hand). Then it's kept up to date like everything else.
+## Updates never delete a pack's files; remove_pack() does, when the player asks.
 
 signal changed   # state / progress
 signal found     # a newer build is available (check() found one): Main opens the update screen
@@ -23,6 +30,7 @@ const HttpWait := preload("res://scripts/util/http_wait.gd")
 const KEY_PATH := "res://data/update_key.pem"   # the release key's public half (keygen)
 const BATCH := 400             # links per update.php call
 const STALL_SECONDS := 30.0    # a download that gets nothing for this long has failed
+const TEXTURES_PACK := "enhanced_textures"
 
 ## idle, checking, available, up_to_date, downloading, applying, restarting, failed, no_login, off
 var state := "idle"
@@ -42,6 +50,9 @@ var _need: Array = []
 ## Tests: the launcher's own files (relative paths), instead of the running .exe / .pck.
 var own_files_override: Array = []
 var _checked := false          # checked once this session (start, or right after a login)
+## The pack install_pack() is downloading ("" = a normal update).
+var pack_job := ""
+var _cached := {}              # the last verified list, kept from an earlier start (packs())
 
 
 func _ready() -> void:
@@ -121,25 +132,9 @@ func check(apply := true) -> String:
 	if not Ranked.logged_in():
 		_to_state("no_login")
 		return state
-	_to_state("checking")
-	var r: Dictionary = await Ranked.api("update.php", {"action": "check", "platform": platform()})
-	if not r.get("ok", false):
-		if r.get("error") == "login_required":   # the login expired (Ranked forgot it): log in again
-			_to_state("no_login")
-			return state
-		detail = _detail(r)
-		_to_state("failed", "updates_not_set_up" if r.get("error") == "updates_not_set_up" else "Couldn't reach the update server.")
-		return state
-	var got := await _get_bytes(String(r["manifest_url"]))
-	if got.is_empty():
-		_to_state("failed", "Couldn't download the update list.")
-		return state
-	var m := _verified(got)
+	pack_job = ""
+	var m := await _fetch_manifest()
 	if m.is_empty():
-		_to_state("failed", "The update list isn't signed by the release key: not installed.")
-		return state
-	if String(m.get("platform", "windows")) != platform():
-		_to_state("failed", "The update list is for another system: not installed.")
 		return state
 	# Never back to an older build than the one installed (an old signed list put back).
 	if int(m.get("build", 0)) < int(_installed().get("build", 0)):
@@ -168,12 +163,43 @@ func check(apply := true) -> String:
 	return state
 
 
+## The current signed list from the server ({} and state failed / no_login if not).
+func _fetch_manifest() -> Dictionary:
+	_to_state("checking")
+	var r: Dictionary = await Ranked.api("update.php", {"action": "check", "platform": platform()})
+	if not r.get("ok", false):
+		if r.get("error") == "login_required":   # the login expired (Ranked forgot it): log in again
+			_to_state("no_login")
+			return {}
+		detail = _detail(r)
+		_to_state("failed", "updates_not_set_up" if r.get("error") == "updates_not_set_up" else "Couldn't reach the update server.")
+		return {}
+	var got := await _get_bytes(String(r["manifest_url"]))
+	if got.is_empty():
+		_to_state("failed", "Couldn't download the update list.")
+		return {}
+	var m := _verified(got)
+	if m.is_empty():
+		_to_state("failed", "The update list isn't signed by the release key: not installed.")
+		return {}
+	if String(m.get("platform", "windows")) != platform():
+		_to_state("failed", "The update list is for another system: not installed.")
+		return {}
+	# Kept for packs() on the next start (checked again when read).
+	DirAccess.make_dir_recursive_absolute(_list_path().get_base_dir())
+	var out := FileAccess.open(_list_path(), FileAccess.WRITE)
+	if out:
+		out.store_buffer(got)
+	_cached = m
+	return m
+
+
 ## Downloads and installs what check() found ("available").
 func install() -> String:
 	if state != "available" or Dolphin.is_running():
 		return state   # (a running game holds Dolphin's files: after it closes)
 	cancelled = false
-	return await _install(_manifest, _need)
+	return await _install(_manifest, _need, pack_job)
 
 
 func cancel() -> void:
@@ -207,6 +233,8 @@ func _verified(envelope_bytes: PackedByteArray) -> Dictionary:
 		if p == "" or p.begins_with("/") or ":" in p or ".." in p.split("/") or "\\" in p \
 				or not RegEx.create_from_string("^[0-9a-f]{64}$").search(String(f.get("sha256", ""))):
 			return {}
+	if m.has("packs") and not m["packs"] is Dictionary:
+		return {}
 	return m
 
 
@@ -286,14 +314,15 @@ func _outdated(m: Dictionary) -> Array:
 	var cache := _load_hashes()
 	_frame_start = Time.get_ticks_msec()
 	var out := []
-	for f in m["files"]:
+	for f in _wanted(m):
 		if await _local_sha(String(f["path"]), cache) != String(f["sha256"]):
 			out.append(f)
 	_save_hashes(cache)   # (a "Later" doesn't hash it all again next start)
 	return out
 
 
-## Files the previous update installed that this one no longer has.
+## Files the previous update installed that this one no longer has (a pack's files count as
+## had, chosen or not: an update never deletes them).
 func _removed(m: Dictionary) -> Array:
 	var now := {}
 	for f in m["files"]:
@@ -306,22 +335,219 @@ func _removed(m: Dictionary) -> Array:
 
 
 func _save_installed(m: Dictionary, pending: Dictionary) -> void:
+	_write_installed({"version": m.get("version", ""), "build": m.get("build", 0),
+		"files": _installed_entries(_wanted(m), pending)})
+
+
+## installed.json entries for these files (and their hashes into hashes.json).
+func _installed_entries(list: Array, pending: Dictionary) -> Dictionary:
 	var files := {}
-	for f in m["files"]:
+	for f in list:
 		var rel := String(f["path"])
 		var path := root().path_join(rel)
 		# A file still waiting for the restart script: hashed again next time.
 		files[rel] = {"sha256": String(f["sha256"]), "size": int(f["size"]),
 			"mtime": -1 if pending.has(rel) else FileAccess.get_modified_time(path)}
+		if String(f.get("pack", "")) != "":
+			files[rel]["pack"] = String(f["pack"])
 	var cache := _load_hashes()
 	for rel in files:
-		cache[rel] = files[rel]
+		cache[rel] = files[rel].duplicate()
+		cache[rel].erase("pack")
 	_save_hashes(cache)
+	return files
+
+
+func _write_installed(d: Dictionary) -> void:
 	DirAccess.make_dir_recursive_absolute(_installed_path().get_base_dir())
 	var out := FileAccess.open(_installed_path(), FileAccess.WRITE)
 	if out:
-		out.store_string(JSON.stringify({"version": m.get("version", ""), "build": m.get("build", 0),
-			"files": files}, " "))
+		out.store_string(JSON.stringify(d, " "))
+
+
+# --- Packs (optional downloads: the Enhanced textures) ----------------------------------------
+
+func _list_path() -> String:
+	return root().path_join("SparkingData/update/manifest.json")
+
+
+## The newest list known here: this session's, or the one kept from an earlier start.
+func _known_manifest() -> Dictionary:
+	if not _manifest.is_empty():
+		return _manifest
+	if _cached.is_empty() and enabled() and FileAccess.file_exists(_list_path()):
+		var m := _verified(FileAccess.get_file_as_bytes(_list_path()))
+		if String(m.get("platform", "windows")) == platform():
+			_cached = m
+	return _cached
+
+
+## Whether the player chose this pack ("on": downloaded it here). Settings [update] packs.
+func pack_chosen(id: String) -> bool:
+	var d = Settings.get_value("update", "packs")
+	return d is Dictionary and String(d.get(id, "")) == "on"
+
+
+func _set_pack_chosen(id: String, on: bool) -> void:
+	var d = Settings.get_value("update", "packs")
+	d = d.duplicate() if d is Dictionary else {}
+	if on:
+		d[id] = "on"
+	else:
+		d.erase(id)
+	Settings.set_value("update", "packs", d)
+
+
+func _pack_files(m: Dictionary, id: String) -> Array:
+	return m.get("files", []).filter(func(f): return String(f.get("pack", "")) == id)
+
+
+## How many of the pack's files are in the folder (any version of them).
+func _pack_present(m: Dictionary, id: String) -> int:
+	var n := 0
+	for f in _pack_files(m, id):
+		if FileAccess.file_exists(root().path_join(String(f["path"]))):
+			n += 1
+	return n
+
+
+## Kept up to date: chosen, or already here (at least half its files: an older copy, or one
+## copied in by hand).
+func pack_wanted(m: Dictionary, id: String) -> bool:
+	if pack_chosen(id):
+		return true
+	var total := _pack_files(m, id).size()
+	return total > 0 and _pack_present(m, id) * 2 >= total
+
+
+## The list's files this install keeps: everything but the packs it doesn't want.
+func _wanted(m: Dictionary) -> Array:
+	var want := {}
+	for id in m.get("packs", {}):
+		want[id] = pack_wanted(m, id)
+	for f in m.get("files", []):   # (a pack missing from "packs": still a pack)
+		var id := String(f.get("pack", ""))
+		if id != "" and not want.has(id):
+			want[id] = pack_wanted(m, id)
+	return m.get("files", []).filter(func(f):
+		var id := String(f.get("pack", ""))
+		return id == "" or want[id])
+
+
+## A pack, for Options: {known (in the newest list known here), label, bytes, files, present
+## (files in the folder), installed (all there), wanted (kept up to date)}.
+func pack_info(id: String) -> Dictionary:
+	var m := _known_manifest()
+	var files := _pack_files(m, id)
+	if files.is_empty():
+		return {"known": false, "label": "", "bytes": 0, "files": 0, "present": 0, "installed": false,
+			"wanted": pack_chosen(id)}
+	var bytes := 0
+	for f in files:
+		bytes += int(f["size"])
+	var present := _pack_present(m, id)
+	var p: Dictionary = m.get("packs", {}).get(id, {})
+	return {"known": true, "label": String(p.get("label", id)), "bytes": bytes, "files": files.size(),
+		"present": present, "installed": present == files.size(), "wanted": pack_wanted(m, id)}
+
+
+## Downloads one pack, and only it (whatever else the newest build changed waits for the
+## update). Files already here with the right content aren't downloaded again; a cancelled
+## download keeps what it got for next time. Returns the final state.
+func install_pack(id: String) -> String:
+	if busy() or Dolphin.is_running():
+		return state
+	cancelled = false
+	if not enabled():
+		_to_state("off")
+		return state
+	if not Ranked.logged_in():
+		_to_state("no_login")
+		return state
+	var m := await _fetch_manifest()
+	if m.is_empty():
+		return state
+	var files := _pack_files(m, id)
+	if files.is_empty():
+		_to_state("failed", "This download isn't on the update server.")
+		return state
+	pack_job = id
+	version = String(m.get("version", ""))
+	_manifest = m
+	var cache := _load_hashes()
+	_frame_start = Time.get_ticks_msec()
+	var need := []
+	for f in files:
+		if await _local_sha(String(f["path"]), cache) != String(f["sha256"]):
+			need.append(f)
+	_save_hashes(cache)
+	_need = need
+	file_count = need.size()
+	total_bytes = 0
+	for f in need:
+		total_bytes += int(f["size"])
+	done_bytes = 0
+	return await _install(m, need, id)
+
+
+## A pack's files done (pack_job): into installed.json next to the build's (the build's version
+## stays what it was), and chosen from now on.
+func _pack_installed(m: Dictionary, id: String) -> void:
+	var d := _installed()
+	var files: Dictionary = d.get("files", {})
+	for rel in files.keys():
+		if String(files[rel].get("pack", "")) == id:
+			files.erase(rel)
+	files.merge(_installed_entries(_pack_files(m, id), {}), true)
+	d["files"] = files
+	_write_installed(d)
+	_set_pack_chosen(id, true)
+
+
+## Deletes a pack's files (Options > Enhanced textures > Remove) and its emptied folders. Not
+## while a game runs or an update is busy. Returns how many files were deleted (-1: not now).
+func remove_pack(id: String) -> int:
+	if busy() or Dolphin.is_running():
+		return -1
+	var rels := {}
+	for f in _pack_files(_known_manifest(), id):
+		rels[String(f["path"])] = true
+	var d := _installed()
+	var files: Dictionary = d.get("files", {})
+	for rel in files.keys():
+		if String(files[rel].get("pack", "")) == id:
+			rels[rel] = true
+			files.erase(rel)
+	d["files"] = files
+	_write_installed(d)
+	_set_pack_chosen(id, false)
+	var n := 0
+	var dirs := {}
+	_frame_start = Time.get_ticks_msec()
+	for rel in rels:
+		var path := root().path_join(String(rel))
+		if FileAccess.file_exists(path) and DirAccess.remove_absolute(path) == OK:
+			n += 1
+		dirs[path.get_base_dir()] = true
+		if Time.get_ticks_msec() - _frame_start > 12:
+			await get_tree().process_frame
+			_frame_start = Time.get_ticks_msec()
+	# Emptied folders, deepest first, never above SparkingData.
+	var stop := root().path_join("SparkingData")
+	var all := {}
+	for dir in dirs:
+		var p := String(dir)
+		while p.begins_with(stop + "/") and not all.has(p):
+			all[p] = true
+			p = p.get_base_dir()
+	var order: Array = all.keys()
+	order.sort_custom(func(a, b): return a.length() > b.length())
+	for dir in order:
+		if DirAccess.dir_exists_absolute(dir) and DirAccess.get_files_at(dir).is_empty() \
+				and DirAccess.get_directories_at(dir).is_empty():
+			DirAccess.remove_absolute(dir)
+	changed.emit()
+	return n
 
 
 # --- Download and install ---------------------------------------------------------------------
@@ -330,7 +556,7 @@ func _staging() -> String:
 	return root().path_join("SparkingData/update/download")
 
 
-func _install(m: Dictionary, need: Array) -> String:
+func _install(m: Dictionary, need: Array, pack := "") -> String:
 	if DirAccess.make_dir_recursive_absolute(_staging()) != OK or not _writable(root()):
 		_to_state("failed", "The game folder is read-only (Program Files?). Move it, or run as administrator.")
 		return state
@@ -376,6 +602,14 @@ func _install(m: Dictionary, need: Array) -> String:
 			pending[rel] = staged
 		else:
 			_make_executable(rel)
+	if pack != "":
+		# Only the pack: the rest of the build is the update's business.
+		if not pending.is_empty():
+			_to_state("failed", "Some files couldn't be replaced (in use?). Close the game and try again.")
+			return state
+		_pack_installed(m, pack)
+		_to_state("up_to_date")
+		return state
 	for rel in _removed(m):
 		if not self_files.has(rel):
 			DirAccess.remove_absolute(root().path_join(rel))

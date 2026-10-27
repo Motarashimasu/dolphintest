@@ -47,8 +47,11 @@ func build_rows() -> Array:
 	var current: String = Settings.get_value("options", group)
 	var rows: Array = []
 	for o in _options():
+		var desc: String = o[2]
+		if o[0] == "Enhanced" and not _pack_here():
+			desc = "The HD texture pack: sharper characters, stages and menus.\nNot downloaded yet: Options > Enhanced textures."
 		rows.append({"type": "action", "key": o[0], "label": o[1],
-			"value": "✓  Selected" if o[0] == current else "", "desc": o[2]})
+			"value": "✓  Selected" if o[0] == current else "", "desc": desc})
 	rows.append({"type": "action", "key": "back", "label": "Back", "desc": "Back to Modifications."})
 	return rows
 
@@ -62,4 +65,13 @@ func on_press(key: String) -> void:
 	if Dolphin.is_running():
 		Dolphin.send("textures %s=%s" % ["Graphics" if group == "graphics" else "Buttons", key])
 	list.set_rows(build_rows(), key)
+	if group == "graphics" and key == "Enhanced" and not _pack_here():
+		app.toast(tr("The Enhanced textures aren't downloaded yet: Options > Enhanced textures."), 4.0)
+		return
 	app.toast(tr(screen_title() + ": %s") % tr(Settings.option_name(group, key)), 1.5)
+
+
+## The HD pack is in the folder (or the launcher can't tell yet: no list from the server).
+func _pack_here() -> bool:
+	var info := Updater.pack_info(Updater.TEXTURES_PACK)
+	return not info["known"] or info["wanted"]

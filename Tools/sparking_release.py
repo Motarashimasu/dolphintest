@@ -26,8 +26,14 @@ release.json (keep it on your PC: it holds the R2 key that can write to the buck
       "include": ["*.exe", "*.pck", "*.ico", "Dolphin/**", "SparkingData/states/*",
                   "SparkingData/textures/**", "SparkingData/discs/**",
                   "SparkingData/saves/netplay/*/title/00010000/*/data/**"],
-      "exclude": []
+      "exclude": [],
+      "packs": {"enhanced_textures": {"label": "Enhanced textures",
+                                      "include": ["SparkingData/textures/*/@Graphics/Enhanced/**"]}}
     }
+packs: optional downloads. Their files are published like the rest (same list, same store), each
+marked with its pack, but launchers only download a pack once the player chooses it (Options >
+Enhanced textures) or already has most of it. Leave "packs" out for the default above (the
+Enhanced textures); "packs": {} turns packs off (everything is part of the update again).
 disc: makes a disc recipe (Tools/sparking_disc.py, Docs/DISCS.md).
 
 ("r2_endpoint" may replace the account's R2 address, e.g. for a local test server.)
@@ -390,6 +396,23 @@ PLATFORMS = {
 }
 
 
+# Optional downloads (see "packs" above): id -> name shown in the launcher, files.
+DEFAULT_PACKS = {"enhanced_textures": {"label": "Enhanced textures",
+                                       "include": ["SparkingData/textures/*/@Graphics/Enhanced/**"]}}
+
+
+def pack_settings(cfg: dict, platform: str) -> dict:
+    """release.json "packs" (or "packs_linux" for Linux, else "packs"), else DEFAULT_PACKS."""
+    key = "packs" + PLATFORMS[platform]["suffix"]
+    packs = cfg[key] if key in cfg else cfg.get("packs", DEFAULT_PACKS)
+    if not isinstance(packs, dict):
+        raise SystemExit('release.json: "packs" should be { "id": {"label": ..., "include": [...]}, ... }')
+    for pid, p in packs.items():
+        if not re.fullmatch(r"[a-z0-9_]{1,40}", pid) or not isinstance(p, dict) or not p.get("include"):
+            raise SystemExit(f'release.json: pack "{pid}" needs a lowercase id and an "include" list')
+    return packs
+
+
 def platform_settings(cfg: dict, platform: str) -> tuple[list, list, str]:
     """include, exclude, launcher for a platform: release.json's "include" / "exclude" /
     "launcher" for Windows, "include_linux" / "exclude_linux" / "launcher_linux" for Linux
@@ -412,10 +435,21 @@ def cmd_publish(args) -> None:
     include, exclude, launcher = platform_settings(cfg, args.platform)
     with open(cfg["private_key"]) as f:
         n, d = load_private(f.read())
+    packs = pack_settings(cfg, args.platform)
     print(f"Hashing {build} ...")
-    files = collect(build, include, exclude)
+    pack_patterns = [pat for p in packs.values() for pat in p["include"]]
+    files = collect(build, include + pack_patterns, exclude)
     if not files:
         raise SystemExit(f"No files in {build} matched \"include\" ({', '.join(include)}).")
+    pack_info = {}
+    for f in files:
+        for pid, p in packs.items():
+            if matches(f["path"], p["include"]):
+                f["pack"] = pid
+                info = pack_info.setdefault(pid, {"label": str(p.get("label") or pid), "files": 0, "size": 0})
+                info["files"] += 1
+                info["size"] += f["size"]
+                break
     if launcher and not any(f["path"] == launcher for f in files):
         raise SystemExit(f"The launcher \"{launcher}\" isn't in the build (release.json "
                          f"\"launcher{PLATFORMS[args.platform]['suffix']}\").")
@@ -426,14 +460,22 @@ def cmd_publish(args) -> None:
     total = sum(f["size"] for f in files)
     manifest = {"format": FORMAT, "version": args.version, "build": int(time.time()),
                 "created": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "platform": args.platform, "launcher": launcher, "notes": args.notes or "", "files": files}
+                "platform": args.platform, "launcher": launcher, "notes": args.notes or "", "files": files,
+                "packs": pack_info}
     data = json.dumps(manifest, indent=1, ensure_ascii=False).encode()
     envelope = json.dumps({"manifest": base64.b64encode(data).decode(),
                            "signature": base64.b64encode(sign(data, n, d)).decode()}).encode()
-    print(f"{args.platform}: {len(files)} files, {total / 1048576:.1f} MB")
+    base = [f for f in files if "pack" not in f]
+    print(f"{args.platform}: {len(base)} files, {sum(f['size'] for f in base) / 1048576:.1f} MB (the update)")
+    for pid, info in pack_info.items():
+        print(f"  + optional \"{info['label']}\" ({pid}): {info['files']} files, {info['size'] / 1048576:.1f} MB "
+              "(only for players who download it)")
+    for pid in packs:
+        if pid not in pack_info:
+            print(f"  (optional \"{pid}\": no files in the build matched {', '.join(packs[pid]['include'])})")
     if args.dry_run:
         for f in files:
-            print(f"  {f['path']}  {f['size']}")
+            print(f"  {f['path']}  {f['size']}" + (f"  [{f['pack']}]" if "pack" in f else ""))
         return
     r2 = R2(cfg)
     have = {k.rsplit("/", 1)[-1] for k in r2.list_keys("files/")}

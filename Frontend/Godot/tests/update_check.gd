@@ -2,7 +2,8 @@ extends Node
 ## Tools/update_test.py: runs one automatic update against its test servers and prints the
 ## result. Run: godot --path Frontend/Godot -- --update-check <settings.cfg>
 ## (settings [update] root / key, [ranked] server / token; env UPDATE_OWN = the install's
-## "launcher" files, relative, comma-separated).
+## "launcher" files, relative, comma-separated). UPDATE_PACK = a pack's id: UPDATE_ACTION
+## "install" downloads it (Updater.install_pack), "remove" deletes it, "info" only reports.
 
 func _ready() -> void:
 	_run.call_deferred()
@@ -31,8 +32,18 @@ func _run() -> void:
 	var own := OS.get_environment("UPDATE_OWN")
 	if own != "":
 		Updater.own_files_override = Array(own.split(","))
-	var state: String = await Updater.check()
+	var pack := OS.get_environment("UPDATE_PACK")
+	var action := OS.get_environment("UPDATE_ACTION")
+	var state := ""
+	var removed := 0
+	if pack == "" or action == "":
+		state = await Updater.check()
+	elif action == "install":
+		state = await Updater.install_pack(pack)
+	elif action == "remove":
+		removed = await Updater.remove_pack(pack)
 	print("UPDATE_RESULT ", JSON.stringify({"state": state, "error": Updater.error,
 		"version": Updater.version, "files": Updater.file_count, "bytes": Updater.total_bytes,
-		"restarted": flags["restarted"]}))
+		"restarted": flags["restarted"], "installed_version": Updater.installed_version(),
+		"pack": Updater.pack_info(pack) if pack != "" else {}, "removed": removed}))
 	get_tree().quit()

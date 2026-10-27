@@ -234,8 +234,9 @@ def main():
                     f'[update]\nroot="{install}"\nkey="{os.path.join(work, "keys", "release_public.pem")}"\n'
                     f'platform="windows"\n')
 
-        def run_launcher(own="Launcher.exe,Launcher.pck", hitch=0):
-            env = dict(os.environ, UPDATE_OWN=own, UPDATE_HITCH_MS=str(hitch))
+        def run_launcher(own="Launcher.exe,Launcher.pck", hitch=0, pack="", action=""):
+            env = dict(os.environ, UPDATE_OWN=own, UPDATE_HITCH_MS=str(hitch), UPDATE_PACK=pack,
+                       UPDATE_ACTION=action)
             p = subprocess.run([godot, "--headless", "--path", os.path.join(ROOT, "Frontend", "Godot"),
                                 "--", "--update-check", settings], capture_output=True, text=True, env=env,
                                timeout=180)
@@ -330,6 +331,83 @@ def main():
         res = run_launcher()
         check(f"build 207 then installs {res}", res.get("state") == "up_to_date"
               and read(os.path.join(install, "Dolphin/DolphinNoGUI.exe")) == b"dolphin v3")
+
+        # --- Packs: the Enhanced textures, an optional download --------------------------------
+        enh = "SparkingData/textures/RDSPAF/@Graphics/Enhanced/"
+        b4 = os.path.join(work, "build4")
+        shutil.copytree(b3, b4)
+        write(os.path.join(b4, enh + "a.png"), os.urandom(1048576 + 7))
+        write(os.path.join(b4, enh + "menus/b.png"), b"hd menu v1")
+        out = publish(b4, "208")
+        m = json.loads(release.base64.b64decode(json.loads(r2.objects["manifest.json"])["manifest"]))
+        tagged = {f["path"]: f.get("pack") for f in m["files"]}
+        check(f"publish: the Enhanced textures are an optional pack ({out.stdout.strip().splitlines()[1:3]})",
+              out.returncode == 0 and "optional \"Enhanced textures\"" in out.stdout
+              and tagged.get(enh + "a.png") == "enhanced_textures" and tagged.get(enh + "menus/b.png") == "enhanced_textures"
+              and tagged.get("SparkingData/textures/RDSPAF/@Buttons/x.png") is None
+              and m["packs"]["enhanced_textures"]["files"] == 2)
+        pack_shas = {"files/" + hashlib.sha256(read(os.path.join(b4, enh + n))).hexdigest() for n in ("a.png", "menus/b.png")}
+        gets_before = len(r2.gets)
+        res = run_launcher()
+        check(f"the update leaves the pack out for a player who doesn't have it {res}",
+              res.get("state") == "up_to_date" and res.get("version") == "208"
+              and not pack_shas & set(r2.gets[gets_before:]) and not os.path.exists(os.path.join(install, enh)))
+        res = run_launcher(pack="enhanced_textures", action="info")
+        check(f"pack info: known, not installed, its size {res.get('pack')}",
+              res["pack"].get("known") and not res["pack"].get("installed") and res["pack"].get("present") == 0
+              and res["pack"].get("bytes") == 1048576 + 7 + len(b"hd menu v1") and not res["pack"].get("wanted"))
+        b5 = os.path.join(work, "build5")
+        shutil.copytree(b4, b5)
+        write(os.path.join(b5, "Dolphin/Sys/GameSettings/RDSPAF.ini"), b"[Gecko]\nv3\n")
+        publish(b5, "209")
+        gets_before = len(r2.gets)
+        res = run_launcher(pack="enhanced_textures", action="install")
+        check(f"Download: only the pack, not the waiting update {res}",
+              res.get("state") == "up_to_date" and res.get("files") == 2
+              and set(r2.gets[gets_before:]) == {"manifest.json"} | pack_shas
+              and read(os.path.join(install, enh + "menus/b.png")) == b"hd menu v1"
+              and read(os.path.join(install, "Dolphin/Sys/GameSettings/RDSPAF.ini")) == b"[Gecko]\nv2\n"
+              and res.get("installed_version") == "208" and res["pack"].get("installed"))
+        res = run_launcher()
+        check(f"then the update installs build 209 and keeps the pack {res}",
+              res.get("state") == "up_to_date" and res.get("files") == 1
+              and read(os.path.join(install, "Dolphin/Sys/GameSettings/RDSPAF.ini")) == b"[Gecko]\nv3\n"
+              and os.path.exists(os.path.join(install, enh + "a.png")))
+        b6 = os.path.join(work, "build6")
+        shutil.copytree(b5, b6)
+        write(os.path.join(b6, enh + "menus/b.png"), b"hd menu v2")
+        publish(b6, "210")
+        res = run_launcher()
+        check(f"a chosen pack is kept up to date by the updates {res}",
+              res.get("state") == "up_to_date" and res.get("files") == 1
+              and read(os.path.join(install, enh + "menus/b.png")) == b"hd menu v2")
+        res = run_launcher(pack="enhanced_textures", action="remove")
+        check(f"Remove: the pack's files and emptied folders gone, the rest kept {res.get('removed')}",
+              res.get("removed") == 2 and not os.path.exists(os.path.join(install, "SparkingData/textures/RDSPAF/@Graphics"))
+              and os.path.exists(os.path.join(install, "SparkingData/textures/RDSPAF/@Buttons/x.png"))
+              and not res["pack"].get("wanted"))
+        gets_before = len(r2.gets)
+        res = run_launcher()
+        check(f"after Remove the update doesn't bring it back {res}",
+              res.get("state") == "up_to_date" and set(r2.gets[gets_before:]) == {"manifest.json"}
+              and not os.path.exists(os.path.join(install, enh)))
+        # Copied in by hand (or kept from an older install): found, kept up to date, nothing downloaded.
+        write(os.path.join(install, enh + "a.png"), read(os.path.join(b6, enh + "a.png")))
+        write(os.path.join(install, enh + "menus/b.png"), b"hd menu v1")   # an older copy
+        res = run_launcher(pack="enhanced_textures", action="info")
+        check(f"files already here are found {res.get('pack')}",
+              res["pack"].get("installed") and res["pack"].get("wanted"))
+        gets_before = len(r2.gets)
+        res = run_launcher()
+        check(f"...and only the out-of-date one is downloaded {res}",
+              res.get("files") == 1 and res.get("state") == "up_to_date"
+              and set(r2.gets[gets_before:]) == {"manifest.json", "files/" + hashlib.sha256(b"hd menu v2").hexdigest()}
+              and read(os.path.join(install, enh + "menus/b.png")) == b"hd menu v2")
+        gets_before = len(r2.gets)
+        res = run_launcher(pack="enhanced_textures", action="install")
+        check(f"Download with everything here: nothing to download {res}",
+              res.get("state") == "up_to_date" and res.get("files") == 0 and set(r2.gets[gets_before:]) == {"manifest.json"})
+        b3 = b6   # (the later tests compare against the current build)
 
         # An older signed list put back on the bucket: never installed over a newer build.
         current = r2.objects["manifest.json"]

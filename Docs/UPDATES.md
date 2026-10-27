@@ -29,6 +29,8 @@ launcher <---------------- downloads with those links -----------------
 - **Only changes are downloaded:** files are stored under their own hash, so publishing uploads
   only new files, and a launcher downloads only the files that differ from its copy. A changed
   ini is a few KB.
+- **Optional downloads (packs):** the Enhanced textures aren't part of the update. Players
+  choose them in Options > Enhanced textures (see *Optional downloads* below).
 - **The launcher itself:** Windows doesn't let a running program overwrite its own `.exe` or
   `.pck`. The launcher downloads them, starts a small hidden PowerShell script, and closes. The
   script waits for it to exit, copies the files in and starts the launcher again
@@ -91,7 +93,9 @@ Until `data/update_key.pem` exists, the launcher's updates stay off (Options > U
   "include": ["*.exe", "*.pck", "*.ico", "Dolphin/**", "SparkingData/states/*",
               "SparkingData/textures/**",
               "SparkingData/saves/netplay/*/title/00010000/*/data/**"],
-  "exclude": ["SparkingData/states/*.bak"]
+  "exclude": ["SparkingData/states/*.bak"],
+  "packs": {"enhanced_textures": {"label": "Enhanced textures",
+                                  "include": ["SparkingData/textures/*/@Graphics/Enhanced/**"]}}
 }
 ```
 
@@ -105,6 +109,7 @@ Until `data/update_key.pem` exists, the launcher's updates stay off (Options > U
   (the lobby compares exactly these `title/.../data` files). Only the saves themselves: the rest
   of those folders is Dolphin's own per-PC files. Change a netplay save in the build and the next
   publish sends it to everyone.
+- `packs` (optional; the default is shown above): see *Optional downloads* below.
 - Linux builds (`--platform linux`, Docs/LINUX.md) read `include_linux` / `exclude_linux` /
   `launcher_linux` instead (defaults: the same with `*.x86_64` for `*.exe` / `*.ico`).
 
@@ -121,6 +126,9 @@ Until `data/update_key.pem` exists, the launcher's updates stay off (Options > U
   on the `[Files]` line for the build folder:
   `Excludes: "frontend.cfg,*.bat,\SparkingData\saves\solo\*,\SparkingData\saves\capture\*,\SparkingData\user\*,\SparkingData\user2\*,\SparkingData\statebackup\*,\SparkingData\old_scripts\*,\SparkingData\update\*"`
   (a leading `\` means "from the build folder's top", so only those exact folders are skipped).
+- **Leave the Enhanced textures out of the installer** to keep it small (players download them
+  in the launcher, see *Optional downloads*): add the Enhanced folder of each game to `Excludes`,
+  e.g. `\SparkingData\textures\RDSPAF\@Graphics\Enhanced\*` (one per game folder that has one).
 - Players on a build from before automatic updates (205 and older) install the first updating
   build by hand, once.
 
@@ -166,3 +174,35 @@ python Tools/sparking_release.py prune --config C:\SparkingKeys\release.json --y
   `.pck` installed by the restart script; a list not signed by the release key refused; a file
   swapped on the bucket refused; no update without a login; prune.
 - `update.php`'s link signing matches AWS's published presigned-URL example exactly.
+
+## Optional downloads (packs)
+
+The Enhanced textures (`SparkingData/textures/<game>/@Graphics/Enhanced/`) are an optional
+download: a fresh install doesn't get them with the updates. In the launcher, **Options >
+Enhanced textures** shows whether they're here and their size, and has:
+
+- **Download**: downloads only the pack, not whatever else the newest build changed (that waits
+  for the update). Files already in the folder with the right content aren't downloaded again.
+  It carries on while the player uses the menus; stopped, it resumes where it was.
+- **Check for damaged files** (once installed): the same, downloading only what's missing or
+  different.
+- **Remove**: deletes the pack's files (and its emptied folders). Graphics: Enhanced then shows
+  the original textures.
+
+Players who already have the textures (an older install, or copied in by hand: at least half of
+the pack's files in the right place) are found automatically: nothing is downloaded, and from
+then on the updates keep their copy up to date like the rest. Updates never delete a pack's
+files.
+
+How it's published: `publish` puts the pack's files in the same signed list, each marked with
+its pack, plus the pack's name and size (`--dry-run` shows the pack's total and marks its files
+`[enhanced_textures]`). They're uploaded to the same store as everything else, so publishing
+again only uploads changed textures. **Always publish from a build folder that has the
+textures** (a pack missing from the build is simply left out of the list, so players can't
+download it). Launchers from before packs don't know the marks: they treat the
+pack as part of the update until they've updated to a launcher that does, which the same update
+brings.
+
+`"packs": {...}` in `release.json` changes or adds packs (an id of lowercase letters, digits and
+`_`, a `label`, `include` patterns); `"packs": {}` turns them off (the textures are part of the
+update again). The launcher's Options screen only shows `enhanced_textures`.

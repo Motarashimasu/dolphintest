@@ -46,6 +46,8 @@ func build_rows() -> Array:
 		{"type": "choice", "key": "profile", "label": "Profile", "values": ["user", "user2"],
 			"names": ["user (primary)", "user2 (secondary)"], "value": Settings.get_value("paths", "profile"),
 			"desc": "Primary and secondary user profiles for online play.\nOnly change to user2 for LAN testing."},
+		{"type": "action", "key": "textures", "label": "Enhanced textures", "value": _textures_summary(),
+			"desc": "The HD texture pack: an optional download, not part of the updates.\nDownload it, check it or remove it."},
 		{"type": "action", "key": "updates", "label": "Updates", "value": Updater.summary(),
 			"desc": "Check for a newer build now (it also checks at every start).\nUpdates need a DRAGON NET login."},
 		{"type": "action", "key": "back", "label": "Back", "desc": "Back to the main menu."},
@@ -61,7 +63,38 @@ func _copies_summary() -> String:
 	return "  ".join(parts) if not parts.is_empty() else tr("None")
 
 
+## The texture pack's state for its row (a download in progress: how far).
+func _textures_summary() -> String:
+	if Updater.pack_job == Updater.TEXTURES_PACK and Updater.busy():
+		return "%d%%" % (100 * Updater.done_bytes / maxi(Updater.total_bytes, 1)) \
+			if Updater.state == "downloading" else tr("Checking...")
+	var info := Updater.pack_info(Updater.TEXTURES_PACK)
+	if info["installed"] or (not info["known"] and info["wanted"]):
+		return tr("Installed")
+	if info["known"] and int(info["present"]) > 0:
+		return tr("Partly here")
+	return tr("Not installed") if info["known"] else tr("Download")
+
+
+func on_enter() -> void:
+	super()
+	Updater.changed.connect(_on_updater)
+
+
+func _exit_tree() -> void:
+	if Updater.changed.is_connected(_on_updater):
+		Updater.changed.disconnect(_on_updater)
+
+
+func _on_updater() -> void:
+	if is_inside_tree() and list:
+		list.update_row("textures", {"value": _textures_summary()})
+
+
 func on_press(key: String) -> void:
+	if key == "textures":
+		app.push(load("res://scripts/screens/textures_pack.gd").new())
+		return
 	if key == "updates":
 		if Updater.state == "available":
 			app.push(load("res://scripts/screens/update.gd").new())

@@ -110,7 +110,7 @@ func _check_translations() -> void:
 			if JSON.stringify(s).trim_prefix("\"").trim_suffix("\"") in term_text:
 				continue
 			if s.begins_with("◀") or s.begins_with("★") or s.begins_with("[b]") or "   ·   " in s \
-					or RegEx.create_from_string("^\\d+ ms|^[A-Z]{2}$|Sparking Standard|^Tecbox layout|^\\S+  \\(.+\\)$|^#\\d+   |^[\\d.]+ / [\\d.]+ MB$|   Rating \\d+$| \\([a-z_]+\\)$").search(s):
+					or RegEx.create_from_string("^\\d+ ms|^[A-Z]{2}$|Sparking Standard|^Tecbox layout|^\\S+  \\(.+\\)$|^#\\d+   |^[\\d.]+ ([MG]B )?/ [\\d.]+ [MG]B$|   Rating \\d+$| \\([a-z_]+\\)$").search(s):
 				continue   # composed from translated pieces
 			if templates.any(func(rx): return rx.search(s) != null):
 				continue
@@ -1517,7 +1517,46 @@ func _tour() -> void:
 	app.open("options")
 	await frames(3)
 	check("Options has Updates", top().list.row("updates").get("value") == "Check now")
+	check("Options: Enhanced textures, unknown before any list", top().list.row("textures").get("value") == "Download")
+	# The texture pack (an optional download): a list that has it, none of its files here.
+	Updater._manifest = {"version": "212", "files": [
+		{"path": "SparkingData/textures/RDSPAF/@Graphics/Enhanced/a.png", "sha256": "0".repeat(64),
+			"size": 1200000000, "pack": Updater.TEXTURES_PACK},
+		{"path": "SparkingData/textures/RDSPAF/@Graphics/Enhanced/b.png", "sha256": "1".repeat(64),
+			"size": 500000000, "pack": Updater.TEXTURES_PACK}],
+		"packs": {Updater.TEXTURES_PACK: {"label": "Enhanced textures", "files": 2, "size": 1700000000}}}
+	top().on_resume()
+	check("Options: Enhanced textures not installed", top().list.row("textures").get("value") == "Not installed")
+	top().on_press("textures")
+	await frames(5)
+	await shot("textures_pack")
+	check("texture pack screen: status, size, Download, no Remove",
+			top().list.get_value("status") == "Not installed" and top().list.get_value("size") == "1.6 GB  (2 files)"
+			and top().list.row("download").get("label") == "Download" and top().list.row("remove").is_empty())
+	Updater.pack_job = Updater.TEXTURES_PACK
+	Updater.file_count = 2
+	Updater.total_bytes = 1700000000
+	Updater.done_bytes = 600000000
+	Updater.state = "downloading"
+	Updater.changed.emit()
+	await frames(5)
+	await shot("textures_pack_downloading")
+	check("texture pack screen: downloading, with Stop", top().list.get_value("progress") == "573 MB / 1.6 GB"
+			and not top().list.row("stop").is_empty())
 	app.pop()
+	await frames(3)
+	check("Options row shows the download's progress", top().list.row("textures").get("value") == "35%")
+	Updater.state = "idle"
+	Updater.pack_job = ""
+	app.pop()
+	await frames(3)
+	app.push(load("res://scripts/screens/variant_picker.gd").new().setup("graphics"))
+	await frames(3)
+	check("Graphics: Enhanced says where to get the pack while it isn't here",
+			"Options > Enhanced textures" in String(top().list.row("Enhanced").get("desc", "")))
+	app.pop()
+	Updater._manifest = {}
+	await frames(3)
 
 	# Button hints in the pad's own pictures (look/prompts/): PlayStation, then Xbox, then the
 	# keyboard's text badges again.
