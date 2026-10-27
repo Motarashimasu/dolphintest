@@ -465,9 +465,13 @@ func _modifications_menu() -> Control:
 		{"label": "Codes", "glyph": "C", "color": "#e8663d",
 			"desc": "Turn this game's codes on or off\nfor offline play.",
 			"action": open_checked.bind("modifications")},
+		{"label": "Training Display", "glyph": "T", "color": "#3fbf6b", "game": "bt3",
+			"desc": func(): return tr("Hitboxes and frame data in offline games (never online).\nNow: %s") \
+					% tr("On" if Settings.training_display_on() else "Off"),
+			"action": func(): push(load(SCREENS % "training_display").new())},
 		{"label": "Back", "glyph": "B", "color": "#8a9bb0", "back": true,
 			"desc": "Back to the game menu."},
-	], "game_menu")
+	].filter(func(i): return String(i.get("game", Settings.game)) == Settings.game), "game_menu")
 	menu.notices = false   # no notification bars in Modifications
 	return menu
 

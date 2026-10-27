@@ -148,7 +148,8 @@ std::string ListGeckoCodesJson(const std::string& game_id, std::optional<u16> re
 }
 
 std::vector<std::string> ActivateExclusiveGeckoCodes(const std::string& game_id, u16 revision,
-                                                     const std::vector<std::string>& names)
+                                                     const std::vector<std::string>& names,
+                                                     const std::vector<std::string>& ar_names)
 {
   std::vector<Gecko::GeckoCode> selected;
   std::vector<std::string> missing;
@@ -169,8 +170,29 @@ std::vector<std::string> ActivateExclusiveGeckoCodes(const std::string& game_id,
   // PatchEngine::LoadPatches activates the "synced" code lists when this override is set (that's
   // how NetPlay pushes the host's codes). Reusing it keeps the user's ini untouched. The current-run
   // layer is cleared when the game stops, so this applies to exactly one boot.
+  // Action Replay codes: only the ones asked for by name (offline: Training Display).
+  std::vector<ActionReplay::ARCode> ar_selected;
+  if (!ar_names.empty())
+  {
+    const std::vector<ActionReplay::ARCode> ar_all =
+        ActionReplay::LoadCodes(SConfig::LoadDefaultGameIni(game_id, revision),
+                                SConfig::LoadLocalGameIni(game_id, revision));
+    for (const std::string& name : ar_names)
+    {
+      const auto it = std::ranges::find_if(ar_all, [&](const auto& c) { return c.name == name; });
+      if (it == ar_all.end())
+      {
+        missing.push_back(name);
+        continue;
+      }
+      ActionReplay::ARCode code = *it;
+      code.enabled = true;
+      ar_selected.push_back(std::move(code));
+    }
+  }
+
   Gecko::UpdateSyncedCodes(selected);
-  ActionReplay::UpdateSyncedCodes({});
+  ActionReplay::UpdateSyncedCodes(ar_selected);
   Config::SetCurrent(Config::SESSION_CODE_SYNC_OVERRIDE, true);
   return missing;
 }

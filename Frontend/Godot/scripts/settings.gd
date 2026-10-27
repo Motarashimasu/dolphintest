@@ -138,6 +138,7 @@ var defaults := {
 		"hdr": false,                    # HDR output (an HDR monitor, Vulkan / Direct3D)
 		"hdr_paper_white": 203},         # HDR_PAPER_WHITES (nits)
 	"options": {"buttons": "Vanilla", "graphics": "Enhanced", "aspect": "16:9",
+		"training_display": false,   # Modifications > Training Display: hitboxes + frame data offline
 		"hud": false,             # score bar offline (netplay always shows it)
 		"hud_health": true,       # health % in the corners
 		"input_display": false,   # your input history (fighting-game style column) in every game
@@ -607,7 +608,38 @@ func video_args() -> PackedStringArray:
 	return a
 
 
-func solo_args() -> PackedStringArray:
+## Modifications > Training Display: the Stats & Frame Data Overlay from BT3 Phantom Mods (with the
+## creator's permission), as Action Replay codes in Dolphin's Sys game ini. Per disc ID: the codes
+## it needs (framework, its settings menu, the overlay). Offline only: never in netplay (Dolphin
+## runs no Action Replay code there) nor in replays.
+const TRAINING_DISPLAY := {
+	"RDSPAF": ["BT3 Phantom Mods Framework V0.6.17", "Mod Settings Menu V0.20.17",
+		"Stats & Frame Data Overlay - Menu V0.36.1"],
+}
+
+## The overlay is made for this version of the game.
+func training_display_available() -> bool:
+	return TRAINING_DISPLAY.has(String(GAME["id"]))
+
+
+## Training Display on for the next offline game (on, and made for this version).
+func training_display_on() -> bool:
+	return bool(get_value("options", "training_display")) and training_display_available()
+
+
+## Its codes, plus the setup the creator runs them with (CPU overclock 3x, 128 MB MEM2).
+func training_display_args() -> PackedStringArray:
+	var a := PackedStringArray()
+	if not training_display_on():
+		return a
+	for code in TRAINING_DISPLAY[String(GAME["id"])]:
+		a.append_array(["--action-replay", code])
+	a.append_array(["-C", "Dolphin.Core.OverclockEnable=True", "-C", "Dolphin.Core.Overclock=3",
+		"-C", "Dolphin.Core.RAMOverrideEnable=True", "-C", "Dolphin.Core.MEM2Size=134217728"])
+	return a
+
+
+func solo_args(training_display := true) -> PackedStringArray:
 	var a := common_args()
 	# Score bar offline only if the player wants it.
 	a.append_array(["--hud", "on" if get_value("options", "hud") else "off"])
@@ -618,6 +650,8 @@ func solo_args() -> PackedStringArray:
 			a.append("--no-gecko")
 		for code in codes:
 			a.append_array(["--gecko", code])
+	if training_display:
+		a.append_array(training_display_args())
 	a.append_array(["-e", game_path()])
 	return a
 
@@ -644,7 +678,7 @@ func replay_args(dtm_path: String, codes: Array, disc_id := "") -> PackedStringA
 ## fields again and again (--rollback-test), results to `log` (JSON lines).
 func rollback_test_args(fields: int, log: String, gpu_state := false, draw := false,
 		diagnose := false) -> PackedStringArray:
-	var a := solo_args()
+	var a := solo_args(false)   # (never the Training Display: it measures the game alone)
 	var game := a.size() - 2   # (solo_args ends with -e <game>)
 	var extra := PackedStringArray(["--rollback-test", str(fields), "--rollback-gap", "20",
 		"--rollback-log", log])

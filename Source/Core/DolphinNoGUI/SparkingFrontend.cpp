@@ -774,6 +774,12 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .metavar("NAME")
       .help("Solo: the game's default Gecko codes plus these (repeatable), e.g. a netplay-only code "
             "for capturing battle states the way a netplay match runs");
+  parser.add_option("--action-replay")
+      .dest("action_replay")
+      .action("append")
+      .metavar("NAME")
+      .help("Solo: also run this Action Replay code from the game ini (repeatable); never in "
+            "netplay or replays. E.g. the Training Display overlay");
   parser.add_option("--no-gecko")
       .dest("no_gecko")
       .action("store_true")
@@ -1293,7 +1299,8 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
 
   const bool no_gecko = options.is_set_by_user("no_gecko");
   const bool extra = options.is_set("gecko_extra");
-  if (!no_gecko && !options.is_set("gecko") && !extra)
+  const bool action_replay = options.is_set("action_replay");
+  if (!no_gecko && !options.is_set("gecko") && !extra && !action_replay)
     return;  // leave Dolphin's per-game ini selection alone
   if (!options.is_set("exec"))
   {
@@ -1320,9 +1327,20 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
       names = DefaultEnabledGeckoNames(game.GetGameID(), game.GetRevision(), extras);
       names.insert(names.end(), extras.begin(), extras.end());
     }
+    else
+    {
+      names = DefaultEnabledGeckoNames(game.GetGameID(), game.GetRevision(), {});  // (only AR given)
+    }
+  }
+  std::vector<std::string> ar_names;
+  // (A replay must run exactly the code it was recorded with: never extra Action Replay codes.)
+  if (action_replay && !options.is_set("replay"))
+  {
+    for (const std::string& n : options.all("action_replay"))
+      ar_names.push_back(n);
   }
   const std::vector<std::string> missing =
-      ActivateExclusiveGeckoCodes(game.GetGameID(), game.GetRevision(), names);
+      ActivateExclusiveGeckoCodes(game.GetGameID(), game.GetRevision(), names, ar_names);
   std::vector<std::string> active, miss;
   for (const auto& n : names)
   {
@@ -1331,8 +1349,17 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
   }
   for (const auto& n : missing)
     miss.push_back(Json::Escape(n));
-  Emit("gecko_active",
-       Json().Add("port", 0).AddRaw("codes", JsonArray(active)).AddRaw("missing", JsonArray(miss)));
+  std::vector<std::string> ar_active;
+  for (const auto& n : ar_names)
+  {
+    if (std::ranges::find(missing, n) == missing.end())
+      ar_active.push_back(Json::Escape(n));
+  }
+  Emit("gecko_active", Json()
+                           .Add("port", 0)
+                           .AddRaw("codes", JsonArray(active))
+                           .AddRaw("action_replay", JsonArray(ar_active))
+                           .AddRaw("missing", JsonArray(miss)));
 }
 
 namespace

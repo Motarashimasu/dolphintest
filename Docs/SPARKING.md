@@ -34,6 +34,7 @@ Sparking-mode options (apply only with `--sparking` / `--netplay-*`; never writt
 | `--automap gc\|wii\|none` | `gc` | Netplay host: joiners get the next free GameCube port. |
 | `--gecko <name>` (repeatable) / `--no-gecko` | ini selection | Solo: exactly these Gecko codes on, everything else off, for this run. |
 | `--gecko-extra <name>` (repeatable) | | Solo: the game's default Gecko codes plus these, for this run. (Battle states are captured with the defaults only: never with a splitscreen remover, which is per player and netplay-only.) |
+| `--action-replay <name>` (repeatable) | none | Solo: also run this Action Replay code from the game ini (with the Gecko codes chosen as above, or the ini's defaults). Never in netplay (no Action Replay code runs there) nor with `--replay`. `gecko_active` lists them under `action_replay`. The launcher's Training Display (Modifications) uses it for the Stats & Frame Data Overlay from BT3 Phantom Mods, in RDSPAF.ini's `[ActionReplay]` (included with its creator's permission). |
 | `--netplay-gecko <port>=<name>` (repeatable) | none | Netplay: the player on GameCube port `<port>` runs only these codes. Everything else is off for everyone, and Dolphin's "Sync Codes" is forced off. |
 | `--list-gecko <GAMEID>[:<rev>]` | | Print every Gecko code Dolphin knows for the game (`gecko_codes` event), then exit. Starts no game. |
 | `--textures <Group>=<Option>` (repeatable) | none | Texture variant to load, i.e. folder `@<Group>/<Option>` in the game's texture pack. Turns custom textures on. See *Texture variants*. |

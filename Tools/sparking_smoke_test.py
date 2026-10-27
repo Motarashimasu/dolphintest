@@ -224,6 +224,38 @@ def main():
         check(f"solo --gecko-extra: the defaults + the extra code ({ga['codes']})",
               count == 2 and ga["codes"] == ["Infinite Health", "Splitscreen Remover P1"])
 
+        print("action replay codes (Training Display: offline only, by name)")
+        d = os.path.join(user_dir("artest"), "GameSettings")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, f"{game_id}.ini"), "w") as f:
+            f.write("[Gecko]\n$Infinite Health [Sparking]\n04001008 00000003\n"
+                    "[Gecko_Enabled]\n$Infinite Health\n"
+                    "[ActionReplay]\n$Overlay Core\n04003110 12345678\n$Overlay Menu\n04003114 0BADF00D\n"
+                    "$Not Asked For\n04003118 DEADBEEF\n")
+
+        def ar_solo(extra):
+            inst = Instance("solo-ar", [exe, *common, "--sparking", "-u", user_dir("artest"),
+                                        "--nand", nands["solo"], *extra, "-e", dol])
+            inst.send("hello")
+            inst.wait_for("game_started")
+            time.sleep(1)
+            vals = []
+            for addr in ("80003110", "80003114", "80003118"):
+                inst.send("peek " + addr)
+                vals.append(inst.wait_for("peek")["value"])
+            ga = inst.seen("gecko_active") if extra else None
+            inst.send("quit")
+            inst.wait_for("exit")
+            inst.proc.wait(timeout=20)
+            return ga, vals
+        ga, vals = ar_solo(["--action-replay", "Overlay Core", "--action-replay", "Overlay Menu",
+                            "--action-replay", "Nope AR"])
+        check(f"--action-replay runs exactly the named codes {vals} {ga}",
+              vals == ["12345678", "0BADF00D", "00000000"] and ga["action_replay"] == ["Overlay Core", "Overlay Menu"]
+              and ga["codes"] == ["Infinite Health"] and ga["missing"] == ["Nope AR"])
+        _, vals = ar_solo(["--gecko", "Infinite Health"])
+        check(f"without --action-replay no Action Replay code runs {vals}", vals == ["00000000"] * 3)
+
         print("aspect ratio (16:9 default, also 21:9; F3 / aspect command <-> 4:3, output only)")
         d = os.path.join(user_dir("aspect"), "GameSettings")
         os.makedirs(d, exist_ok=True)

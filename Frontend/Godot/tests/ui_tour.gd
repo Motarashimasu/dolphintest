@@ -1601,6 +1601,35 @@ func _tour() -> void:
 	await frames(3)
 	check("keyboard hints are text again", app._hints.find_children("*", "TextureRect", true, false).is_empty())
 
+	# Modifications > Training Display (hitboxes + frame data): offline games only.
+	Settings.use_game("bt3")
+	app.push(app._modifications_menu())
+	await frames(4)
+	await choose("Training Display")
+	check("Training Display screen", app._title.text == tr("Training Display") and top().list.row("training_display").get("disabled", true) == false)
+	check("off by default: no overlay in offline games", not "--action-replay" in Settings.solo_args())
+	await pick("training_display", top().list)
+	check("switched on", Settings.get_value("options", "training_display") == true)
+	await shot("training_display")
+	var td_args := " ".join(Settings.solo_args())
+	check("offline: the overlay's three codes and its CPU setup", td_args.count("--action-replay") == 3
+			and "Stats & Frame Data Overlay - Menu V0.36.1" in td_args and "Dolphin.Core.Overclock=3" in td_args
+			and "Dolphin.Core.MEM2Size=134217728" in td_args)
+	var online := " ".join(Settings.host_args("single", false, true)) + " ".join(Settings.join_args("1.2.3.4:2626")) \
+			+ " ".join(Settings.find_args("single")) + " ".join(Settings.ranked_host_args("single", true)) \
+			+ " ".join(Settings.training_args()) + " ".join(Settings.replay_args("x.dtm", []))
+	check("never online (lobbies, ranked, Buffer Training) nor in replays",
+			not "--action-replay" in online and not "Overclock" in online)
+	check("never in the rollback test", not "--action-replay" in " ".join(Settings.rollback_test_args(60, "x.log")))
+	Settings.use_game("bt3", "NTSC-J")
+	check("made for PAL only: another version doesn't get it", not "--action-replay" in Settings.solo_args())
+	Settings.use_game("bt3")
+	await pick("training_display", top().list)
+	check("switched off again", not "--action-replay" in Settings.solo_args())
+	app.pop()
+	app.pop()
+	await frames(3)
+
 	# Languages: the first-launch picker, then a few menus in Spanish and Italian.
 	TranslationServer.remove_translation(recorder)   # (Godot falls back to "en" for missing texts)
 	app.push(app._language_menu(true))

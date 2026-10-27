@@ -23,10 +23,12 @@ namespace Sparking
 // JSON array of {name, creator, notes, default_enabled, user_defined, lines}.
 std::string ListGeckoCodesJson(const std::string& game_id, std::optional<u16> revision);
 
-// Make exactly `names` the active Gecko codes (and no Action Replay codes) for the next boot.
-// Must be called on the host thread before the game boots. Returns the names that weren't found.
+// Make exactly `names` the active Gecko codes, and `ar_names` the active Action Replay codes (none
+// unless given: netplay never passes any), for the next boot. Must be called on the host thread
+// before the game boots. Returns the names (of either kind) that weren't found.
 std::vector<std::string> ActivateExclusiveGeckoCodes(const std::string& game_id, u16 revision,
-                                                     const std::vector<std::string>& names);
+                                                     const std::vector<std::string>& names,
+                                                     const std::vector<std::string>& ar_names = {});
 
 // Names of the codes the game's inis enable by default (Sys + user [Gecko_Enabled]), minus
 // `exclude` (e.g. per-port codes, which must never be on for everyone).

@@ -330,6 +330,7 @@ def main():
             print("TOUR TIMEOUT: killing Godot")
             tour.kill()
             subprocess.run(["pkill", "-f", "Godot_v4"], check=False)
+            subprocess.run(["pkill", "-f", "--", "--ui-tour " + config], check=False)
     threading.Thread(target=watchdog, daemon=True).start()
     for line in tour.stdout:
         line = line.rstrip("\n")
