@@ -1606,13 +1606,15 @@ func _tour() -> void:
 	app.push(app._modifications_menu())
 	await frames(4)
 	await choose("Training Display")
-	check("Training Display screen", app._title.text == tr("Training Display") and top().list.row("training_display").get("disabled", true) == false)
+	check("Training Display screen: just the switch", app._title.text == tr("Training Display")
+			and top().list.row("training_display").get("disabled", true) == false and top().list.rows.size() == 1)
 	check("off by default: no overlay in offline games", not "--action-replay" in Settings.solo_args())
 	await pick("training_display", top().list)
 	check("switched on", Settings.get_value("options", "training_display") == true)
 	await shot("training_display")
 	var td_args := " ".join(Settings.solo_args())
-	check("offline: the overlay's three codes and its CPU setup", td_args.count("--action-replay") == 3
+	check("offline: the overlay's codes, our defaults and its CPU setup", td_args.count("--action-replay") == 4
+			and "Training Display Defaults [Sparking]" in td_args
 			and "Stats & Frame Data Overlay - Menu V0.36.1" in td_args and "Dolphin.Core.Overclock=3" in td_args
 			and "Dolphin.Core.MEM2Size=134217728" in td_args)
 	var online := " ".join(Settings.host_args("single", false, true)) + " ".join(Settings.join_args("1.2.3.4:2626")) \

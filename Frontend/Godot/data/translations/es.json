@@ -1039,21 +1039,10 @@
  "Set up your lobby, then Start.\nYou pick the mode (Single or Team Battle) in the lobby.": "Configura tu sala y luego Empezar.\nEl modo (Combate individual o por equipos) se elige en la sala.",
  "Host's pick": "Lo elige el anfitrión",
  "Training Display": "Pantalla de entrenamiento",
- "Hitboxes, hurtboxes and frame data in offline games.\nNever online: DRAGON NET matches always run without it.": "Hitboxes, hurtboxes y datos de frames en partidas sin conexión.\nNunca en línea: las partidas de DRAGON NET siempre van sin ello.",
- "On: your next offline game starts with the overlay loaded (it can't be added to a\ngame that's already running). Offline only.": "Activado: tu próxima partida sin conexión empieza con la superposición cargada (no se puede\nañadir a una partida ya en marcha). Solo sin conexión.",
  "Made for the PAL version (Sparking! 4.0) for now: pick it in\nOptions > Game Copies to use the Training Display.": "Por ahora hecho para la versión PAL (Sparking! 4.0): elígela en\nOpciones > Copias del juego para usar la pantalla de entrenamiento.",
- "Show it in a match": "Mostrarlo en un combate",
- "Hold all three for every display, or add a direction for one:\nUp: Stats   Down: Frame Data   Left: Hurtboxes   Right: Hitboxes   Transform: Pushboxes.": "Mantén los tres para todo, o añade una dirección para una sola:\nArriba: Estadísticas   Abajo: Frames   Izquierda: Hurtboxes   Derecha: Hitboxes   Transformación: Pushboxes.",
- "Frame data": "Datos de frames",
- "Each action's startup, active and recovery frames, total frames and frame advantage,\nwith fighter and projectile timelines. Read-only: it changes nothing in the fight.": "Frames de inicio, activos y de recuperación de cada acción, el total y la ventaja,\ncon líneas de tiempo de luchadores y proyectiles. Solo lectura: no cambia nada del combate.",
- "Its settings": "Sus ajustes",
- "In the game's Options menu, press Right for Mod Settings > Stats And Frame Data Overlay:\nwhich readings to show, where the boxes sit. Nothing shows? Switch its overlay on there.": "En el menú Opciones del juego, pulsa Derecha: Mod Settings > Stats And Frame Data Overlay:\nqué datos mostrar y dónde. ¿No se ve nada? Activa ahí la superposición.",
- "Made by": "Hecho por",
- "The Stats & Frame Data Overlay from BT3 Phantom Mods, included with its creator's permission.\nIt runs with a faster emulated CPU, as its creator sets it up.": "El Stats & Frame Data Overlay de BT3 Phantom Mods, incluido con permiso de su creador.\nFunciona con la CPU emulada más rápida, como lo configura su creador.",
  "Training Display: on from your next offline game.": "Pantalla de entrenamiento: activada desde tu próxima partida sin conexión.",
  "Training Display: off.": "Pantalla de entrenamiento: desactivada.",
  "Hitboxes and frame data in offline games (never online).\nNow: %s": "Hitboxes y datos de frames sin conexión (nunca en línea).\nAhora: %s",
- "Camera Type + Ascend + Descend": "Tipo de cámara + Ascender + Descender",
- "Game Options > Right": "Opciones del juego > Derecha",
- "Startup · Active · Recovery": "Inicio · Activo · Recuperación"
+ "Hitboxes and frame data in offline games.\nNever online: DRAGON NET matches always run without it.": "Hitboxes y datos de frames en partidas sin conexión.\nNunca en línea: las partidas de DRAGON NET siempre van sin ello.",
+ "Hitboxes and frame data in your next offline game.\nNever online.": "Hitboxes y datos de frames en tu próxima partida sin conexión.\nNunca en línea."
 }

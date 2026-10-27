@@ -610,11 +610,12 @@ func video_args() -> PackedStringArray:
 
 ## Modifications > Training Display: the Stats & Frame Data Overlay from BT3 Phantom Mods (with the
 ## creator's permission), as Action Replay codes in Dolphin's Sys game ini. Per disc ID: the codes
-## it needs (framework, its settings menu, the overlay). Offline only: never in netplay (Dolphin
+## it needs (framework, its settings menu, the overlay) and ours that makes it show hitboxes and
+## frame data from the start (its own defaults show nothing). Offline only: never in netplay (Dolphin
 ## runs no Action Replay code there) nor in replays.
 const TRAINING_DISPLAY := {
 	"RDSPAF": ["BT3 Phantom Mods Framework V0.6.17", "Mod Settings Menu V0.20.17",
-		"Stats & Frame Data Overlay - Menu V0.36.1"],
+		"Stats & Frame Data Overlay - Menu V0.36.1", "Training Display Defaults [Sparking]"],
 }
 
 ## The overlay is made for this version of the game.
