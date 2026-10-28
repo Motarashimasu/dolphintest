@@ -1071,5 +1071,20 @@
  "Search again": "Buscar de nuevo",
  "Stop searching": "Dejar de buscar",
  "Quick Match: Single Battle against %s.": "Partida rápida: combate individual contra %s.",
- "Searching for a player...  %s": "Buscando jugador...  %s"
+ "Searching for a player...  %s": "Buscando jugador...  %s",
+ "Hitboxes and frame data: checked a few seconds into the game.": "Hitboxes y datos de frames: se comprueba unos segundos después de empezar.",
+ "Codes missing": "Faltan códigos",
+ "No 128 MB": "Sin 128 MB",
+ "Framework didn't start": "El framework no arrancó",
+ "Menu didn't start": "El menú no arrancó",
+ "Overlay didn't start": "La superposición no arrancó",
+ "Switched off": "Desactivado",
+ "Loaded": "Cargado",
+ "Dolphin doesn't have the Training Display codes: its Sys folder is out of date.\nReplace the whole Dolphin folder (Sys included) with the new build.": "Dolphin no tiene los códigos de la pantalla de entrenamiento: su carpeta Sys está desactualizada.\nSustituye toda la carpeta Dolphin (con Sys) por la nueva versión.",
+ "Dolphin didn't give the game 128 MB of memory, which the overlay needs.\n%s": "Dolphin no le dio al juego los 128 MB de memoria que necesita la superposición.\n%s",
+ "The Phantom Mods framework didn't start in this game copy.\n%s": "El framework de Phantom Mods no arrancó en esta copia del juego.\n%s",
+ "The overlay's settings menu didn't start.\n%s": "El menú de ajustes de la superposición no arrancó.\n%s",
+ "The overlay didn't load.\n%s": "La superposición no se cargó.\n%s",
+ "The overlay is loaded but switched off. In the game's Options, press Right:\nMod Settings > Stats And Frame Data Overlay.\n%s": "La superposición está cargada pero desactivada. En las Opciones del juego, pulsa Derecha:\nMod Settings > Stats And Frame Data Overlay.\n%s",
+ "Loaded, with hitboxes and frame data on. Nothing in a match? In the game's Options,\npress Right: Mod Settings > Stats And Frame Data Overlay.": "Cargado, con hitboxes y datos de frames activados. ¿No se ve nada en un combate? En las Opciones\ndel juego, pulsa Derecha: Mod Settings > Stats And Frame Data Overlay."
 }

@@ -1178,9 +1178,17 @@ func _tour() -> void:
 	# --- Offline -------------------------------------------------------------------------
 	await back()   # netplay -> game menu
 	check("back at the game menu", app._title.text == "Tenkaichi 3")
+	# Training Display on: the offline game checks it loaded (the test "game" isn't Tenkaichi 3,
+	# so its codes aren't there: the check says so, in the menu and in a log for reports).
+	Settings.set_value("options", "training_display", true)
 	await choose("Play Offline")
 	var play: Control = top()
 	await wait_for("offline game running", func(): return play._state == "running", 30)
+	await wait_for("Training Display self-check: codes missing for this game (%s)" % play._td_status,
+			func(): return play._td_status != "", 30)
+	check("its result is in the offline menu, and logged", play.list.row("training_display").get("value") == tr("Codes missing")
+			and FileAccess.file_exists(Settings.data_path("logs").path_join("training_display.txt")))
+	Settings.set_value("options", "training_display", false)
 	await wait_for("music muted for the offline game", func(): return not Music.is_audible(), 5)
 	await shot("play_offline")
 	# While the game runs the controller is the game's: the menus behind it ignore pad presses.

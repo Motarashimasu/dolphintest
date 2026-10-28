@@ -1071,5 +1071,20 @@
  "Search again": "もう一度検索",
  "Stop searching": "検索をやめる",
  "Quick Match: Single Battle against %s.": "クイックマッチ：%s とシングルバトル。",
- "Searching for a player...  %s": "プレイヤーを検索中...  %s"
+ "Searching for a player...  %s": "プレイヤーを検索中...  %s",
+ "Hitboxes and frame data: checked a few seconds into the game.": "ヒットボックスとフレームデータ：ゲーム開始の数秒後に確認します。",
+ "Codes missing": "コードがありません",
+ "No 128 MB": "128 MB なし",
+ "Framework didn't start": "フレームワークが起動しません",
+ "Menu didn't start": "メニューが起動しません",
+ "Overlay didn't start": "オーバーレイが起動しません",
+ "Switched off": "オフ",
+ "Loaded": "読み込み済み",
+ "Dolphin doesn't have the Training Display codes: its Sys folder is out of date.\nReplace the whole Dolphin folder (Sys included) with the new build.": "Dolphin にトレーニング表示のコードがありません：Sys フォルダが古いです。\nDolphin フォルダ全体（Sys を含む）を新しいビルドに置き換えてください。",
+ "Dolphin didn't give the game 128 MB of memory, which the overlay needs.\n%s": "Dolphin がオーバーレイに必要な 128 MB のメモリをゲームに割り当てていません。\n%s",
+ "The Phantom Mods framework didn't start in this game copy.\n%s": "このゲームコピーでは Phantom Mods のフレームワークが起動しませんでした。\n%s",
+ "The overlay's settings menu didn't start.\n%s": "オーバーレイの設定メニューが起動しませんでした。\n%s",
+ "The overlay didn't load.\n%s": "オーバーレイが読み込まれませんでした。\n%s",
+ "The overlay is loaded but switched off. In the game's Options, press Right:\nMod Settings > Stats And Frame Data Overlay.\n%s": "オーバーレイは読み込まれていますがオフです。ゲームのオプションで右を押す：\nMod Settings > Stats And Frame Data Overlay。\n%s",
+ "Loaded, with hitboxes and frame data on. Nothing in a match? In the game's Options,\npress Right: Mod Settings > Stats And Frame Data Overlay.": "読み込み済み（ヒットボックスとフレームデータはオン）。試合で何も出ない場合は、ゲームのオプションで\n右を押す：Mod Settings > Stats And Frame Data Overlay。"
 }
