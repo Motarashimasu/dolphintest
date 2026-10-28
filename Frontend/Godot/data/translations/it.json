@@ -1082,9 +1082,9 @@
  "Loaded": "Caricato",
  "Dolphin doesn't have the Training Display codes: its Sys folder is out of date.\nReplace the whole Dolphin folder (Sys included) with the new build.": "Dolphin non ha i codici del display allenamento: la sua cartella Sys non è aggiornata.\nSostituisci tutta la cartella Dolphin (Sys compresa) con la nuova build.",
  "Dolphin didn't give the game 128 MB of memory, which the overlay needs.\n%s": "Dolphin non ha dato al gioco i 128 MB di memoria che servono all'overlay.\n%s",
- "The Phantom Mods framework didn't start in this game copy.\n%s": "Il framework di Phantom Mods non è partito in questa copia del gioco.\n%s",
  "The overlay's settings menu didn't start.\n%s": "Il menu impostazioni dell'overlay non è partito.\n%s",
  "The overlay didn't load.\n%s": "L'overlay non si è caricato.\n%s",
  "The overlay is loaded but switched off. In the game's Options, press Right:\nMod Settings > Stats And Frame Data Overlay.\n%s": "L'overlay è caricato ma disattivato. Nelle Opzioni del gioco premi Destra:\nMod Settings > Stats And Frame Data Overlay.\n%s",
- "Loaded, with hitboxes and frame data on. Nothing in a match? In the game's Options,\npress Right: Mod Settings > Stats And Frame Data Overlay.": "Caricato, con hitbox e frame data attivi. Non si vede nulla in partita? Nelle Opzioni del gioco\npremi Destra: Mod Settings > Stats And Frame Data Overlay."
+ "Loaded, with hitboxes and frame data on. Nothing in a match? In the game's Options,\npress Right: Mod Settings > Stats And Frame Data Overlay.": "Caricato, con hitbox e frame data attivi. Non si vede nulla in partita? Nelle Opzioni del gioco\npremi Destra: Mod Settings > Stats And Frame Data Overlay.",
+ "The Phantom Mods framework didn't start (%s).\nSend SparkingData/logs/training_display.txt to report it.": "Il framework di Phantom Mods non è partito (%s).\nInvia SparkingData/logs/training_display.txt per segnalarlo."
 }

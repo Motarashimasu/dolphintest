@@ -21,7 +21,21 @@ const TD_PEEKS := {
 	"menu": "817C132C",        # "MCFG": its settings menu started
 	"overlay": "817C1548",     # "DBG1": the overlay was put in place
 	"defaults": "97AA2FA0",    # 1: our defaults (master switch on) applied
+	# What the framework's installer checks before it starts (Phantom Mods: its code at 80003300,
+	# called from the game function it hooks at 80012608), and how far it got (80003BC0).
+	"stage": "80003BC0",       # 0: refused / not called yet, 1: copying, 2: checking, 3: started
+	"hook": "80012608",        # 4BFF13F8 once hooked (9421FFE0: not hooked)
+	"mem1": "80000028",        # must be 01800000
+	"mem2sim": "8000311C",     # must be 08000000
+	"mem2end": "80003120",     # 98000000 (the game picks its 128 MB BAT from it)
+	"ipc": "80003130",         # must be 97FE0000
+	"iosend": "8000314C",      # must be 98000000
+	"top": "817F7FF0",         # must be 00000000
+	"heap": "8062A44C",        # must be 933E0000 (the game's MEM2 heap end)
 }
+## The installer's requirements (TD_PEEKS key -> value it needs).
+const TD_NEEDS := {"mem1": "01800000", "mem2": "08000000", "mem2sim": "08000000", "arena": "97FE0000",
+	"ipc": "97FE0000", "iosend": "98000000", "top": "00000000", "heap": "933E0000"}
 
 
 func screen_music() -> String:
@@ -182,8 +196,14 @@ func _td_check() -> void:
 	while _td_peeks.size() < TD_PEEKS.size() and Time.get_ticks_msec() < end:
 		await get_tree().process_frame
 	var v := func(key: String) -> String: return String(_td_peeks.get(TD_PEEKS[key], "?"))
-	var values := "MEM2 %s, arena %s, framework %s, menu %s, overlay %s, defaults %s" % [v.call("mem2"),
-		v.call("arena"), v.call("framework"), v.call("menu"), v.call("overlay"), v.call("defaults")]
+	var parts := PackedStringArray()
+	for key in TD_PEEKS:
+		parts.append("%s %s" % [key, v.call(key)])
+	var values := ", ".join(parts)
+	var unmet := PackedStringArray()
+	for key in TD_NEEDS:
+		if v.call(key) != TD_NEEDS[key]:
+			unmet.append("%s %s (needs %s)" % [key, v.call(key), TD_NEEDS[key]])
 	var wanted: Array = Settings.TRAINING_DISPLAY.get(String(Settings.GAME["id"]), [])
 	var missing := wanted.filter(func(n): return not n in _td_codes or n in _td_missing)
 	if not missing.is_empty():
@@ -194,7 +214,16 @@ func _td_check() -> void:
 		_td_detail = tr("Dolphin didn't give the game 128 MB of memory, which the overlay needs.\n%s") % values
 	elif v.call("framework") != "4254334E":
 		_td_status = "Framework didn't start"
-		_td_detail = tr("The Phantom Mods framework didn't start in this game copy.\n%s") % values
+		var why := ""
+		if v.call("hook") == "9421FFE0":
+			why = "not hooked yet"
+		elif v.call("hook") != "4BFF13F8":
+			why = "this game copy's code differs at 80012608"
+		elif not unmet.is_empty():
+			why = "refused: " + ", ".join(unmet)
+		else:
+			why = "stage %s" % v.call("stage")
+		_td_detail = tr("The Phantom Mods framework didn't start (%s).\nSend SparkingData/logs/training_display.txt to report it.") % why
 	elif v.call("menu") != "4D434647":
 		_td_status = "Menu didn't start"
 		_td_detail = tr("The overlay's settings menu didn't start.\n%s") % values
