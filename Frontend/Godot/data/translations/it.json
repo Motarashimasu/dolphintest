@@ -43,7 +43,6 @@
  "Automatic": "Automatico",
  "Automatic pad buffer: %d (%s).": "Buffer automatico: %d (%s).",
  "Automatic pad buffer: still measuring the ping, kept %d.": "Buffer automatico: sto ancora misurando il ping, resta %d.",
- "Automatic: picked from the ping when the match starts, and again right\nafter each KO (never during a fight). Manual: the number below.": "Automatico: scelto in base al ping all'inizio della partita e di nuovo subito\ndopo ogni KO (mai durante un combattimento). Manuale: il numero qui sotto.",
  "Back": "Indietro",
  "Back to Battle Lounge.": "Torna a Battle Lounge.",
  "Back to Controller Setup (unsaved changes are lost).": "Torna a Configura controller (le modifiche non salvate vanno perse).",
@@ -298,7 +297,6 @@
  "Pad buffer %d → %d after the KO (%s).": "Buffer del controller %d → %d dopo il KO (%s).",
  "Pad buffer mode": "Modalità del buffer",
  "Pad buffer: %d": "Buffer del controller: %d",
- "Pad buffer: automatic (set at the start and after each KO).": "Buffer del controller: automatico (all'inizio e dopo ogni KO).",
  "Pad buffer: manual.": "Buffer del controller: manuale.",
  "Pick Single Battle, Team Battle or Any, and get put in\nthe nearest open lobby (or host one others can find).": "Scegli battaglia singola, a squadre o qualsiasi ed entra nella\nstanza aperta più vicina (o creane una che altri possano trovare).",
  "Pick a controller preset with Left / Right.\nIt's used offline and on DRAGON NET.": "Scegli una configurazione del controller con Sinistra / Destra.\nSi usa offline e su DRAGON NET.",
@@ -1086,5 +1084,8 @@
  "The overlay didn't load.\n%s": "L'overlay non si è caricato.\n%s",
  "The overlay is loaded but switched off. In the game's Options, press Right:\nMod Settings > Stats And Frame Data Overlay.\n%s": "L'overlay è caricato ma disattivato. Nelle Opzioni del gioco premi Destra:\nMod Settings > Stats And Frame Data Overlay.\n%s",
  "Loaded, with hitboxes and frame data on. Nothing in a match? In the game's Options,\npress Right: Mod Settings > Stats And Frame Data Overlay.": "Caricato, con hitbox e frame data attivi. Non si vede nulla in partita? Nelle Opzioni del gioco\npremi Destra: Mod Settings > Stats And Frame Data Overlay.",
- "The Phantom Mods framework didn't start (%s).\nSend SparkingData/logs/training_display.txt to report it.": "Il framework di Phantom Mods non è partito (%s).\nInvia SparkingData/logs/training_display.txt per segnalarlo."
+ "The Phantom Mods framework didn't start (%s).\nSend SparkingData/logs/training_display.txt to report it.": "Il framework di Phantom Mods non è partito (%s).\nInvia SparkingData/logs/training_display.txt per segnalarlo.",
+ "Automatic: follows the ping (÷ 12) during the match, changing a few\nseconds after the ping does. Manual: the number below.": "Automatico: segue il ping (÷ 12) durante la partita e cambia qualche\nsecondo dopo il ping. Manuale: il numero qui sotto.",
+ "Pad buffer: automatic (follows the ping during the match).": "Buffer del controller: automatico (segue il ping durante la partita).",
+ "Pad buffer %d → %d (%s).": "Buffer del controller %d → %d (%s)."
 }

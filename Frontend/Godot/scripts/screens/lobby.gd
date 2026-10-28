@@ -1314,7 +1314,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 				else:
 					_system(text)
 		"buffer_mode":
-			_system(tr("Pad buffer: automatic (set at the start and after each KO).") if data.get("auto", false)
+			_system(tr("Pad buffer: automatic (follows the ping during the match).") if data.get("auto", false)
 					else tr("Pad buffer: manual."))
 		"buffer_auto":
 			if data.has("skipped"):
@@ -1324,6 +1324,8 @@ func _on_event(name: String, data: Dictionary) -> void:
 				var why: String = tr("ping %d ms ± %d") % [int(data.get("ping", 0)), int(data.get("jitter", 0))]
 				if data.get("reason", "") == "match_start":
 					_system(tr("Automatic pad buffer: %d (%s).") % [to, why])
+				elif data.get("reason", "") == "live":
+					_system(tr("Pad buffer %d → %d (%s).") % [int(data.get("from", _buffer)), to, why])
 				else:
 					_system(tr("Pad buffer %d → %d after the KO (%s).") % [int(data.get("from", _buffer)), to, why])
 				_logged_buffer = to   # the buffer_changed that follows isn't news

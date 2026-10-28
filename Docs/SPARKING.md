@@ -114,7 +114,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `game_start_aborted` | | |
 | `buffer_changed` | `buffer` | |
 | `buffer_mode` | `auto` | Host: automatic pad buffer turned on / off |
-| `buffer_auto` | `reason` (`match_start` / `between_rounds`), `from`, `to`, `ping`, `jitter` (or `skipped: "measuring"`) | Host: the automatic buffer made a choice (`between_rounds` only when it changes) |
+| `buffer_auto` | `reason` (`match_start` / `live` / `between_rounds`), `from`, `to`, `ping`, `jitter` (or `skipped: "measuring"`) | Host: the automatic buffer made a choice (`live`: during a fight, once a new ping / 12 target has held 3 s; `between_rounds`: after a KO; both only when it changes) |
 | `host_input_authority` | `enabled` | |
 | `golfer_changed` | `is_golfer`, `name` | |
 | `desync` | `frame`, `player` | |
@@ -191,7 +191,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `chat <text>` | any | Send a chat message |
 | `stop` | any | Stop the running game for everyone (solo: stop and exit) |
 | `buffer <n>` | host | Set pad buffer (and turn the automatic buffer off) |
-| `buffer auto` | host | Automatic pad buffer: set from the pings when the host starts the match (before the game boots), then re-chosen right after each KO, by as many steps as needed, within 20 s and only while no round is being fought (never mid-fight). Size: the worst player's 90th-percentile ping of the last ~10 s plus its jitter, ÷ 12 (rounded up), between 2 and 20. Needs the game's `p1/p2_health_pct` watches to see KOs. |
+| `buffer auto` | host | Automatic pad buffer: the worst player's typical ping (median of its last ~10 pings) ÷ 12, rounded up, between 1 and 20. Set when the host starts the match (before the game boots), re-chosen right after each KO, and during the fight too: checked once a second, changed once a new value has held for 3 s (so one spike never moves it). NEOcode keeps its own rule (90th percentile + jitter, ÷ 8, − 2) and only changes between rounds. |
 | `kick <pid>` | host | Kick a player |
 | `automap wii\|gc\|none` | host | Auto-assign joiners to Wii Remote / GC slots in join order |
 | `battle_state <file.sst>` / `battle_state none` | host | Select the state everyone boots into |

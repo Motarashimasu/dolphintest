@@ -304,13 +304,13 @@ private:
   std::chrono::steady_clock::time_point m_last_ping_sample{};
   LinkQuality QualityOf(NetPlay::PlayerId pid, u32 current_ping);
 
-  // Automatic pad buffer (host, "buffer auto"): chosen from the ping history when the match
-  // starts, and re-chosen once right after each KO (any number of steps), within 20 s and only
-  // while no round is being fought. Never during a fight.
+  // Automatic pad buffer (host, "buffer auto"): the worst player's typical ping / 12, rounded
+  // up. Chosen when the match starts, right after each KO, and during the fight once a new value
+  // has held for 3 s ("live"; not with NEOcode).
   struct AutoBufferChoice
   {
     int buffer;
-    u32 ping;     // worst player's high ping (90th percentile of the last ~10 s)
+    u32 ping;     // worst player's typical ping (median of the last ~10 s)
     int jitter;
   };
   std::optional<AutoBufferChoice> AutoBufferTarget();
@@ -318,6 +318,8 @@ private:
   void PumpAutoBuffer();                          // host thread
   std::atomic<bool> m_auto_buffer{false};
   std::atomic<int> m_buffer{-1};  // last pad buffer Dolphin reported
+  std::chrono::steady_clock::time_point m_live_next{};                         // host thread
+  std::optional<std::pair<int, std::chrono::steady_clock::time_point>> m_live_target;  // since when
 
   // NEOcode (Core/NeoCode.h), a hidden lobby setting: "netcode neocode|delay" (host), told to
   // everyone ("netcode ..." control message), used by the players' next match.

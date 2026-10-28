@@ -711,8 +711,8 @@ def main():
             n = inst.seen("game_info")["session"]["gecko_active_count"]
             check(f"{inst.name}: exactly 3 codes live (default + lobby + own port), other port's off", n == 3)
 
-        print("netplay: automatic pad buffer (host, between rounds only)")
-        FULL, ZERO = "42C80000", "00000000"   # 100.0, 0.0
+        print("netplay: automatic pad buffer (host: ping / 12, also during a fight)")
+        FULL = "42C80000"   # 100.0
         HP1, HP2 = "80001100", "80001104"
 
         def hpoke(addr, val):  # changes only the host's memory: enough for its round counter
@@ -720,33 +720,24 @@ def main():
             host.wait_for("poked", lambda e: e["address"] == addr and e["value"] == val)
             time.sleep(0.15)
 
-        def auto_events(reason):
-            return [e for e in host.history if e["event"] == "buffer_auto" and e.get("reason") == reason]
-
         host.send("buffer 9")
         host.wait_for("buffer_changed", lambda e: e["buffer"] == 9)
         host.send("buffer auto")
+        t0 = time.time()   # the target (1) differs from 9 from now on: it must hold 3 s first
         check("host turns the automatic buffer on", host.wait_for("buffer_mode")["auto"] is True)
         hpoke(HP1, FULL); hpoke(HP2, FULL)
         host.seen("round_started", lambda e: e["round"] == 1)
-        # KO, but the next round starts right away: no change in the middle of a fight.
-        hpoke(HP2, ZERO)
-        host.seen("round_result", lambda e: e["round"] == 1)
-        hpoke(HP2, FULL)
-        time.sleep(2)
-        check("no change once the next round has started",
-              not auto_events("between_rounds") and
-              [e for e in host.history if e["event"] == "buffer_changed"][-1]["buffer"] == 9)
-        # KO and a calm moment after it: re-chosen from the pings, any number of steps.
-        hpoke(HP1, ZERO)
-        host.seen("round_result", lambda e: e["round"] == 2)
-        ba = host.seen("buffer_auto", lambda e: e.get("reason") == "between_rounds", timeout=10)
-        check(f"after a KO: buffer re-chosen from the pings {ba}",
-              ba["from"] == 9 and 2 <= ba["to"] <= 4 and ba["ping"] >= 0)
-        host.seen("buffer_changed", lambda e: e["buffer"] == ba["to"])
-        joiner.seen("buffer_changed", lambda e: e["buffer"] == ba["to"])
+        # In the middle of the fight: the typical ping here (~0 ms) / 12 -> 1, once that has held
+        # for 3 s.
+        live = host.seen("buffer_auto", lambda e: e.get("reason") == "live", timeout=20)
+        check(f"during the fight the buffer follows the ping ({time.time() - t0:.1f} s) {live}",
+              live["from"] == 9 and live["to"] == 1 and live["ping"] < 12 and time.time() - t0 >= 3)
+        host.seen("buffer_changed", lambda e: e["buffer"] == 1)
+        joiner.seen("buffer_changed", lambda e: e["buffer"] == 1)
         check("everyone gets the new buffer", True)
-
+        time.sleep(3)
+        check("and it stays put while the ping does",
+              len([e for e in host.history if e["event"] == "buffer_auto" and e.get("reason") == "live"]) == 1)
         time.sleep(1)
         joiner.send("stop")  # a client-initiated stop ends the match for everyone
         host.wait_for("game_stopped", timeout=30)
@@ -765,7 +756,7 @@ def main():
         host.wait_for("buffer_mode", lambda e: e["auto"] is True)
         host.send("start")
         ms = host.wait_for("buffer_auto", lambda e: e.get("reason") == "match_start", timeout=20)
-        check(f"match start: buffer chosen before boot {ms}", ms["from"] == 9 and 2 <= ms["to"] <= 4)
+        check(f"match start: buffer chosen before boot (ping / 12) {ms}", ms["from"] == 9 and ms["to"] == 1)
         host.wait_for("game_started", timeout=40)
         joiner.wait_for("game_started", timeout=40)
         time.sleep(1)

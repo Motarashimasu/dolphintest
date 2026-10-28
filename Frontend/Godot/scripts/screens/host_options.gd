@@ -60,7 +60,7 @@ func build_rows() -> Array:
 			"desc": "Shown with public lobbies; matchmaking prefers the same region."},
 		{"type": "choice", "key": "buffer_auto", "label": "Pad buffer mode", "values": [false, true],
 			"names": ["Manual", "Automatic"], "value": Settings.get_value("netplay", "buffer_auto"),
-			"desc": "Automatic: picked from the ping when the match starts, and again right\nafter each KO (never during a fight). Manual: the number below."},
+			"desc": "Automatic: follows the ping (÷ 12) during the match, changing a few\nseconds after the ping does. Manual: the number below."},
 		{"type": "number", "key": "buffer", "label": "Pad buffer", "min": 1, "max": 20, "step": 1,
 			"value": Settings.get_value("netplay", "buffer"), "disabled": Settings.get_value("netplay", "buffer_auto"),
 			"desc": "Input delay in frames. Higher hides more lag but feels slower.\nRule of thumb: ping / 12 (can be changed in the lobby)."},

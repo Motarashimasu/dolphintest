@@ -47,7 +47,7 @@ void SetHudLinks(const std::array<std::string, 2>& links);
 void SetHudNeoR(int frames);
 // KOs counted since this process started (never reset) and whether a round is being fought
 // right now (both sides were back at 100%, nobody KO'd yet). Any thread. Used by the netplay
-// host's automatic pad buffer, which only changes between rounds.
+// host's automatic pad buffer (a KO re-chooses it right away).
 int HudResultCount();
 bool HudRoundLive();
 // KOs won by the side on GameCube port 1 or 2 since this process started (never reset). The

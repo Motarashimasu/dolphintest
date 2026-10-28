@@ -971,8 +971,9 @@ void NetPlaySession::CmdStart(bool force)
 
 std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget()
 {
-  // Worst player: the 90th percentile of its last ~10 pings (so short spikes are covered
-  // without chasing them) plus its jitter, then ping / 12 (rounded up).
+  // Worst player: its typical ping (the median of its last ~10, so one spike doesn't count),
+  // divided by 12 and rounded up: one buffer step per 12 ms (BT3 reads the pads 120 times a
+  // second over a 60 Hz netplay: ~8 ms a step, plus the round trip).
   std::map<NetPlay::PlayerId, std::vector<u32>> all;
   {
     std::lock_guard lk(m_quality_mutex);
@@ -995,9 +996,11 @@ std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget
       continue;
     const int jitter = QualityOf(pid, samples.back()).jitter_ms;
     std::ranges::sort(samples);
+    const u32 typical = samples[samples.size() / 2];
+    int buffer = std::clamp(static_cast<int>((typical + 11) / 12), 1, 20);
+    // (NEOcode, below: its own, from the high ping)
     const size_t at = std::min(samples.size() - 1, (samples.size() * 9 + 9) / 10 - 1);
     const u32 high = samples[at];
-    int buffer = std::clamp(static_cast<int>((high + std::max(jitter, 0) + 11) / 12), 2, 20);
     // NEOcode: BT3 reads the pads 120 times a second, so a buffer step is ~8 ms. Measured in
     // matches (50 ms ping, clashes): with the delay well short of the ping, nearly every guess of
     // the other side's mashing is wrong (8-19 rewinds a second, each freezing the picture 24-75
@@ -1006,7 +1009,7 @@ std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget
     if (m_neocode)
       buffer = std::clamp(static_cast<int>((high + std::max(jitter, 0) + 7) / 8) - 2, 2, 20);
     if (!worst || buffer > worst->buffer)
-      worst = AutoBufferChoice{buffer, high, std::max(jitter, 0)};
+      worst = AutoBufferChoice{buffer, m_neocode ? high : typical, std::max(jitter, 0)};
   }
   return worst;
 }
@@ -1076,15 +1079,38 @@ void NetPlaySession::PumpAutoBuffer()
     m_auto_due = now + std::chrono::seconds(1);
     m_auto_deadline = now + std::chrono::seconds(20);
   }
-  if (!m_auto_due || now < *m_auto_due)
-    return;
-  if (HudRoundLive() || now > *m_auto_deadline)
+  if (m_auto_due && now >= *m_auto_due)
   {
-    m_auto_due.reset();   // the next fight already started: leave it alone
+    const bool too_late = HudRoundLive() || now > *m_auto_deadline;
+    m_auto_due.reset();
+    if (!too_late)
+    {
+      ApplyAutoBuffer("between_rounds");
+      m_live_target.reset();
+      return;
+    }
+  }
+  // During the fight too: once a second, and changed when the new value has held for 3 s (a
+  // single spike never moves it). Not with NEOcode: its rewinds depend on the delay.
+  if (m_neocode || now < m_live_next)
+    return;
+  m_live_next = now + std::chrono::seconds(1);
+  const auto choice = AutoBufferTarget();
+  if (!choice || choice->buffer == m_buffer)
+  {
+    m_live_target.reset();
     return;
   }
-  m_auto_due.reset();
-  ApplyAutoBuffer("between_rounds");
+  if (!m_live_target || m_live_target->first != choice->buffer)
+  {
+    m_live_target = std::make_pair(choice->buffer, now);
+    return;
+  }
+  if (now - m_live_target->second >= std::chrono::seconds(3))
+  {
+    m_live_target.reset();
+    ApplyAutoBuffer("live");
+  }
 }
 
 std::unique_ptr<BootParameters> NetPlaySession::TakePendingBoot()

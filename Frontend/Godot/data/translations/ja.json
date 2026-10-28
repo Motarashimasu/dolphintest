@@ -43,7 +43,6 @@
  "Automatic": "自動",
  "Automatic pad buffer: %d (%s).": "自動パッドバッファ：%d（%s）。",
  "Automatic pad buffer: still measuring the ping, kept %d.": "自動パッドバッファ：まだピングを測定中のため、%d のままです。",
- "Automatic: picked from the ping when the match starts, and again right\nafter each KO (never during a fight). Manual: the number below.": "自動：対戦開始時と各KOの直後にピングから決めます\n（戦闘中は変えません）。手動：下の数値を使います。",
  "Back": "戻る",
  "Back to Battle Lounge.": "Battle Lounge に戻る。",
  "Back to Controller Setup (unsaved changes are lost).": "コントローラー設定に戻る（保存していない変更は失われます）。",
@@ -298,7 +297,6 @@
  "Pad buffer %d → %d after the KO (%s).": "KO後にパッドバッファ %d → %d（%s）。",
  "Pad buffer mode": "パッドバッファの方式",
  "Pad buffer: %d": "パッドバッファ：%d",
- "Pad buffer: automatic (set at the start and after each KO).": "パッドバッファ：自動（開始時と各KOの後に設定）。",
  "Pad buffer: manual.": "パッドバッファ：手動。",
  "Pick Single Battle, Team Battle or Any, and get put in\nthe nearest open lobby (or host one others can find).": "シングルバトル、チームバトル、すべて から選ぶと、一番近い\n空きロビーに入ります（または他の人が見つけられるロビーをホスト）。",
  "Pick a controller preset with Left / Right.\nIt's used offline and on DRAGON NET.": "左右でコントローラーのプリセットを選びます。\nオフラインと DRAGON NET で使われます。",
@@ -1086,5 +1084,8 @@
  "The overlay didn't load.\n%s": "オーバーレイが読み込まれませんでした。\n%s",
  "The overlay is loaded but switched off. In the game's Options, press Right:\nMod Settings > Stats And Frame Data Overlay.\n%s": "オーバーレイは読み込まれていますがオフです。ゲームのオプションで右を押す：\nMod Settings > Stats And Frame Data Overlay。\n%s",
  "Loaded, with hitboxes and frame data on. Nothing in a match? In the game's Options,\npress Right: Mod Settings > Stats And Frame Data Overlay.": "読み込み済み（ヒットボックスとフレームデータはオン）。試合で何も出ない場合は、ゲームのオプションで\n右を押す：Mod Settings > Stats And Frame Data Overlay。",
- "The Phantom Mods framework didn't start (%s).\nSend SparkingData/logs/training_display.txt to report it.": "Phantom Mods のフレームワークが起動しませんでした（%s）。\n報告には SparkingData/logs/training_display.txt を送ってください。"
+ "The Phantom Mods framework didn't start (%s).\nSend SparkingData/logs/training_display.txt to report it.": "Phantom Mods のフレームワークが起動しませんでした（%s）。\n報告には SparkingData/logs/training_display.txt を送ってください。",
+ "Automatic: follows the ping (÷ 12) during the match, changing a few\nseconds after the ping does. Manual: the number below.": "自動：対戦中はピング（÷ 12）に合わせ、ピングが変わると\n数秒後に変わります。手動：下の数値を使います。",
+ "Pad buffer: automatic (follows the ping during the match).": "パッドバッファ：自動（対戦中はピングに合わせます）。",
+ "Pad buffer %d → %d (%s).": "パッドバッファ %d → %d（%s）。"
 }

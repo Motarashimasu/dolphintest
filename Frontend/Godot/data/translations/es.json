@@ -43,7 +43,6 @@
  "Automatic": "Automático",
  "Automatic pad buffer: %d (%s).": "Búfer automático: %d (%s).",
  "Automatic pad buffer: still measuring the ping, kept %d.": "Búfer automático: aún midiendo el ping, se mantiene %d.",
- "Automatic: picked from the ping when the match starts, and again right\nafter each KO (never during a fight). Manual: the number below.": "Automático: se elige según el ping al empezar el combate y de nuevo justo\ndespués de cada KO (nunca durante una pelea). Manual: el número de abajo.",
  "Back": "Atrás",
  "Back to Battle Lounge.": "Volver a Battle Lounge.",
  "Back to Controller Setup (unsaved changes are lost).": "Volver a Configurar mando (se pierden los cambios sin guardar).",
@@ -298,7 +297,6 @@
  "Pad buffer %d → %d after the KO (%s).": "Búfer de mando %d → %d tras el KO (%s).",
  "Pad buffer mode": "Modo del búfer",
  "Pad buffer: %d": "Búfer de mando: %d",
- "Pad buffer: automatic (set at the start and after each KO).": "Búfer de mando: automático (al empezar y después de cada KO).",
  "Pad buffer: manual.": "Búfer de mando: manual.",
  "Pick Single Battle, Team Battle or Any, and get put in\nthe nearest open lobby (or host one others can find).": "Elige combate individual, por equipos o cualquiera y entra en\nla sala abierta más cercana (o crea una que otros encuentren).",
  "Pick a controller preset with Left / Right.\nIt's used offline and on DRAGON NET.": "Elige una configuración de mando con Izquierda / Derecha.\nSe usa sin conexión y en DRAGON NET.",
@@ -1086,5 +1084,8 @@
  "The overlay didn't load.\n%s": "La superposición no se cargó.\n%s",
  "The overlay is loaded but switched off. In the game's Options, press Right:\nMod Settings > Stats And Frame Data Overlay.\n%s": "La superposición está cargada pero desactivada. En las Opciones del juego, pulsa Derecha:\nMod Settings > Stats And Frame Data Overlay.\n%s",
  "Loaded, with hitboxes and frame data on. Nothing in a match? In the game's Options,\npress Right: Mod Settings > Stats And Frame Data Overlay.": "Cargado, con hitboxes y datos de frames activados. ¿No se ve nada en un combate? En las Opciones\ndel juego, pulsa Derecha: Mod Settings > Stats And Frame Data Overlay.",
- "The Phantom Mods framework didn't start (%s).\nSend SparkingData/logs/training_display.txt to report it.": "El framework de Phantom Mods no arrancó (%s).\nEnvía SparkingData/logs/training_display.txt para informarlo."
+ "The Phantom Mods framework didn't start (%s).\nSend SparkingData/logs/training_display.txt to report it.": "El framework de Phantom Mods no arrancó (%s).\nEnvía SparkingData/logs/training_display.txt para informarlo.",
+ "Automatic: follows the ping (÷ 12) during the match, changing a few\nseconds after the ping does. Manual: the number below.": "Automático: sigue el ping (÷ 12) durante el combate y cambia unos\nsegundos después de que cambie el ping. Manual: el número de abajo.",
+ "Pad buffer: automatic (follows the ping during the match).": "Búfer de mando: automático (sigue el ping durante el combate).",
+ "Pad buffer %d → %d (%s).": "Búfer de mando %d → %d (%s)."
 }
