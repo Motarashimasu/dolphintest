@@ -161,6 +161,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `alert` | `severity`, `caption`, `text`, `auto_answer` | A Dolphin panic/assert alert. In Sparking mode these never open a Dolphin dialog; they are reported here and answered "yes/ok" so emulation continues. |
 | `error` | `code`, plus context | See below |
 | `exit` | `code` | Last line before the process exits |
+| `boot_step` | `step` (`window` / `controllers` / `boot`) | Netplay: how far a game's start got (crash reports show the last one) |
 | `crash` | `report`, `dump` (Windows minidump, else ""), `summary` | Dolphin crashed and wrote its report (see Crash reports); the process dies right after |
 
 `players[]` entries also carry `link` (`wired`, `wireless`, `virtual`, `unknown`: each player's

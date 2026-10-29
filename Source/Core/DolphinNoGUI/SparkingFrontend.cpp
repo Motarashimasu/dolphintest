@@ -622,6 +622,8 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
 // frontend's lobby is visible again. Host thread.
 void RunNetPlayGame(const FrontendHooks& hooks, std::unique_ptr<BootParameters> boot)
 {
+  // "boot_step": how far the start got (crash reports show the last one).
+  Emit("boot_step", Json().Add("step", "window"));
   hooks.platform = hooks.create_platform();
   if (!hooks.platform || !hooks.platform->Init())
   {
@@ -631,9 +633,11 @@ void RunNetPlayGame(const FrontendHooks& hooks, std::unique_ptr<BootParameters> 
   }
 
   const WindowSystemInfo wsi = hooks.platform->GetWindowSystemInfo();
+  Emit("boot_step", Json().Add("step", "controllers"));
   ReinitControllers(wsi);
 
   auto& system = Core::System::GetInstance();
+  Emit("boot_step", Json().Add("step", "boot"));
   if (BootManager::BootCore(system, std::move(boot), wsi))
     hooks.platform->MainLoop();
   else
