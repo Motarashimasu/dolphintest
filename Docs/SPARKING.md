@@ -161,6 +161,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `alert` | `severity`, `caption`, `text`, `auto_answer` | A Dolphin panic/assert alert. In Sparking mode these never open a Dolphin dialog; they are reported here and answered "yes/ok" so emulation continues. |
 | `error` | `code`, plus context | See below |
 | `exit` | `code` | Last line before the process exits |
+| `crash` | `report`, `dump` (Windows minidump, else ""), `summary` | Dolphin crashed and wrote its report (see Crash reports); the process dies right after |
 
 `players[]` entries also carry `link` (`wired`, `wireless`, `virtual`, `unknown`: each player's
 own report), `jitter` (average ping change between 1-second samples over the last ~10 s, -1 until
@@ -223,6 +224,31 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `quit` | any | Stop any game and exit |
 
 Always send `hello` first. If Dolphin is launched without a stdin pipe it keeps running on EOF.
+
+## Crash reports
+
+When a game ends unexpectedly the player gets a pop-up ("The game crashed" / "The game closed
+unexpectedly", with "Open the logs folder") and a report in `SparkingData/logs`:
+
+* `dolphin_crash_<date>_<time>.txt` — written by Dolphin itself as it crashes (access violation,
+  `abort()`, `std::terminate`, pure virtual call, bad CRT argument; Linux/macOS: SIGSEGV, SIGBUS,
+  SIGILL, SIGFPE, SIGABRT): what and where (module + offset, symbol and line when the .pdb is
+  next to the exe), the crashing thread's stack, the session kind, the last game and stats
+  lines and the last 40 events. Windows also writes `dolphin_crash_<date>_<time>.dmp` (a
+  minidump: open it in Visual Studio / WinDbg with the build's .pdb). Then it prints the
+  `crash` event and dies as it would have (no Windows "has stopped working" box). Folder:
+  `$SPARKING_CRASH_DIR` (the launcher sets it), else `<user folder>/Logs`.
+* `crash_<date>_<time>.txt` — written by the launcher (scripts/crash_log.gd) when the session or
+  a helper Dolphin crashed, ended without its `exit` event and with a non-zero code (killed from
+  outside, failed to start), or was closed by the boot watchdog: launcher version, OS, CPU,
+  GPU, renderer, the command line, Dolphin's own report (above) copied in, the last events and
+  commands, and Dolphin's last console lines. IP addresses are masked and chat text left out.
+  Stopping a game, closing its window or the launcher closing Dolphin is never reported.
+* `launcher_crash_<date>_<time>.txt` — at start, if Godot's log of the previous run
+  (`user://logs`) says "Program crashed", it's copied here (once) and the player is told.
+
+The newest 20 reports of each kind and 3 minidumps are kept. Tests: `test_crash [segv|abort|terminate]`
+(`--test-hooks`).
 
 ## Battle states (Single Battle / Team Battle)
 

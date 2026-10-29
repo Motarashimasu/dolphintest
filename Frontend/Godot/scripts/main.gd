@@ -5,6 +5,7 @@ extends Control
 
 const Style := preload("res://scripts/ui/style.gd")
 const CarouselScreen := preload("res://scripts/screens/carousel_screen.gd")
+const CrashLog := preload("res://scripts/crash_log.gd")
 const SCREENS := "res://scripts/screens/%s.gd"
 
 const BASE_SIZE := Vector2i(1280, 720)
@@ -46,6 +47,7 @@ func _ready() -> void:
 		get_window().mode = menu_window_mode()
 	_build_backdrop()
 	Dolphin.event.connect(_on_dolphin_event)
+	Dolphin.crashed.connect(_on_game_crashed)
 	Social.online_changed.connect(_on_online_changed)
 	Presence.joined_from_discord.connect(_on_discord_join)
 	Pad.kind_changed.connect(func(_k): _refresh_hints())
@@ -99,6 +101,10 @@ func _ready() -> void:
 		push(load(SCREENS % "setup").new())
 	elif not Discs.pending().is_empty():
 		push(load(SCREENS % "disc_pending").new())   # a copy to build from the player's disc
+	elif not reloading:
+		var report := CrashLog.check_previous_launcher_run()
+		if report != "":
+			crash_popup(tr("The launcher closed unexpectedly last time"), report)
 
 
 ## A newer build (Updater.check): the update screen downloads and installs it, unless a game or
@@ -742,6 +748,33 @@ func _on_dolphin_event(name: String, data: Dictionary) -> void:
 					lines.pop_front()
 				var text: String = lines[0] if not lines.is_empty() else ""
 				toast("Dolphin: " + text.left(160), 6.0)
+
+
+## A game crashed or closed unexpectedly (Dolphin.crashed): its report was saved in
+## SparkingData/logs. Told once the screens have dealt with the game ending.
+func _on_game_crashed(info: Dictionary) -> void:
+	if info.get("kind", "") == "boot_hung":
+		return   # (its own message: "boot_hung"; the report is saved all the same)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	show_window()
+	var title := tr("The game crashed") if info.get("kind", "") == "crash" \
+			else tr("The game closed unexpectedly")
+	crash_popup(title, String(info.get("report", "")))
+
+
+## The "it crashed" pop-up: where the report is, and a way to open that folder.
+func crash_popup(title: String, report: String) -> void:
+	var where := tr("A report was saved:\n%s\nSend it (and any .dmp file next to it) when you report the problem.") \
+			% ("SparkingData/logs/" + report.get_file()) if report != "" \
+			else tr("The report couldn't be saved (is the game folder read-only?).")
+	var m := menu(title, [
+		{"label": "OK", "desc": where, "action": func(): pop()},
+		{"label": "Open the logs folder", "desc": where, "action": func():
+			OS.shell_open(ProjectSettings.globalize_path(CrashLog.folder()))},
+	])
+	m.notices = false
+	push(m)
 
 
 ## "Ask to Join" accepted in Discord: open that lobby (unless something is already running), on

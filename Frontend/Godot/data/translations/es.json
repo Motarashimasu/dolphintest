@@ -1087,5 +1087,11 @@
  "The Phantom Mods framework didn't start (%s).\nSend SparkingData/logs/training_display.txt to report it.": "El framework de Phantom Mods no arrancó (%s).\nEnvía SparkingData/logs/training_display.txt para informarlo.",
  "Automatic: follows the ping (÷ 12) during the match, changing a few\nseconds after the ping does. Manual: the number below.": "Automático: sigue el ping (÷ 12) durante el combate y cambia unos\nsegundos después de que cambie el ping. Manual: el número de abajo.",
  "Pad buffer: automatic (follows the ping during the match).": "Búfer de mando: automático (sigue el ping durante el combate).",
- "Pad buffer %d → %d (%s).": "Búfer de mando %d → %d (%s)."
+ "Pad buffer %d → %d (%s).": "Búfer de mando %d → %d (%s).",
+ "The launcher closed unexpectedly last time": "El launcher se cerró inesperadamente la última vez",
+ "The game crashed": "El juego se ha bloqueado",
+ "The game closed unexpectedly": "El juego se cerró inesperadamente",
+ "A report was saved:\n%s\nSend it (and any .dmp file next to it) when you report the problem.": "Se guardó un informe:\n%s\nEnvíalo (junto con el archivo .dmp que haya al lado) cuando informes del problema.",
+ "The report couldn't be saved (is the game folder read-only?).": "No se pudo guardar el informe (¿la carpeta del juego es de solo lectura?).",
+ "Open the logs folder": "Abrir la carpeta de registros"
 }

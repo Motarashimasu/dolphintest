@@ -1087,5 +1087,11 @@
  "The Phantom Mods framework didn't start (%s).\nSend SparkingData/logs/training_display.txt to report it.": "Phantom Mods のフレームワークが起動しませんでした（%s）。\n報告には SparkingData/logs/training_display.txt を送ってください。",
  "Automatic: follows the ping (÷ 12) during the match, changing a few\nseconds after the ping does. Manual: the number below.": "自動：対戦中はピング（÷ 12）に合わせ、ピングが変わると\n数秒後に変わります。手動：下の数値を使います。",
  "Pad buffer: automatic (follows the ping during the match).": "パッドバッファ：自動（対戦中はピングに合わせます）。",
- "Pad buffer %d → %d (%s).": "パッドバッファ %d → %d（%s）。"
+ "Pad buffer %d → %d (%s).": "パッドバッファ %d → %d（%s）。",
+ "The launcher closed unexpectedly last time": "前回、ランチャーが予期せず終了しました",
+ "The game crashed": "ゲームがクラッシュしました",
+ "The game closed unexpectedly": "ゲームが予期せず終了しました",
+ "A report was saved:\n%s\nSend it (and any .dmp file next to it) when you report the problem.": "レポートを保存しました：\n%s\n問題を報告するときは、これ（と隣にある .dmp ファイル）を送ってください。",
+ "The report couldn't be saved (is the game folder read-only?).": "レポートを保存できませんでした（ゲームフォルダーが読み取り専用では？）。",
+ "Open the logs folder": "ログフォルダーを開く"
 }

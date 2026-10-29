@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinNoGUI/SparkingIO.h"
+#include "DolphinNoGUI/SparkingCrash.h"
 
 #include <atomic>
 #include <cstdio>
@@ -246,6 +247,7 @@ void WriteEventLine(const std::string& line)
   if (!s_enabled)
     return;
   std::lock_guard lk(s_emit_mutex);
+  NoteEventForCrash(line);
   std::fwrite(line.data(), 1, line.size(), stdout);
   std::fflush(stdout);
 }

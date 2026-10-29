@@ -6,6 +6,8 @@ add_executable(dolphin-nogui
   SparkingFrontend.cpp
   SparkingFrontend.h
   SparkingBlob.h
+  SparkingCrash.cpp
+  SparkingCrash.h
   SparkingDisplay.cpp
   SparkingDisplay.h
   SparkingGecko.cpp
@@ -88,6 +90,8 @@ if(WIN32)
   target_link_libraries(dolphin-nogui PRIVATE dwmapi.lib)
   # Sparking: network adapter type (wired / Wi-Fi) for the netplay lobby
   target_link_libraries(dolphin-nogui PRIVATE iphlpapi.lib ws2_32.lib)
+  # Sparking: crash reports (minidump + stack)
+  target_link_libraries(dolphin-nogui PRIVATE dbghelp.lib)
 endif()
 
 if(MSVC)

@@ -23,6 +23,7 @@
 #include "Core/DolphinAnalytics.h"
 #include "Core/Host.h"
 #include "Core/System.h"
+#include "DolphinNoGUI/SparkingCrash.h"
 #include "DolphinNoGUI/SparkingFrontend.h"
 #include "DolphinNoGUI/SparkingReplay.h"
 #include "DolphinNoGUI/SparkingIO.h"
@@ -240,6 +241,20 @@ int main(const int argc, char* argv[])
 
   optparse::Values& options = CommandLineParse::ParseArguments(parser.get(), argc, argv);
   std::vector<std::string> args = parser->args();
+
+  // Crash reports (SparkingCrash.h): as early as possible.
+  Sparking::InstallCrashHandler(options.is_set("user") ? static_cast<const char*>(options.get("user")) :
+                                                         "");
+  {
+    std::string context;
+    for (const char* mode : {"netplay_host", "netplay_join", "netplay_find", "replay", "rollback_test",
+                             "input_test", "koth", "ranked", "spectate"})
+    {
+      if (options.is_set(mode))
+        context += (context.empty() ? "" : " ") + std::string(mode);
+    }
+    Sparking::SetCrashContext(context.empty() ? "offline" : context);
+  }
 
   Sparking::InitFromOptions(options);
   if (Sparking::OwnsMain(options))

@@ -16,6 +16,8 @@ var shots := 0
 var recorder: Translation
 
 
+const CrashLog := preload("res://scripts/crash_log.gd")
+
 func _ready() -> void:
 	app = get_parent()
 	app.ignore_focus = true
@@ -1241,6 +1243,66 @@ func _tour() -> void:
 	await wait_for("Dolphin exited (watchdog test)", func(): return not Dolphin.is_running(), 10)
 	await wait_for("back at the game menu", func(): return app._title.text == "Tenkaichi 3", 10)
 	Dolphin.boot_watch_override = -1.0
+
+	# --- Crash reports: Dolphin crashes mid-game -> its own report + the launcher's, a pop-up. --
+	var logs_dir := Settings.data_path("logs")
+	var reports_before := Array(DirAccess.get_files_at(logs_dir)) if DirAccess.dir_exists_absolute(logs_dir) else []
+	await choose("Play Offline")
+	play = top()
+	Dolphin._watch_boot("stats", {"event": "stats", "fps": 59.9, "vps": 60.0})   # (no watchdog)
+	await wait_for("game running (crash test)", func(): return Dolphin.in_game, 20)
+	await frames(60)
+	Dolphin.send("test_crash segv")
+	await wait_for("the crash ends Dolphin", func(): return not Dolphin.is_running(), 20)
+	await wait_for("the crash pop-up opens", func(): return app._title.text == tr("The game crashed"), 10)
+	var new_files := Array(DirAccess.get_files_at(logs_dir)).filter(func(n): return not n in reports_before)
+	var ours: Array = new_files.filter(func(n): return String(n).begins_with("crash_"))
+	var theirs: Array = new_files.filter(func(n): return String(n).begins_with("dolphin_crash_"))
+	check("a crash report is saved in SparkingData/logs %s" % [new_files], ours.size() == 1 and theirs.size() == 1)
+	var report_text := FileAccess.get_file_as_string(logs_dir.path_join(ours[0])) if ours.size() == 1 else ""
+	check("it says what happened, on what PC, and includes Dolphin's own report",
+			report_text.contains("The game crashed.") and report_text.contains("What: segmentation fault")
+			and report_text.contains("Graphics: ") and report_text.contains("=== Dolphin's crash report")
+			and report_text.contains("Stack (crashing thread):")
+			and report_text.contains('"event":"game_started"') and report_text.contains("Started with: "))
+	check("no IP addresses in it", not RegEx.create_from_string("\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b").search(report_text))
+	check("the pop-up says where the report is", String(app._desc.text).contains("SparkingData/logs/" + (ours[0] if ours.size() == 1 else "?")))
+	await shot("crash_popup")
+	await choose("OK")
+	await wait_for("OK closes it: back at the game menu", func(): return app._title.text == "Tenkaichi 3", 10)
+	# A game that's closed from outside (killed) is reported too, as "closed unexpectedly".
+	await choose("Play Offline")
+	Dolphin._watch_boot("stats", {"event": "stats", "fps": 59.9, "vps": 60.0})
+	await wait_for("game running (kill test)", func(): return Dolphin.in_game, 20)
+	await frames(60)
+	OS.execute("kill", ["-9", str(Dolphin._session.pid)])   # (OS.kill would tell the launcher)
+	await wait_for("killed from outside", func(): return not Dolphin.is_running(), 20)
+	await wait_for("the 'closed unexpectedly' pop-up opens", func(): return app._title.text == tr("The game closed unexpectedly"), 10)
+	await choose("OK")
+	await wait_for("back at the game menu (kill test)", func(): return app._title.text == "Tenkaichi 3", 10)
+	# And a normal stop is not a crash.
+	var count_before := DirAccess.get_files_at(logs_dir).size()
+	await choose("Play Offline")
+	play = top()
+	Dolphin._watch_boot("stats", {"event": "stats", "fps": 59.9, "vps": 60.0})
+	await frames(120)
+	await pick("stop", play.list)
+	await wait_for("Dolphin exited (normal stop)", func(): return not Dolphin.is_running(), 10)
+	await frames(30)
+	check("a normal stop writes no report", DirAccess.get_files_at(logs_dir).size() == count_before
+			and app._title.text == "Tenkaichi 3")
+	# The launcher itself crashed last time: Godot's log of that run says so.
+	var fake := "user://logs/godot2099-01-01T00.00.00.log"
+	var lf := FileAccess.open(fake, FileAccess.WRITE)
+	lf.store_string("Godot Engine v4\nhandle_crash: Program crashed with signal 11\n[1] something\n")
+	lf.close()
+	var lc := CrashLog.check_previous_launcher_run()
+	check("the launcher's own crash is found and copied (%s)" % lc.get_file(),
+			lc.get_file() == "launcher_crash_20990101_000000.txt"
+			and FileAccess.get_file_as_string(lc).contains("Program crashed with signal 11"))
+	check("and only reported once", CrashLog.check_previous_launcher_run() == "")
+	DirAccess.remove_absolute(fake)
+	DirAccess.remove_absolute(lc)
 
 	await choose("Modifications")
 	check("modifications submenu", app._title.text == "Modifications")

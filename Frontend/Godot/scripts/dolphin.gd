@@ -7,9 +7,15 @@ extends Node
 
 signal event(name: String, data: Dictionary)
 signal exited(code: int)
+## A game (the session or a helper) ended unexpectedly: it crashed, closed with an error, or
+## never started (boot watchdog). `info`: kind, summary, report (the crash report written in
+## SparkingData/logs, "" if it couldn't be), role. See scripts/crash_log.gd.
+signal crashed(info: Dictionary)
 
 const PREFIX := "[SPARKING] "
 const Controllers := preload("res://scripts/controllers.gd")
+const CrashLog := preload("res://scripts/crash_log.gd")
+const OUTPUT_TAIL := 200   # console lines kept per process, for crash reports
 
 
 class Proc:
@@ -23,6 +29,13 @@ class Proc:
 	var lines: Array[String] = []
 	var finished := false
 	var exit_code := -1
+	var args := PackedStringArray()
+	var output: Array[String] = []   # its last console lines (not events): crash reports
+	var crash := {}                  # its "crash" event, if it sent one
+	var saw_exit := false            # it said "exit": it ended on its own terms
+	var killed := false              # this launcher ended it (quit timeout, closing)
+	var hung := 0.0                  # the boot watchdog ended it after this many seconds
+	var events: Array[String] = []   # helpers: their last events (the session uses log_lines)
 
 	func start(exe: String, args: PackedStringArray) -> bool:
 		# Linux: a Dolphin copied from Windows, unpacked by hand or put in by an update may have
@@ -30,9 +43,12 @@ class Proc:
 		if OS.get_name() == "Linux" and FileAccess.file_exists(exe) \
 				and FileAccess.get_unix_permissions(exe) & 0b001001001 == 0:
 			FileAccess.set_unix_permissions(exe, 493)   # rwxr-xr-x
+		# Dolphin writes its own crash report (and a minidump on Windows) here if it crashes.
+		OS.set_environment("SPARKING_CRASH_DIR", CrashLog.folder())
 		var r := OS.execute_with_pipe(exe, args)
 		if r.is_empty():
 			return false
+		self.args = args
 		pid = r["pid"]
 		stdio = r["stdio"]
 		stderr = r["stderr"]
@@ -54,6 +70,12 @@ class Proc:
 				mutex.lock()
 				lines.append(line.substr(PREFIX.length()))
 				mutex.unlock()
+			elif line != "":
+				mutex.lock()
+				output.append(line)
+				if output.size() > OUTPUT_TAIL:
+					output.pop_front()
+				mutex.unlock()
 		if keep:
 			mutex.lock()
 			finished = true
@@ -71,6 +93,35 @@ class Proc:
 		var f := finished
 		mutex.unlock()
 		return f and not OS.is_process_running(pid)
+
+	func take_output() -> Array[String]:
+		mutex.lock()
+		var out := output.duplicate()
+		mutex.unlock()
+		return out
+
+	## Notes what an event says about how this process ends.
+	func note(data: Dictionary) -> void:
+		match String(data.get("event", "")):
+			"exit":
+				saw_exit = true
+			"crash":
+				crash = data
+
+	## Once it has ended: did it end the way it should have? Not: it crashed (it says so), the
+	## boot watchdog closed it, or it closed by itself with an error and without saying "exit".
+	func unexpected_end() -> String:
+		if hung > 0.0:
+			return "boot_hung"
+		if killed and crash.is_empty():
+			return ""   # (and its exit code is gone: killing it collected it)
+		exit_code = OS.get_process_exit_code(pid)
+		if not crash.is_empty():
+			return "crash"
+		if saw_exit:
+			return ""
+		# No "exit": it didn't get to the end of its main(). -1: the code is unknown.
+		return "closed" if exit_code != 0 else ""
 
 	func send(line: String) -> void:
 		# Writing to the pipe of a process that already exited raises SIGPIPE, which would kill
@@ -202,6 +253,7 @@ func quit_session(grace_ms := 4000) -> void:
 	p.send("quit")
 	await get_tree().create_timer(grace_ms / 1000.0).timeout
 	if _session == p and OS.is_process_running(p.pid):
+		p.killed = true
 		OS.kill(p.pid)
 
 
@@ -257,6 +309,7 @@ func stop_helper(handle: Object) -> void:
 	p.send("quit")
 	await get_tree().create_timer(1.5).timeout
 	if OS.is_process_running(p.pid):
+		p.killed = true
 		OS.kill(p.pid)
 
 
@@ -265,11 +318,18 @@ func _process(_delta: float) -> void:
 		var hp: Proc = h["proc"]
 		for raw in hp.take_lines():
 			var data = JSON.parse_string(raw)
+			if data is Dictionary:
+				hp.note(data)
+				if data.get("event", "") != "stats":
+					hp.events.append(raw)
+					if hp.events.size() > 150:
+						hp.events.pop_front()
 			if data is Dictionary and h["callback"].is_valid():
 				h["callback"].call(data)
 		if hp.is_finished():
 			_helpers.erase(h)
 			hp.close()
+			_report_if_unexpected(hp, "helper", hp.events)
 			if h["callback"].is_valid():
 				h["callback"].call({"event": "process_exited"})
 
@@ -277,6 +337,7 @@ func _process(_delta: float) -> void:
 		for raw in _session.take_lines():
 			var data = JSON.parse_string(raw)
 			if data is Dictionary and data.has("event"):
+				_session.note(data)
 				if data["event"] != "stats":
 					_log(raw)
 				_track_game(String(data["event"]))
@@ -287,6 +348,7 @@ func _process(_delta: float) -> void:
 			_disarm_boot_watch()
 			_log("boot watchdog: no frame after %.0f s, killing Dolphin" % secs)
 			event.emit("boot_hung", {"event": "boot_hung", "seconds": secs})
+			_session.hung = secs
 			OS.kill(_session.pid)
 		if _session.is_finished():
 			var p := _session
@@ -294,7 +356,9 @@ func _process(_delta: float) -> void:
 			_disarm_boot_watch()
 			p.close()
 			var code := 0
+			var was_in_game := in_game
 			in_game = false
+			_report_if_unexpected(p, "session", Array(log_lines.slice(maxi(0, log_lines.size() - 150))), was_in_game)
 			event.emit("process_exited", {"event": "process_exited"})
 			exited.emit(code)
 
@@ -311,6 +375,27 @@ func _process(_delta: float) -> void:
 				q["callback"].call(q["events"])
 
 
+## Writes a crash report (scripts/crash_log.gd) for a game that ended unexpectedly, and says so.
+func _report_if_unexpected(p: Proc, role: String, events: Array, was_in_game := true) -> void:
+	var kind := p.unexpected_end()
+	if kind == "":
+		return
+	var summary := ""
+	match kind:
+		"crash":
+			summary = String(p.crash.get("summary", ""))
+		"boot_hung":
+			summary = "no picture after %.0f s" % p.hung
+		_:
+			summary = "exit code %s" % CrashLog.exit_code_text(p.exit_code)
+	var info := {"kind": kind, "summary": summary, "args": p.args, "code": p.exit_code,
+		"events": events, "output": p.take_output(), "crash": p.crash, "in_game": was_in_game,
+		"role": role}
+	var path := CrashLog.write_game_report(info)
+	_log("%s ended unexpectedly (%s: %s), report: %s" % [role, kind, summary, path])
+	crashed.emit({"kind": kind, "summary": summary, "report": path, "role": role})
+
+
 func _log(line: String) -> void:
 	log_lines.append(line)
 	if log_lines.size() > 300:
@@ -325,6 +410,7 @@ func _exit_tree() -> void:
 		_session.send("quit")
 		OS.delay_msec(300)
 		if OS.is_process_running(_session.pid):
+			_session.killed = true
 			OS.kill(_session.pid)
 
 

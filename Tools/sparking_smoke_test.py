@@ -9,6 +9,7 @@ generated DOL (a single `b .` loop) as the "game" so no disc image is needed.
 """
 
 import json
+import signal
 import os
 import queue
 import shutil
@@ -787,12 +788,51 @@ def main():
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
+        crash_check(exe, dol, work)
         print("ALL PASSED")
     finally:
         for inst in [v for v in locals().values() if isinstance(v, Instance)]:
             if inst.proc.poll() is None:
                 inst.proc.kill()
         shutil.rmtree(work, ignore_errors=True)
+
+
+def crash_check(exe, dol, work):
+    print("crash reports")
+    crash_dir = os.path.join(work, "crash-logs")
+    for how, sig, where in (("segv", signal.SIGSEGV, "env"), ("abort", signal.SIGABRT, "user"),
+                            ("terminate", signal.SIGABRT, "env")):
+        user = os.path.join(work, f"crash-{how}")
+        os.makedirs(os.path.join(user, "Config"), exist_ok=True)
+        old = os.environ.pop("SPARKING_CRASH_DIR", None)
+        if where == "env":
+            os.environ["SPARKING_CRASH_DIR"] = crash_dir   # the launcher sets this
+        try:
+            inst = Instance(f"crash-{how}", [exe, "-p", "headless", "-v", "Null", "--sparking",
+                                             "--test-hooks", "-u", user, "-e", dol])
+        finally:
+            os.environ.pop("SPARKING_CRASH_DIR", None)
+            if old is not None:
+                os.environ["SPARKING_CRASH_DIR"] = old
+        inst.send("hello")
+        inst.wait_for("game_started", timeout=60)
+        time.sleep(0.5)
+        inst.send(f"test_crash {how}")
+        ev = inst.wait_for("crash", timeout=30)
+        rc = inst.proc.wait(timeout=30)
+        folder = crash_dir if where == "env" else os.path.join(user, "Logs")
+        report = ev.get("report", "")
+        check(f"{how}: crash event, report in {'SPARKING_CRASH_DIR' if where == 'env' else '<user>/Logs'} "
+              f"({ev.get('summary')})",
+              report != "" and os.path.dirname(report) == folder and os.path.isfile(report)
+              and os.path.basename(report).startswith("dolphin_crash_"))
+        text = open(report, encoding="utf-8", errors="replace").read()
+        check(f"{how}: the report says what, where, and the last events",
+              "crashed" in text and "Stack (crashing thread):" in text and "Last events" in text
+              and '"event":"game_started"' in text and "Context: offline" in text)
+        check(f"{how}: and the process still dies of it (exit {rc})", rc == -sig)
+        if how != "terminate":
+            os.remove(report)   # (two crashes in one second would share a name)
 
 
 class FakeLobbyServer:

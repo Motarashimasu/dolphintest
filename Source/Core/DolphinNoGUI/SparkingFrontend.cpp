@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "DolphinNoGUI/SparkingFrontend.h"
+#include "DolphinNoGUI/SparkingCrash.h"
 
 #include <OptionParser.h>
 #include <fmt/format.h>
@@ -496,6 +497,8 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     Emit("test_input", Json().Add("seed", cmd.arg));
     return;
   }
+  if (s_test_hooks && cmd.name == "test_crash")
+    CrashForTest(cmd.arg);   // (crash reports: the smoke test)
   if (s_test_hooks && cmd.name == "test_lag")
   {
     NetPlay::NetPlayClient::SetTestLag(std::atoi(cmd.arg.c_str()));
