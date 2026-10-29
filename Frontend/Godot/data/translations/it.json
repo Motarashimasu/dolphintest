@@ -1093,5 +1093,6 @@
  "The game closed unexpectedly": "Il gioco si è chiuso inaspettatamente",
  "A report was saved:\n%s\nSend it (and any .dmp file next to it) when you report the problem.": "È stato salvato un rapporto:\n%s\nInvialo (insieme all'eventuale file .dmp accanto) quando segnali il problema.",
  "The report couldn't be saved (is the game folder read-only?).": "Impossibile salvare il rapporto (la cartella del gioco è di sola lettura?).",
- "Open the logs folder": "Apri la cartella dei log"
+ "Open the logs folder": "Apri la cartella dei log",
+ "It happened while the game was starting. If it keeps happening, try another\nrenderer (Video Settings) or turn Enhanced textures off (Options).": "È successo mentre il gioco si avviava. Se continua, prova un altro\nrenderer (Impostazioni video) o disattiva le Texture migliorate (Opzioni)."
 }

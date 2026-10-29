@@ -760,14 +760,19 @@ func _on_game_crashed(info: Dictionary) -> void:
 	show_window()
 	var title := tr("The game crashed") if info.get("kind", "") == "crash" \
 			else tr("The game closed unexpectedly")
-	crash_popup(title, String(info.get("report", "")))
+	var hint := ""
+	if info.get("phase", "") == "booting":
+		hint = tr("It happened while the game was starting. If it keeps happening, try another\nrenderer (Video Settings) or turn Enhanced textures off (Options).")
+	crash_popup(title, String(info.get("report", "")), hint)
 
 
 ## The "it crashed" pop-up: where the report is, and a way to open that folder.
-func crash_popup(title: String, report: String) -> void:
+func crash_popup(title: String, report: String, hint := "") -> void:
 	var where := tr("A report was saved:\n%s\nSend it (and any .dmp file next to it) when you report the problem.") \
 			% ("SparkingData/logs/" + report.get_file()) if report != "" \
 			else tr("The report couldn't be saved (is the game folder read-only?).")
+	if hint != "":
+		where = hint + "\n" + where
 	var m := menu(title, [
 		{"label": "OK", "desc": where, "action": func(): pop()},
 		{"label": "Open the logs folder", "desc": where, "action": func():

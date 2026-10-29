@@ -20,6 +20,7 @@
 #include <string_view>
 #include <thread>
 
+#include "Common/Version.h"
 #include "Common/Config/Config.h"
 #include "Common/FileUtil.h"
 #include "Common/MsgHandler.h"
@@ -1279,7 +1280,9 @@ void InitFromOptions(const optparse::Values& options)
   }
   Emit("ready",
        Json().Add("protocol", PROTOCOL_VERSION)
-           .Add("mode", netplay ? "netplay" : (listing ? "list" : "solo")));
+           .Add("mode", netplay ? "netplay" : (listing ? "list" : "solo"))
+           .Add("build", Common::GetScmDescStr())
+           .Add("crash_reports", true));   // (SparkingCrash.h: the launcher's reports say so)
 }
 
 void RequestQuit()

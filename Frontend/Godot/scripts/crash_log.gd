@@ -49,6 +49,18 @@ static func exit_code_text(code: int) -> String:
 	return str(code)
 
 
+## Windows ends a crashed program with an exception code (0xC0000005...): that's a crash, even
+## if Dolphin couldn't say so itself. "" for an ordinary exit code.
+static func windows_crash_name(code: int) -> String:
+	var c := code & 0xFFFFFFFF
+	if code == -1 or c < 0xC0000000 or c == 0xC000013A:   # (-1: unknown)   # (0xC000013A: Ctrl+C / closed console)
+		return ""
+	return {0xC0000005: "access violation", 0xC00000FD: "stack overflow",
+		0xC000001D: "illegal instruction", 0xC0000094: "integer divide by zero",
+		0xC0000409: "stack buffer overrun / fail fast", 0xC0000374: "heap corruption",
+		0xC0000006: "in-page error", 0xC0000017: "out of memory"}.get(c, "exception")
+
+
 static func _system_lines() -> PackedStringArray:
 	var out := PackedStringArray()
 	var ver := "?"
@@ -92,13 +104,18 @@ static func write_game_report(info: Dictionary) -> String:
 	for l in _system_lines():
 		if l != "":
 			f.store_line(l)
-	f.store_line("Dolphin: %s" % Settings.dolphin_path().get_file())
+	var build := String(info.get("build", ""))
+	f.store_line("Dolphin: %s, build %s" % [Settings.dolphin_path().get_file(), build if build != "" else "unknown (older than the crash reports)"])
+	f.store_line("When: %s" % {"booting": "while the game was starting (before its first picture)",
+		"playing": "during the game"}.get(String(info.get("phase", "")), "outside a game"))
 	f.store_line("Started with: %s" % scrub(" ".join(PackedStringArray(info.get("args", [])))))
 	var crash: Dictionary = info.get("crash", {})
 	var dump := String(crash.get("dump", ""))
 	if dump != "":
 		f.store_line("Minidump: %s  (send it along with this file)" % dump.get_file())
 	var report := String(crash.get("report", ""))
+	if crash.is_empty() and not info.get("crash_reports", false):
+		f.store_line("No report from Dolphin itself: this Dolphin build doesn't write crash reports yet (update it).")
 	if report != "" and FileAccess.file_exists(report):
 		f.store_line("")
 		f.store_line("=== Dolphin's crash report (%s) ===" % report.get_file())

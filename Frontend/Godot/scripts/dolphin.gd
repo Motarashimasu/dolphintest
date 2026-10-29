@@ -36,6 +36,9 @@ class Proc:
 	var killed := false              # this launcher ended it (quit timeout, closing)
 	var hung := 0.0                  # the boot watchdog ended it after this many seconds
 	var events: Array[String] = []   # helpers: their last events (the session uses log_lines)
+	var build := ""                  # Dolphin's build (its "ready"; "" = an older Dolphin)
+	var crash_reports := false       # this Dolphin writes its own crash reports
+	var phase := ""                  # "booting" (game_booting, no picture yet) / "playing" / ""
 
 	func start(exe: String, args: PackedStringArray) -> bool:
 		# Linux: a Dolphin copied from Windows, unpacked by hand or put in by an update may have
@@ -103,6 +106,15 @@ class Proc:
 	## Notes what an event says about how this process ends.
 	func note(data: Dictionary) -> void:
 		match String(data.get("event", "")):
+			"ready":
+				build = String(data.get("build", ""))
+				crash_reports = bool(data.get("crash_reports", false))
+			"game_booting":
+				phase = "booting"
+			"game_started":
+				phase = "playing"
+			"game_stopped", "game_start_aborted", "boot_failed":
+				phase = ""
 			"exit":
 				saw_exit = true
 			"crash":
@@ -388,12 +400,17 @@ func _report_if_unexpected(p: Proc, role: String, events: Array, was_in_game := 
 			summary = "no picture after %.0f s" % p.hung
 		_:
 			summary = "exit code %s" % CrashLog.exit_code_text(p.exit_code)
+			var crash_name := CrashLog.windows_crash_name(p.exit_code)
+			if crash_name != "":
+				kind = "crash"   # (an older Dolphin that couldn't say so itself)
+				summary = "%s (%s)" % [crash_name, CrashLog.exit_code_text(p.exit_code)]
 	var info := {"kind": kind, "summary": summary, "args": p.args, "code": p.exit_code,
+		"build": p.build, "crash_reports": p.crash_reports, "phase": p.phase,
 		"events": events, "output": p.take_output(), "crash": p.crash, "in_game": was_in_game,
 		"role": role}
 	var path := CrashLog.write_game_report(info)
 	_log("%s ended unexpectedly (%s: %s), report: %s" % [role, kind, summary, path])
-	crashed.emit({"kind": kind, "summary": summary, "report": path, "role": role})
+	crashed.emit({"kind": kind, "summary": summary, "report": path, "role": role, "phase": p.phase})
 
 
 func _log(line: String) -> void:

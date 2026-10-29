@@ -572,6 +572,11 @@ void NoteEventForCrash(std::string_view line)
   if (line.substr(0, EVENT_PREFIX.size()) == EVENT_PREFIX)
     line.remove_prefix(EVENT_PREFIX.size());
   std::lock_guard lk(s_note_mutex);
+#ifdef _WIN32
+  // Something else (a graphics driver, a library) may have put in its own handler since
+  // start-up and swallowed crashes before ours: put ours back (cheap, and often: stats every s).
+  SetUnhandledExceptionFilter(OnUnhandledException);
+#endif
   if (line.starts_with("{\"event\":\"stats\""))
   {
     CopyLine(s_last_stats, line);
