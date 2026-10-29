@@ -26,6 +26,8 @@
 #include "Common/MsgHandler.h"
 #include "Common/ScopeGuard.h"
 #include "Common/WindowSystemInfo.h"
+#include "InputCommon/ControllerInterface/ControllerInterface.h"
+#include "Core/HW/GCPad.h"
 #include "Core/Boot/Boot.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Config/NetplaySettings.h"
@@ -184,8 +186,21 @@ WindowSystemInfo HeadlessWSI()
   return wsi;
 }
 
+// The controllers follow the game window (keyboard input needs it). Windows: the controller
+// interface is only pointed at the new window, as Dolphin's own UI does. Shutting it down and
+// starting it again right away crashed some players' Dolphin as the game started (a controller
+// thread reading a DLL that had just been unloaded, 0xC0000005). The pads' settings are re-read,
+// as a restart would. Elsewhere (X11 needs the display connection too) it's still a restart.
 void ReinitControllers(const WindowSystemInfo& wsi)
 {
+#ifdef _WIN32
+  if (g_controller_interface.IsInit())
+  {
+    g_controller_interface.ChangeWindow(wsi.render_window);
+    Pad::LoadConfig();
+    return;
+  }
+#endif
   UICommon::ShutdownControllers();
   UICommon::InitControllers(wsi);
 }
@@ -648,8 +663,8 @@ void RunNetPlayGame(const FrontendHooks& hooks, std::unique_ptr<BootParameters> 
   ReplayFinish();  // ranked replay: saved now if the match was decided (emulation still up)
   Core::Stop(system);
   Core::Shutdown(system);
+  ReinitControllers(HeadlessWSI());  // (before the window goes: nothing may keep using it)
   hooks.platform.reset();
-  ReinitControllers(HeadlessWSI());
 }
 }  // namespace
 
