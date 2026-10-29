@@ -89,7 +89,14 @@ func api(endpoint: String, body := {}) -> Dictionary:
 	var res: Array = await HttpWait.done(req, 20.0)
 	req.queue_free()
 	if int(res[0]) != HTTPRequest.RESULT_SUCCESS:
-		return {"ok": false, "error": "unreachable", "result": int(res[0])}   # (HTTPRequest.Result)
+		# Say which way it failed: a refused secure connection or an unknown name is something on
+		# the player's side (antivirus web protection, router / ISP filters, DNS), not "no internet".
+		var why := "unreachable"
+		if int(res[0]) == HTTPRequest.RESULT_TLS_HANDSHAKE_ERROR:
+			why = "secure_refused"
+		elif int(res[0]) == HTTPRequest.RESULT_CANT_RESOLVE:
+			why = "cant_resolve"
+		return {"ok": false, "error": why, "result": int(res[0])}   # (HTTPRequest.Result)
 	var data = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
 	if typeof(data) != TYPE_DICTIONARY:
 		return {"ok": false, "error": "bad_response", "http": int(res[1])}
@@ -238,11 +245,17 @@ static func _last_key(mode: String) -> String:
 	return String(Settings.GAMES[Settings.game]["ranked_prefix"]) + "last_" + mode
 
 
+static func _server_host() -> String:
+	return String(Settings.get_value("ranked", "server")).get_slice("://", 1).get_slice("/", 0)
+
+
 ## Readable text for a server error code.
 static func error_text(code: String) -> String:
 	var t := {
 		"unreachable": "Couldn't reach the ranked server. Check your connection.",
 		"bad_response": "The ranked server sent something unexpected.",
+		"secure_refused": "The secure connection to DRAGON NET was refused on the way. Antivirus web\nprotection, router security or your network may be blocking %s: allow it or try another network.",
+		"cant_resolve": "Couldn't look up the DRAGON NET server (%s). Check your connection, or try\nanother DNS (e.g. 1.1.1.1).",
 		"discord_not_configured": "The Discord login isn't set up on the server.",
 		"login_required": "Log in to your DRAGON NET account first.",
 		"wrong_login": "Wrong username or password.",
@@ -278,4 +291,7 @@ static func error_text(code: String) -> String:
 		"upload_broken": "The upload got damaged on the way. Try again.",
 		"write_failed": "Couldn't save the replay (is the folder read-only?).",
 	}
-	return TranslationServer.translate(t.get(code, code.replace("_", " ")))
+	var text := String(TranslationServer.translate(t.get(code, code.replace("_", " "))))
+	if code in ["secure_refused", "cant_resolve"]:
+		text = text % _server_host()
+	return text

@@ -1094,5 +1094,7 @@
  "A report was saved:\n%s\nSend it (and any .dmp file next to it) when you report the problem.": "Se guardó un informe:\n%s\nEnvíalo (junto con el archivo .dmp que haya al lado) cuando informes del problema.",
  "The report couldn't be saved (is the game folder read-only?).": "No se pudo guardar el informe (¿la carpeta del juego es de solo lectura?).",
  "Open the logs folder": "Abrir la carpeta de registros",
- "It happened while the game was starting. If it keeps happening, try another\nrenderer (Video Settings) or turn Enhanced textures off (Options).": "Ocurrió mientras el juego arrancaba. Si sigue pasando, prueba otro\nrenderizador (Ajustes de vídeo) o desactiva las Texturas mejoradas (Opciones)."
+ "It happened while the game was starting. If it keeps happening, try another\nrenderer (Video Settings) or turn Enhanced textures off (Options).": "Ocurrió mientras el juego arrancaba. Si sigue pasando, prueba otro\nrenderizador (Ajustes de vídeo) o desactiva las Texturas mejoradas (Opciones).",
+ "The secure connection to DRAGON NET was refused on the way. Antivirus web\nprotection, router security or your network may be blocking %s: allow it or try another network.": "La conexión segura con DRAGON NET fue rechazada por el camino. La protección web\ndel antivirus, la seguridad del router o tu red pueden estar bloqueando %s: permítelo o prueba otra red.",
+ "Couldn't look up the DRAGON NET server (%s). Check your connection, or try\nanother DNS (e.g. 1.1.1.1).": "No se pudo encontrar el servidor de DRAGON NET (%s). Revisa tu conexión o prueba\notro DNS (p. ej. 1.1.1.1)."
 }

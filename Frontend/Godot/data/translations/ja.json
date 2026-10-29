@@ -1094,5 +1094,7 @@
  "A report was saved:\n%s\nSend it (and any .dmp file next to it) when you report the problem.": "レポートを保存しました：\n%s\n問題を報告するときは、これ（と隣にある .dmp ファイル）を送ってください。",
  "The report couldn't be saved (is the game folder read-only?).": "レポートを保存できませんでした（ゲームフォルダーが読み取り専用では？）。",
  "Open the logs folder": "ログフォルダーを開く",
- "It happened while the game was starting. If it keeps happening, try another\nrenderer (Video Settings) or turn Enhanced textures off (Options).": "ゲームの起動中に発生しました。続く場合は、別のレンダラー（映像の設定）を\n試すか、エンハンステクスチャをオフにしてください（オプション）。"
+ "It happened while the game was starting. If it keeps happening, try another\nrenderer (Video Settings) or turn Enhanced textures off (Options).": "ゲームの起動中に発生しました。続く場合は、別のレンダラー（映像の設定）を\n試すか、エンハンステクスチャをオフにしてください（オプション）。",
+ "The secure connection to DRAGON NET was refused on the way. Antivirus web\nprotection, router security or your network may be blocking %s: allow it or try another network.": "DRAGON NET への安全な接続が途中で拒否されました。アンチウイルスのWeb保護、\nルーターのセキュリティ、またはネットワークが %s をブロックしている可能性があります。許可するか、別のネットワークを試してください。",
+ "Couldn't look up the DRAGON NET server (%s). Check your connection, or try\nanother DNS (e.g. 1.1.1.1).": "DRAGON NET サーバー（%s）が見つかりませんでした。接続を確認するか、\n別のDNS（例：1.1.1.1）を試してください。"
 }
