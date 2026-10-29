@@ -21,10 +21,22 @@ var needs_account := false   # logged in with Discord, the profile has no userna
 ## How a login link is opened. Tests swap it for a scripted "browser".
 var open_url: Callable = func(url: String): OS.shell_open(url)
 var _cancel_login := false
+var _use_mirror := false     # see server()
 
 
+## The server in use: [ranked] server, or its mirror once the server couldn't be reached from
+## here (antivirus / router / ISP filters) and the mirror could. Back to the server next start.
 func server() -> String:
-	var s := String(Settings.get_value("ranked", "server")).strip_edges()
+	return _slash(String(Settings.get_value("ranked", "mirror" if _use_mirror else "server")))
+
+
+func mirror() -> String:
+	var m := String(Settings.get_value("ranked", "mirror")).strip_edges()
+	return _slash(m) if m != "" else ""
+
+
+static func _slash(s: String) -> String:
+	s = s.strip_edges()
 	return s if s.ends_with("/") else s + "/"
 
 
@@ -77,15 +89,28 @@ static func _from_server(v: Variant) -> Variant:
 
 func api(endpoint: String, body := {}) -> Dictionary:
 	body = _to_server(endpoint, body)
+	var res := await _post(server(), endpoint, body)
+	# Couldn't get through at all (not an answer from the server): the other address, once. If
+	# that one works, it's the one used from now on (until the launcher restarts).
+	if res.has("result") and mirror() != "":
+		var other := _slash(String(Settings.get_value("ranked", "server"))) if _use_mirror else mirror()
+		var again := await _post(other, endpoint, body)
+		if not again.has("result"):
+			_use_mirror = not _use_mirror
+			return again
+	return res
+
+
+func _post(base: String, endpoint: String, body: Dictionary) -> Dictionary:
 	var req := HTTPRequest.new()
 	add_child(req)   # (timed out by the real clock below, not req.timeout: util/http_wait.gd)
 	var headers := PackedStringArray(["Content-Type: application/json", "Accept: application/json"])
 	if token() != "":
 		headers.append("X-Sparking-Token: " + token())
-	var err := req.request(server() + endpoint, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
+	var err := req.request(base + endpoint, headers, HTTPClient.METHOD_POST, JSON.stringify(body))
 	if err != OK:
 		req.queue_free()
-		return {"ok": false, "error": "unreachable"}
+		return {"ok": false, "error": "unreachable", "result": -1}
 	var res: Array = await HttpWait.done(req, 20.0)
 	req.queue_free()
 	if int(res[0]) != HTTPRequest.RESULT_SUCCESS:

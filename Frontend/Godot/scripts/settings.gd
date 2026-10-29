@@ -159,7 +159,10 @@ var defaults := {
 	# ones, "<ID>_enabled" = those. (Before versions: "custom" / "enabled", now RDSPAF's.)
 	"gecko": {},
 	# DRAGON NET Ranked: the ranked server (Server/ranked) and this install's Discord session.
-	"ranked": {"server": "https://tecshideout.ct.ws/sparking/", "token": "", "name": "",
+	# mirror: the same server through Cloudflare (Server/cloudflare-worker), for players whose
+	# antivirus / router / ISP blocks the server's own address. Tried when the server can't be
+	# reached; "" = none.
+	"ranked": {"server": "https://tecshideout.ct.ws/sparking/", "mirror": "", "token": "", "name": "",
 		"mode": "single", "board_mode": "single", "board_region": "global",
 		"last_single": 0, "last_team": 0,     # last known ratings, for the menu's rating plate
 		"b2last_single": 0, "b2last_team": 0},   # (Budokai Tenkaichi 2's)

@@ -49,4 +49,9 @@ return [
     //     ['label' => 'Linux', 'note' => 'For Linux and Steam Deck', 'r2' => 'installers/Sparking-linux.tar.gz'],
     //     ['label' => 'Portable', 'note' => 'Windows, no install (zip)'],
     // ],
+
+    // The Cloudflare mirror (Server/cloudflare-worker): the same long random password as the
+    // worker's PROXY_KEY secret (16+ characters). Then the server sees mirror players' own
+    // addresses (login limits) and hands out links to the mirror. Never share it.
+    // 'proxy_key' => '',
 ];

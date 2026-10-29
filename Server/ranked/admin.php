@@ -89,7 +89,7 @@ if (empty($_SESSION['admin'])) {
             $_SESSION['admin'] = true;
             $_SESSION['csrf'] = bin2hex(random_bytes(16));
             try {
-                admin_log('login', 'signed in from ' . ($_SERVER['REMOTE_ADDR'] ?? '?'));
+                admin_log('login', 'signed in from ' . (client_ip() ?: '?'));
             } catch (Throwable $e) {
             }
             header("Location: $self", true, 303);

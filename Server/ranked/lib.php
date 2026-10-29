@@ -643,6 +643,13 @@ function avatar_url($discord_id, $avatar): ?string
 /** This server's own address, for links it hands out (config public_url, else the request's). */
 function base_url(): string
 {
+    // Through the Cloudflare mirror: its address, so pictures and links work for players who
+    // can't reach this one.
+    $mirror = (string)($_SERVER['HTTP_X_SPARKING_HOST'] ?? '');
+    if (via_mirror() && preg_match('/^[a-z0-9.-]+$/i', $mirror)) {
+        $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+        return 'https://' . $mirror . $dir . '/';
+    }
     $u = (string)(cfg()['public_url'] ?? '');
     if ($u === '') {
         $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'
@@ -800,7 +807,27 @@ function rate_ok(string $key, int $max, int $window): bool
 /** The visitor's address, hashed (support messages and limits keep no plain addresses). */
 function ip_hash(): string
 {
-    return hash('sha256', 'sparking-ip|' . ($_SERVER['REMOTE_ADDR'] ?? ''));
+    return hash('sha256', 'sparking-ip|' . client_ip());
+}
+
+/** The visitor's address. Through the Cloudflare mirror (Server/cloudflare-worker) that's the
+ *  address it passes on, but only with the mirror's key ('proxy_key' in config.php): anyone could
+ *  send the header. */
+function client_ip(): string
+{
+    $ip = (string)($_SERVER['HTTP_X_SPARKING_CLIENT_IP'] ?? '');
+    if (via_mirror() && $ip !== '') {
+        return $ip;
+    }
+    return (string)($_SERVER['REMOTE_ADDR'] ?? '');
+}
+
+/** The request came through the Cloudflare mirror, with its key. */
+function via_mirror(): bool
+{
+    $key = (string)(cfg()['proxy_key'] ?? '');
+    $sent = (string)($_SERVER['HTTP_X_SPARKING_PROXY_KEY'] ?? '');
+    return strlen($key) >= 16 && $sent !== '' && hash_equals($key, $sent);
 }
 
 
