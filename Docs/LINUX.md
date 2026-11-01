@@ -39,12 +39,18 @@ In the editor: Project > Export > **Add... > Linux**:
   `*.ini, *.json, *.txt, *.pem`; exclude `tests/*`).
 - Export Project with **Export With Debug unticked**.
 
-Encryption (optional, as on Windows: Frontend/Godot/README.md > "Protecting the .pck"): the Linux
-template has to be built with your key too. Add the repository secret **GODOT_PCK_KEY** (GitHub >
-Settings > Secrets and variables > Actions > New repository secret: the 64 characters of
-`godot_pck_key.txt`), run "Linux build", download the artifact `godot-template-linux-encrypted`,
-and in the Linux preset set Custom Template > Release to it, plus the same Encryption settings
-and key as Windows. Without the secret, export the Linux launcher unencrypted.
+Encryption (as on Windows: Frontend/Godot/README.md > "Protecting the .pck"): the Linux
+template has to be built with your key too, **on your own PC**, never on GitHub (this repository
+is public, and so are its build artifacts). In WSL's Ubuntu 22.04 (below):
+
+```
+bash /mnt/e/SparkDol/<the repo>/Tools/build_encrypted_template_linux.sh
+```
+
+It reads the key the Windows script made (`C:\SparkingKeys\godot_pck_key.txt`), builds Godot
+4.7.2's Linux template with it and puts `godot.linuxbsd.template_release.x86_64` next to the key.
+In the Linux preset set Custom Template > Release to it, plus the same Encryption settings and key
+as Windows. A new Godot version: run it again with the tag (`... .sh "" 4.8-stable`).
 
 ### Put the build together
 
@@ -79,6 +85,29 @@ python Tools\package_linux.py E:\SparkDol\DBZSC-linux E:\SparkDol\DBZSC-linux-21
 - `package_linux.py` packs exactly what a Linux update holds (so a fresh install is up to date),
   in a folder "DRAGON BALL Sparking! Collection", with the launcher and Dolphin marked executable
   and a README for players. It refuses a Windows build folder.
+
+## Setting it up again (checklist)
+
+1. **Dolphin**: GitHub > Actions > "Linux build": the newest green run of your branch >
+   Artifacts > `dolphin-sparking-linux-x86_64` (it builds by itself on every Dolphin push; check
+   that the run's commit is the one your Windows Dolphin was built from).
+2. **WSL** (once): PowerShell (admin) `wsl --install -d Ubuntu-22.04`, restart, open "Ubuntu 22.04",
+   pick a user name and password.
+3. **Encrypted template** (once per Godot version): `bash .../Tools/build_encrypted_template_linux.sh`
+   in Ubuntu (above).
+4. **Godot export**: the "Linux" preset (above) with that template and the encryption key >
+   Export Project, Export With Debug unticked, into the Linux build folder.
+5. **Put the build together** and **publish / package** (below), the same version number as the
+   Windows build.
+6. **Try it** in WSL (below) before players get it: it starts, logs in, plays offline.
+
+What stays secret, and where: the .pck key, `release_private.pem`, `release.json` (R2 write key)
+stay in `C:\SparkingKeys` only: nothing goes to GitHub (no repository secrets are needed any
+more; if you added `GODOT_PCK_KEY` earlier, delete it: GitHub > Settings > Secrets and variables >
+Actions). The workflow's own GitHub token can only read the code. Players' launchers check every
+update against your public key before installing it, Linux the same as Windows, so a build
+nobody signed with `release_private.pem` is never installed. Don't add `*.pem` (other than the
+public `update_key.pem` the launcher already has) or `release.json` to a build folder.
 
 ## Trying it without a Linux PC
 

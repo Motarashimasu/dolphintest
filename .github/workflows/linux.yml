@@ -9,9 +9,9 @@
 # Dolphin). The result is the artifact "dolphin-sparking-linux-x86_64": a .tar.gz of the Dolphin
 # folder to put next to the Linux launcher.
 #
-# Optional: with the repository secret GODOT_PCK_KEY (the 64 characters of godot_pck_key.txt),
-# it also builds the Linux Godot export template with that key, for encrypted Linux launchers
-# (artifact "godot-template-linux-encrypted"). Without the secret that job is skipped.
+# No secrets here, on purpose: this repository is public, and so are its build artifacts (any
+# GitHub user can download them). The encrypted Linux Godot template (it holds the .pck key) is
+# built on your own PC instead: Tools/build_encrypted_template_linux.sh.
 name: Linux build
 
 on:
@@ -26,6 +26,14 @@ on:
       - "CMakeLists.txt"
       - ".github/workflows/linux.yml"
 
+# The workflow's GitHub token can only read the code (nothing here pushes, comments or releases).
+permissions:
+  contents: read
+
+concurrency:   # a newer push replaces a build still running for the same branch
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   dolphin:
     runs-on: ubuntu-22.04
@@ -33,6 +41,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
+          persist-credentials: false   # (the token isn't left in .git for later steps)
 
       - name: Submodules (the ones Linux uses)
         run: |
@@ -96,40 +105,3 @@ jobs:
           name: dolphin-sparking-linux-x86_64
           path: dolphin-sparking-linux-x86_64.tar.gz
           retention-days: 30
-
-  godot-template:
-    runs-on: ubuntu-22.04
-    env:
-      SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.GODOT_PCK_KEY }}
-      GODOT_TAG: 4.7.2-stable   # the editor's exact version (Tools/build_encrypted_template.ps1 too)
-    steps:
-      - name: Skip without the key
-        id: key
-        run: |
-          if [ -z "$SCRIPT_AES256_ENCRYPTION_KEY" ]; then
-            echo "No GODOT_PCK_KEY secret: no encrypted Linux template."; echo "have=no" >> "$GITHUB_OUTPUT"
-          else
-            echo "have=yes" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Godot source
-        if: steps.key.outputs.have == 'yes'
-        run: git clone --depth 1 --branch "$GODOT_TAG" https://github.com/godotengine/godot.git godot
-      - name: Build tools
-        if: steps.key.outputs.have == 'yes'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libx11-dev libxcursor-dev \
-            libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev libudev-dev \
-            libxi-dev libxrandr-dev
-          python3 -m pip install --user scons
-      - name: Build the template
-        if: steps.key.outputs.have == 'yes'
-        working-directory: godot
-        # X11 only (XWayland covers Wayland desktops); no screen reader driver, as on Windows.
-        run: python3 -m SCons platform=linuxbsd target=template_release arch=x86_64 production=yes accesskit=no wayland=no -j "$(nproc)"
-      - uses: actions/upload-artifact@v4
-        if: steps.key.outputs.have == 'yes'
-        with:
-          name: godot-template-linux-encrypted
-          path: godot/bin/godot.linuxbsd.template_release.x86_64
-          retention-days: 3
