@@ -3,7 +3,8 @@
 # Built on Ubuntu 22.04 so it runs on most Linux systems of the last years (glibc 2.35+: Ubuntu
 # 22.04+, Debian 12+, Fedora 36+, SteamOS 3 / Steam Deck, Arch...). Dolphin's own copies of its
 # libraries (USE_SYSTEM_LIBS=OFF) and a static libstdc++, so it only needs what every desktop
-# has: X11 (or XWayland), libudev / libevdev (controllers), PulseAudio or ALSA (sound).
+# has: X11 (or XWayland), libudev (controllers), PulseAudio or ALSA (sound); libevdev comes along
+# in Dolphin/lib (not every system has it).
 #
 # Run it: GitHub > Actions > "Linux build" > Run workflow (it also runs on pushes that change
 # Dolphin). The result is the artifact "dolphin-sparking-linux-x86_64": a .tar.gz of the Dolphin
@@ -59,7 +60,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            g++-12 ninja-build pkg-config \
+            g++-12 ninja-build pkg-config patchelf \
             libx11-dev libxrandr-dev libxi-dev libxext-dev libegl-dev libgl-dev \
             libevdev-dev libudev-dev libpulse-dev libasound2-dev
 
@@ -94,10 +95,24 @@ jobs:
 
       - name: Package the Dolphin folder
         run: |
-          mkdir -p out/Dolphin
+          mkdir -p out/Dolphin/lib
           cp build/Binaries/dolphin-emu-nogui build/Binaries/dolphin-tool out/Dolphin/
           cp -r Data/Sys out/Dolphin/Sys
           chmod 755 out/Dolphin/dolphin-emu-nogui out/Dolphin/dolphin-tool
+          # libevdev (controllers) isn't on every Linux (WSL, minimal installs: "error while
+          # loading shared libraries: libevdev.so.2"): it comes along in Dolphin/lib, found
+          # through the programs' RUNPATH ($ORIGIN/lib), before the system's.
+          for lib in libevdev.so.2; do
+            src=$(ldd build/Binaries/dolphin-emu-nogui | awk -v l="$lib" '$1 == l {print $3}')
+            [ -n "$src" ] || { echo "::error::$lib not found"; exit 1; }
+            cp -L "$src" out/Dolphin/lib/
+            echo "Bundled $lib (from $src):"; ldd "out/Dolphin/lib/$lib" | awk '{print "  " $1}'
+          done
+          patchelf --set-rpath '$ORIGIN/lib' out/Dolphin/dolphin-emu-nogui out/Dolphin/dolphin-tool
+          readelf -d out/Dolphin/dolphin-emu-nogui | grep -E 'RUNPATH|RPATH'
+          # Check the loader really picks the bundled copy (RUNPATH comes before the system's).
+          ldd out/Dolphin/dolphin-emu-nogui | grep -E 'libevdev\.so\.2 => .*/Dolphin/lib/' \
+            || { echo "::error::the bundled libevdev isn't the one loaded"; exit 1; }
           tar -C out -czf dolphin-sparking-linux-x86_64.tar.gz Dolphin
 
       - uses: actions/upload-artifact@v4

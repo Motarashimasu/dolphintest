@@ -755,6 +755,11 @@ func _on_dolphin_event(name: String, data: Dictionary) -> void:
 func _on_game_crashed(info: Dictionary) -> void:
 	if info.get("kind", "") == "boot_hung":
 		return   # (its own message: "boot_hung"; the report is saved all the same)
+	if info.get("kind", "") == "missing_library":
+		_missing_library(String(info.get("library", "")))
+		return
+	if info.get("role", "") == "background":
+		return   # (Discord status, controller test: not a game the player started)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	show_window()
@@ -764,6 +769,32 @@ func _on_game_crashed(info: Dictionary) -> void:
 	if info.get("phase", "") == "booting":
 		hint = tr("It happened while the game was starting. If it keeps happening, try another\nrenderer (Video Settings) or turn Enhanced textures off (Options).")
 	crash_popup(title, String(info.get("report", "")), hint)
+
+
+## Linux: Dolphin can't start because a system library is missing. Said once per run (every
+## Dolphin start would fail the same way), with the package to install.
+var _told_missing := {}
+const LIBRARY_PACKAGES := {"libevdev.so.2": "libevdev2", "libudev.so.1": "libudev1",
+	"libpulse.so.0": "libpulse0", "libasound.so.2": "libasound2", "libX11.so.6": "libx11-6",
+	"libXi.so.6": "libxi6", "libXrandr.so.2": "libxrandr2", "libXext.so.6": "libxext6",
+	"libEGL.so.1": "libegl1", "libGL.so.1": "libgl1"}
+
+
+func _missing_library(lib: String) -> void:
+	if _told_missing.has(lib):
+		return
+	_told_missing[lib] = true
+	await get_tree().process_frame
+	show_window()
+	var pkg: String = LIBRARY_PACKAGES.get(lib, "")
+	var how := tr("Install it (Ubuntu / Debian / Mint / WSL):\nsudo apt install %s") % pkg if pkg != "" \
+			else tr("Install the package that has it with your system's package manager.")
+	var m := menu(tr("Dolphin is missing %s") % lib, [
+		{"label": "OK", "desc": tr("Dolphin can't start on this system without %s.") % lib + "\n" + how,
+			"action": func(): pop()},
+	])
+	m.notices = false
+	push(m)
 
 
 ## The "it crashed" pop-up: where the report is, and a way to open that folder.

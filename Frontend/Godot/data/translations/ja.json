@@ -1097,5 +1097,9 @@
  "It happened while the game was starting. If it keeps happening, try another\nrenderer (Video Settings) or turn Enhanced textures off (Options).": "ゲームの起動中に発生しました。続く場合は、別のレンダラー（映像の設定）を\n試すか、エンハンステクスチャをオフにしてください（オプション）。",
  "The secure connection to DRAGON NET was refused on the way. Antivirus web\nprotection, router security or your network may be blocking %s: allow it or try another network.": "DRAGON NET への安全な接続が途中で拒否されました。アンチウイルスのWeb保護、\nルーターのセキュリティ、またはネットワークが %s をブロックしている可能性があります。許可するか、別のネットワークを試してください。",
  "Couldn't look up the DRAGON NET server (%s). Check your connection, or try\nanother DNS (e.g. 1.1.1.1).": "DRAGON NET サーバー（%s）が見つかりませんでした。接続を確認するか、\n別のDNS（例：1.1.1.1）を試してください。",
- "The logs are in:\n%s": "ログの場所：\n%s"
+ "The logs are in:\n%s": "ログの場所：\n%s",
+ "Install it (Ubuntu / Debian / Mint / WSL):\nsudo apt install %s": "インストールしてください（Ubuntu / Debian / Mint / WSL）：\nsudo apt install %s",
+ "Install the package that has it with your system's package manager.": "システムのパッケージマネージャーで、これを含むパッケージをインストールしてください。",
+ "Dolphin is missing %s": "Dolphinに %s がありません",
+ "Dolphin can't start on this system without %s.": "%s がないため、このシステムではDolphinを起動できません。"
 }

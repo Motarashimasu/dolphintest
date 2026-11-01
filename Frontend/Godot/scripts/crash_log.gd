@@ -93,6 +93,7 @@ static func write_game_report(info: Dictionary) -> String:
 		"crash": "The game crashed.",
 		"closed": "The game closed without saying why (it may have crashed, or been closed by another program).",
 		"boot_hung": "The game didn't start (no picture), so the launcher closed it.",
+		"missing_library": "Dolphin couldn't start: a system library is missing.",
 	}.get(kind, kind)
 	f.store_line("DRAGON BALL Sparking! Collection PC - %s" % what)
 	f.store_line("Time: %s" % Time.get_datetime_string_from_system(false, true))

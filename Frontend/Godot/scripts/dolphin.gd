@@ -392,12 +392,27 @@ func _report_if_unexpected(p: Proc, role: String, events: Array, was_in_game := 
 	var kind := p.unexpected_end()
 	if kind == "":
 		return
+	# Helpers that aren't a game (Discord status, the controller test): reported, no pop-up.
+	if role == "helper" and ("--discord-presence" in p.args or "--input-test" in p.args):
+		role = "background"
+		was_in_game = false
+	# Linux: Dolphin couldn't even start, a system library is missing (exit code 127).
+	var missing := ""
+	for line in p.take_output():
+		var at := String(line).find("error while loading shared libraries: ")
+		if at >= 0:
+			missing = String(line).substr(at + 38).get_slice(":", 0).strip_edges()
+			break
+	if missing != "":
+		kind = "missing_library"
 	var summary := ""
 	match kind:
 		"crash":
 			summary = String(p.crash.get("summary", ""))
 		"boot_hung":
 			summary = "no picture after %.0f s" % p.hung
+		"missing_library":
+			summary = "Dolphin can't start: the system library %s is missing" % missing
 		_:
 			summary = "exit code %s" % CrashLog.exit_code_text(p.exit_code)
 			var crash_name := CrashLog.windows_crash_name(p.exit_code)
@@ -410,7 +425,8 @@ func _report_if_unexpected(p: Proc, role: String, events: Array, was_in_game := 
 		"role": role}
 	var path := CrashLog.write_game_report(info)
 	_log("%s ended unexpectedly (%s: %s), report: %s" % [role, kind, summary, path])
-	crashed.emit({"kind": kind, "summary": summary, "report": path, "role": role, "phase": p.phase})
+	crashed.emit({"kind": kind, "summary": summary, "report": path, "role": role, "phase": p.phase,
+		"library": missing})
 
 
 func _log(line: String) -> void:
