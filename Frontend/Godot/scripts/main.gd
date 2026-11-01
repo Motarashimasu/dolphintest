@@ -776,7 +776,10 @@ func crash_popup(title: String, report: String, hint := "") -> void:
 	var m := menu(title, [
 		{"label": "OK", "desc": where, "action": func(): pop()},
 		{"label": "Open the logs folder", "desc": where, "action": func():
-			OS.shell_open(ProjectSettings.globalize_path(CrashLog.folder()))},
+			# No file manager (WSL, a bare window manager): say where it is instead.
+			var dir := ProjectSettings.globalize_path(CrashLog.folder())
+			if OS.shell_open(dir) != OK:
+				toast(tr("The logs are in:\n%s") % dir, 10.0)},
 	])
 	m.notices = false
 	push(m)
