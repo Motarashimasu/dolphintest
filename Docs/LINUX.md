@@ -86,25 +86,6 @@ python Tools\package_linux.py E:\SparkDol\DBZSC-linux E:\SparkDol\DBZSC-linux-21
   in a folder "DRAGON BALL Sparking! Collection", with the launcher and Dolphin marked executable
   and a README for players. It refuses a Windows build folder.
 
-## Every release: one command
-
-Once the setup below is done, a Linux release is:
-
-```
-powershell -ExecutionPolicy Bypass -File Tools\linux_release.ps1 -Version 218
-```
-
-It downloads the newest green "Linux build" of the branch from GitHub (and warns if your Windows
-Dolphin is from another commit), exports the launcher with the "Linux" preset (no editor
-window), copies `states` / `textures` / `saves\netplay` / `discs` from the Windows build, makes
-the player `.tar.gz` and shows what the update would upload. Try the `.tar.gz` in WSL (it prints
-the command), then run it again with `-Publish`. Your paths are at the top of the script
-(`-WindowsBuild`, `-LinuxBuild`, `-Godot`); the GitHub CLI is needed once (`winget install
-GitHub.cli`, `gh auth login`).
-
-Only once (or when Godot's version changes): WSL, the encrypted Linux template, the "Linux"
-export preset.
-
 ## Setting it up again (checklist)
 
 1. **Dolphin**: GitHub > Actions > "Linux build": the newest green run of your branch >
