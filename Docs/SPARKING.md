@@ -537,7 +537,7 @@ come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
   Battle Lounge lobbies (of their mode). The host sends the joiners the resulting list.
   Tenkaichi 3 PAL: `Team Battle: Up To 3 Characters` (Tools/gecko/team_cap.py) is both: the
   Player Match host's toggle in Team Battle lobbies, always on in ranked / Battle Lounge Team
-  Battle. Test on one PC: `Tools/test_team_lobby.bat on|off|ranked|lounge` (in the game folder).
+  Battle. Test on one PC with the test kit's `4_test_netplay_host.bat` (lobby types 2-4).
 - **Solo:** launch with one `--gecko "<name>"` per enabled code (or `--no-gecko`). Dolphin
   activates exactly those for that run; the game's ini is never edited.
 - **Netplay:** everyone runs the game's default-on codes (`[Gecko_Enabled]` in the Sys + user
