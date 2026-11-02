@@ -146,6 +146,7 @@ std::string ListGeckoCodesJson(const std::string& game_id, std::optional<u16> re
   const std::vector<std::string> lobby = LobbyCodeNames(game_id, revision);
   const auto groups = ExclusiveCodeGroups(game_id, revision);
   const auto modes = LobbyCodeModes(game_id, revision);
+  const std::vector<std::string> option_codes = SectionLines(game_id, revision, "Sparking.OptionCodes");
   for (const Gecko::GeckoCode& code : LoadAllCodes(game_id, revision))
   {
     const auto mode = modes.find(code.name);
@@ -171,6 +172,8 @@ std::string ListGeckoCodesJson(const std::string& game_id, std::optional<u16> re
                         .Add("group", group)
                         // a rule for one netplay lobby mode (Team Battle's): online only
                         .Add("lobby_mode", mode != modes.end() ? mode->second : std::string())
+                        // switched by a launcher option ([Sparking.OptionCodes]), not the code list
+                        .Add("option", std::ranges::find(option_codes, code.name) != option_codes.end())
                         .Str());
   }
   return JsonArray(items);

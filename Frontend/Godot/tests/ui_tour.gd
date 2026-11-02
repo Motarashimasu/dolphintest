@@ -1028,6 +1028,21 @@ func _tour() -> void:
 			pc_menu.card._name.text == Ranked.display_name() and pc_menu.card._flag.texture != null
 			and pc_menu.card._battles.text.contains("ranked") and pc_menu.card._record.text != "")
 	await shot("player_card")
+	# Logged in: every DRAGON NET match goes under the account's username, not the typed name.
+	var na := Settings.host_args("single", false, false)
+	check("netplay name = the DRAGON NET username (%s)" % Settings.netplay_name(),
+			Settings.netplay_name() == Ranked.display_name()
+			and na[na.find("--nickname") + 1] == Ranked.display_name())
+	check("the lobby options show it, not a field", Settings.name_row()["type"] == "info")
+	# Options > Battle HUD offline: off adds Tenkaichi 3 PAL's code to offline games, on top of the rest.
+	check("Battle HUD option available (%s)" % Settings.GAME["id"], Settings.battle_hud_available())
+	Settings.set_value("options", "battle_hud", false)
+	var sa := Settings.solo_args(false)
+	check("Battle HUD off: its code runs offline (%s)" % [Array(sa).filter(func(x): return "gecko" in x or x == Settings.HIDE_BATTLE_HUD)],
+			Settings.HIDE_BATTLE_HUD in sa)
+	check("...never online", not Settings.HIDE_BATTLE_HUD in Settings.host_args("single", false, false))
+	Settings.set_value("options", "battle_hud", true)
+	check("Battle HUD on: no code", not Settings.HIDE_BATTLE_HUD in Settings.solo_args(false))
 
 	# --- Quick Match: the pool, Buffer Training while waiting, the question, the match ---------
 	await choose("Quick Match")

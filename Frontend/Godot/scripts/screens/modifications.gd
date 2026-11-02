@@ -148,6 +148,8 @@ func build_rows() -> Array:
 		rows.append({"type": "info", "key": "none", "label": "No codes for this version yet", "value": ""})
 	for i in codes.size():
 		var c: Dictionary = codes[i]
+		if c.get("option", false):
+			continue   # switched in Options (Battle HUD offline)
 		if String(c.get("lobby_mode", "")) != "":
 			continue   # a rule of one DRAGON NET lobby mode (Team Battle's 3 characters): online only
 		var name := String(c.get("name", ""))

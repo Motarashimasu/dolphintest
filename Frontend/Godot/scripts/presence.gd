@@ -196,7 +196,7 @@ func current() -> Dictionary:
 				"playing":
 					key = "match"
 					p["details"] = tr("DRAGON NET: %s") % mode_name if lobby.mode != "any" else tr("DRAGON NET match")
-					var me := String(Settings.get_value("player", "nickname"))
+					var me := Settings.netplay_name()
 					var others: Array = []
 					for pl in players:
 						var n := String(pl.get("name", ""))

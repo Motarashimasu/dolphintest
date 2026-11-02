@@ -293,11 +293,13 @@ void DrawHud()
       const float fx0 = i == 0 ? 0.141f * s : 1.0f - (1.0f - 0.762f) * s;
       const float fx1 = i == 0 ? 0.262f * s : 1.0f - (1.0f - 0.865f) * s;
       const Box box = in_pic(fx0, 0.124f, fx1, 0.178f);
-      const float icon = links[i].empty() ? 0.0f : box.h();
-      const float icon_gap = icon > 0 ? box.h() * 0.2f : 0.0f;
+      // Text at about 60% of the measured box (smaller than the health bar's own lettering).
+      const float text_h = box.h() * 0.6f;
+      const float icon = links[i].empty() ? 0.0f : text_h * 1.1f;
+      const float icon_gap = icon > 0 ? text_h * 0.25f : 0.0f;
       // Room to grow inwards past the measured box (long names), never past the middle third.
       const float room = std::max(box.w(), pic.w() * 0.30f * s) - icon - icon_gap;
-      const auto [name, size] = FitName(font, DisplayName(sides[i], i + 1), room, box.h());
+      const auto [name, size] = FitName(font, DisplayName(sides[i], i + 1), room, text_h);
       const float w = TextSize(font, size, name).x;
       const float x = i == 0 ? box.x0 + icon + icon_gap : box.x1 - icon - icon_gap - w;
       OutlinedText(dl, font, size, ImVec2(x, box.y0 + (box.h() - size) / 2), white, name);

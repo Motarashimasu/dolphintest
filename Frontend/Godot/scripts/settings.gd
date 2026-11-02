@@ -141,6 +141,7 @@ var defaults := {
 		"training_display": false,   # Modifications > Training Display: hitboxes + frame data offline
 		"hud": false,             # score bar offline (netplay always shows it)
 		"hud_health": true,       # health % in the corners
+		"battle_hud": true,       # the game's own battle HUD offline (off: Tenkaichi 3 PAL's code hides it)
 		"hud_names": "score",     # player names: "score" (in the score bar) / "bars" (under the health bars)
 		"input_display": false,   # your input history (fighting-game style column) in every game
 		"input_display_other": false,     # P2's too (offline only: never in online matches)
@@ -647,17 +648,33 @@ func training_display_args() -> PackedStringArray:
 	return a
 
 
+## Options > Battle HUD: the game's own battle HUD (life bars, timer...) can be switched off for
+## offline play. Tenkaichi 3 PAL only (RDSPAF.ini's code); never online.
+const HIDE_BATTLE_HUD := "Hide Battle HUD"
+
+
+func battle_hud_available() -> bool:
+	return String(GAME.get("id", "")) == "RDSPAF"
+
+
 func solo_args(training_display := true) -> PackedStringArray:
 	var a := common_args()
 	# Score bar offline only if the player wants it.
 	a.append_array(["--hud", "on" if get_value("options", "hud") else "off"])
 	a.append_array(["--sparking", "--nand", data_path("saves/solo"), "--state-dir", data_path("states")])
+	# Options > Battle HUD off (Tenkaichi 3 PAL, offline only): its code on top of the others.
+	var extra: Array = []
+	if not get_value("options", "battle_hud") and battle_hud_available():
+		extra.append(HIDE_BATTLE_HUD)
 	if gecko_custom(GAME["id"]):
-		var codes: Array = gecko_enabled(GAME["id"])
+		var codes: Array = gecko_enabled(GAME["id"]) + extra
 		if codes.is_empty():
 			a.append("--no-gecko")
 		for code in codes:
 			a.append_array(["--gecko", code])
+	else:
+		for code in extra:
+			a.append_array(["--gecko-extra", code])
 	if training_display:
 		a.append_array(training_display_args())
 	a.append_array(["-e", game_path()])
@@ -707,7 +724,7 @@ func _netplay_base(nickname := "") -> PackedStringArray:
 	a.append_array(["--hud", "on"])   # score bar + ping always on in netplay matches
 	a.append_array(["--input-display-other", "off"])   # never the opponent's inputs online
 	a.append_array(["--nand", netplay_save_dir(), "--state-dir", data_path("states")])
-	a.append_array(["--nickname", nickname if nickname != "" else String(get_value("player", "nickname"))])
+	a.append_array(["--nickname", nickname if nickname != "" else netplay_name()])
 	# The DRAGON NET account (if logged in): friends in the same lobby get told.
 	if Ranked.logged_in() and not Ranked.needs_account and Ranked.display_name() != "":
 		a.append_array(["--account", Ranked.display_name()])
@@ -794,6 +811,24 @@ func quick_join_args(target: String) -> PackedStringArray:
 	a.append_array(["--stats-interval", "1000"])
 	a.append_array(["--netplay-game", game_path(), "--netplay-join", target])
 	return a
+
+
+## The lobby options' name row: your DRAGON NET username (fixed) while logged in, else a field.
+func name_row() -> Dictionary:
+	if Ranked.logged_in() and not Ranked.needs_account and Ranked.display_name() != "":
+		return {"type": "info", "key": "nickname", "label": "DRAGON NET name", "value": netplay_name(),
+			"desc": "Your DRAGON NET username: the name other players see in every match."}
+	return {"type": "text", "key": "nickname", "label": "DRAGON NET name", "max_length": 24,
+		"value": get_value("player", "nickname"),
+		"desc": "The name other players see. Log in to DRAGON NET to play under your username."}
+
+
+## The name other players see in every DRAGON NET match: your DRAGON NET username while you're
+## logged in, else the name typed in the lobby options.
+func netplay_name() -> String:
+	if Ranked.logged_in() and not Ranked.needs_account and Ranked.display_name() != "":
+		return Ranked.display_name().left(24)
+	return String(get_value("player", "nickname"))
 
 
 func ranked_nickname() -> String:

@@ -1124,5 +1124,9 @@
  "1 win": "1 victoria",
  "%d wins": "%d victorias",
  "1 loss": "1 derrota",
- "%d losses": "%d derrotas"
+ "%d losses": "%d derrotas",
+ "Battle HUD offline": "HUD de combate sin conexión",
+ "The game's own battle HUD (life bars, timer, gauges) in offline play.\nOff hides it (Tenkaichi 3 PAL). DRAGON NET matches always show it.": "El HUD de combate del juego (barras de vida, tiempo, medidores) sin conexión.\nDesactivado lo oculta (Tenkaichi 3 PAL). Las partidas DRAGON NET siempre lo muestran.",
+ "Your DRAGON NET username: the name other players see in every match.": "Tu nombre de usuario de DRAGON NET: el nombre que ven los demás en todas las partidas.",
+ "The name other players see. Log in to DRAGON NET to play under your username.": "El nombre que ven los demás. Inicia sesión en DRAGON NET para jugar con tu nombre de usuario."
 }
