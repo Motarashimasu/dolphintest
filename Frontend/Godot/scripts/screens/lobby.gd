@@ -52,7 +52,7 @@ var _room := {}
 var _public := {}
 var _players: Array = []
 var _buffer := -1
-var _neocode := false     # NEOcode on for this lobby (the host switches it: PgUp + PgDn together)
+var _neocode := false     # rollback (NEOcode) on for this lobby (the host's "Rollback ( W.I.P )" row)
 var _neo_r := -1          # its "R" while a match runs (-1: none)
 var _neo_out_of_sync := false
 var _match_id := 0           # ranked: the server's id of the match being / last played
@@ -661,7 +661,7 @@ func _refresh_info() -> void:
 		else:
 			right.append(tr("Private"))
 	if _neocode and not is_training():
-		right.append("NEOcode" + (" · R %d" % _neo_r if _phase == "playing" and _neo_r >= 0 else ""))
+		right.append(tr("Rollback") + (" · R %d" % _neo_r if _phase == "playing" and _neo_r >= 0 else ""))
 	_info_right.text = "   ·   ".join(right)
 
 
@@ -919,6 +919,16 @@ func _action_rows(in_game_menu: bool) -> Array:
 				rows.append({"type": "info", "key": "lc:%d" % i, "label": code,
 					"value": tr("On") if on else tr("Off"),
 					"desc": "Host option: the host switches it on for both players' games."})
+	# Rollback (NEOcode): the host's switch, for everyone. Not during a match.
+	if not in_game_menu and _neocode_allowed():
+		if host:
+			rows.append({"type": "toggle", "key": "neocode", "label": "Rollback ( W.I.P )", "value": _neocode,
+				"disabled": _phase == "playing",
+				"desc": "Work in progress. On: a late input from the other player is guessed and the game\ncorrects itself if the guess was wrong, with a lower pad buffer. Every player needs this version."})
+		else:
+			rows.append({"type": "info", "key": "neocode", "label": "Rollback ( W.I.P )",
+				"value": tr("On") if _neocode else tr("Off"),
+				"desc": "The host switches rollback on or off for everyone."})
 	if not is_spectating() and (in_game_menu or is_training()):
 		var setting := Settings.input_display_key(is_training())
 		rows.append({"type": "action", "key": "input_display", "label": "Input history",
@@ -1024,27 +1034,19 @@ func on_input(event: InputEvent) -> bool:
 		if step != 0 and can_switch_mode():
 			_step_mode(step)
 			return true
-	# Hidden: PgUp + PgDn together switch NEOcode (host).
-	if event is InputEventKey and event.pressed and not event.echo \
-			and event.keycode in [KEY_PAGEUP, KEY_PAGEDOWN] \
-			and Input.is_key_pressed(KEY_PAGEUP) and Input.is_key_pressed(KEY_PAGEDOWN):
-		_toggle_neocode()
-		return true
 	return _actions.handle_input(event)
 
 
-## NEOcode is Tenkaichi 3's only for now.
+## Rollback (NEOcode): Tenkaichi 3's only for now; Player Match and Battle Lounge (ranked keeps
+## its replays, which need delay netplay; Buffer Training and Quick Match aren't offered it).
 func _neocode_allowed() -> bool:
-	return bool(Settings.GAMES[Settings.game]["neocode"])
+	return bool(Settings.GAMES[Settings.game]["neocode"]) and not ranked and not is_training() \
+			and kind != "quick"
 
 
-func _toggle_neocode() -> void:
-	if _role != "host" or is_training() or not _neocode_allowed():
+func _set_neocode(on: bool) -> void:
+	if _role != "host" or not _neocode_allowed() or _phase == "playing":
 		return
-	if _phase == "playing":
-		_system("NEOcode can't be switched during a match.", "#e8663d")
-		return
-	var on := not _neocode
 	Settings.set_value("netplay", "neocode", on)
 	Dolphin.send("netcode " + ("neocode" if on else "delay"))
 
@@ -1175,6 +1177,8 @@ func _on_value(key: String, value: Variant) -> void:
 			if value:
 				on.push_front(code)   # first: Dolphin keeps it over another of its exclusive group
 			Dolphin.send("codes " + ("|".join(on) if not on.is_empty() else "none"))
+		"neocode":
+			_set_neocode(bool(value))
 		"buffer_mode":
 			Settings.set_value("netplay", "buffer_auto", bool(value))
 			_send_buffer_mode()
@@ -1383,7 +1387,9 @@ func _on_event(name: String, data: Dictionary) -> void:
 			var on := String(data.get("mode", "")) == "neocode"
 			if on != _neocode:
 				_neocode = on
-				_system("NEOcode on." if on else "NEOcode off.", "#9be7ff")
+				_system("Rollback on: inputs that arrive late are guessed, a wrong guess is corrected." if on
+					else "Rollback off.", "#9be7ff")
+				_refresh_actions()
 			_refresh_info()
 		"neocode":
 			match String(data.get("state", "")):
@@ -1391,14 +1397,14 @@ func _on_event(name: String, data: Dictionary) -> void:
 					_neo_r = int(data.get("r", 0))
 				"failed":
 					_neo_r = -1
-					_system(tr("NEOcode stopped (%s): the match goes on with the normal netcode.") % String(data.get("reason", "?")), "#e8663d")
-				"off":
+					_system(tr("Rollback stopped (%s): the match goes on with the normal netcode.") % String(data.get("reason", "?")), "#e8663d")
+				"off", "watching":
 					_neo_r = -1
 			_refresh_info()
 		"neocode_check":
 			if not data.get("match", true) and not _neo_out_of_sync:
 				_neo_out_of_sync = true
-				_system("NEOcode: the players' games are out of sync.", "#e8663d")
+				_system("Rollback: the players' games are out of sync.", "#e8663d")
 		"connection_lost":
 			_system("Connection lost.", "#e8663d")
 			app.toast("Connection lost")

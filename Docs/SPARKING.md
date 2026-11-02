@@ -193,7 +193,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `chat <text>` | any | Send a chat message |
 | `stop` | any | Stop the running game for everyone (solo: stop and exit) |
 | `buffer <n>` | host | Set pad buffer (and turn the automatic buffer off) |
-| `buffer auto` | host | Automatic pad buffer: the worst player's typical ping (median of its last ~10 pings) ÷ 12, rounded up, between 1 and 20. Set when the host starts the match (before the game boots), re-chosen right after each KO, and during the fight too: checked once a second, changed once a new value has held for 3 s (so one spike never moves it). NEOcode keeps its own rule (90th percentile + jitter, ÷ 8, − 2) and only changes between rounds. |
+| `buffer auto` | host | Automatic pad buffer: the worst player's typical ping (median of its last ~10 pings) ÷ 12, rounded up, between 1 and 20. Set when the host starts the match (before the game boots), re-chosen right after each KO, and during the fight too: checked once a second, changed once a new value has held for 3 s (so one spike never moves it). NEOcode keeps its own rule (the automatic minimum buffer, see NEOcode below; live after 5 s). |
 | `kick <pid>` | host | Kick a player |
 | `automap wii\|gc\|none` | host | Auto-assign joiners to Wii Remote / GC slots in join order |
 | `battle_state <file.sst>` / `battle_state none` | host | Select the state everyone boots into |
@@ -376,16 +376,19 @@ state was saved, so the next open after a load got another fd than the first tim
 every minute through the Wii SDK's play time recorder (`play_rec.dat`), at a fixed time after
 boot. The smoke test's "IOS file descriptors" check guards it.
 
-## NEOcode (rollback netplay, hidden)
+## NEOcode (rollback netplay, work in progress)
 
-A host-chosen switch in the netplay lobby, hidden for now: the host presses **PgUp + PgDn**
-together (not during a match, not in buffer training). The UI never says "rollback": the mode is
-called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD bar).
+A host-chosen switch in the netplay lobby: the host's **Rollback ( W.I.P )** toggle (Tenkaichi 3
+only; Player Match and Battle Lounge; not ranked, Quick Match or buffer training; greyed out
+during a match). Joiners see it as an info row. The lobby info line says "Rollback" and, during
+a match, the rewind length "R n" (also on the HUD bar). The engine is still called NEOcode.
 
 - Commands: `netcode neocode|delay` (host only; refused while a game runs). The host rebroadcasts
   it to everyone (and to players who connect later) as a control message.
 - Events: `{"event":"netcode","mode":"neocode|delay"}`;
-  `{"event":"neocode","state":"on|waiting|failed|off",...}`: "on" at the start, then every ~60
+  `{"event":"neocode","state":"on|waiting|watching|failed|off",...}` ("watching": rollback is on
+  for the match but this instance has no local pad, e.g. a Battle Lounge host who isn't playing;
+  the players still run it): "on" at the start, then every ~60
   fields with `r` (the biggest re-run since the last one, in game frames: what "R n" shows),
   `rollbacks`, `stalls`, `polls`, `guesses`, `wrong_guesses`, `saves_skipped`, `save_ms`, `load_ms`, `resim_ms` (the
   longest re-run since the last one, real time: how long the picture and sound stopped), ...;
@@ -416,7 +419,7 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
 - Events the game "does" (results, watches) are held until final (every input before them
   confirmed) and dropped when a rewind takes them back, so both players emit the same sequence.
 - Every 120 fields the players exchange the MEM1 checksum (`neosum`); a mismatch shows
-  "NEOcode: the players' games are out of sync." once per match. It's only a notice: the match
+  "Rollback: the players' games are out of sync." once per match. It's only a notice: the match
   goes on. BT3 PAL matches showed it every time (Oct 2026); the cameras aren't the cause (they
   live in MEM2, around `0x9233F000`, and the check covers MEM1 only), and neither the GPU command
   buffer nor a copy of the camera is in MEM1: `neocode_diff` is there to find what is. The Gecko code area (0x80001800-0x80003000) isn't in the checksum, nor the memory the
@@ -432,14 +435,30 @@ called NEOcode, and the rewind length is shown as "R n" (lobby info line and HUD
   fields in a 2-player match), so one pad-buffer step is ~8 ms. Measured in matches (50 ms ping,
   clashes): at buffer 2 nearly every guess of the other side's mashing was wrong, 8-19 rewinds a
   second each freezing the picture 24-75 ms; at buffer 6, about one 16 ms rewind every few
-  seconds. With NEOcode the automatic pad buffer is `(ping + jitter) / 8 - 2` (2-20), so only
-  spikes are left to rewind.
+  seconds.
+- Automatic minimum buffer (NEOcode, host): `full = ceil((high + jitter) / 8)` with `high` the
+  90th percentile of the worst player's last pings, then `buffer = clamp(full - 2·R, 3, 20)`:
+  R fields of lateness are left to rewinds, R being what the slowest player's PC re-runs within
+  the hitch budget, `R = clamp(floor((budget_ms - load_ms) / ms_per_field), 1, 6)` (budget 34 ms;
+  until measured: 10 ms per field, 3 ms load). Each player measures its own speed from the stats
+  (`resim_ms / rollback_fields`, smoothed) and sends it to the host (`neospeed <ms_per_field>
+  <load_ms>` control message). The host emits `{"event":"neocode_speed","players":[{"pid",
+  "ms_per_field","load_ms"}],"rollback_fields":R,"budget_ms":n,"ms_per_field":x}` every 5 s;
+  `buffer_auto` carries `rollback_fields` and `ms_per_field` too. Live during the fight: a new
+  value is applied once it has held for 5 s. `neo_budget <ms>` (host, 10-150) changes the budget
+  (emits `neo_budget`). E.g. 150 ms ping, 10 ms jitter, a PC re-running a field in 8 ms:
+  full 20, R 3, buffer 14.
+- Rollback match logs (launcher): every match played with rollback on writes
+  `SparkingData/logs/rollback_<date>_<time>.jsonl`: a header (mode, role, Battle Lounge, the PC),
+  then the NEOcode stats, `neocode_speed`, buffer choices, checksum checks / diffs, rounds, and
+  the players' ping / jitter every 5 s, one JSON object per line with `t` (ms since the start).
+  No IP addresses, no chat; the last 30 are kept. Players send them in after test matches.
 - A re-run doesn't save the fields nothing could rewind to (all of its inputs and the next
   field's are real: the next field's save replaces it), about half of them: each save is ~2 ms of
   a ~10 ms re-run field. `saves_skipped` in the stats counts them.
 - With NEOcode, ranked
   replays are off, spectators stay on delay netplay, and every player needs this build.
-- If saving / rewinding fails, the match goes on as delay netplay ("NEOcode stopped ...").
+- If saving / rewinding fails, the match goes on as delay netplay ("Rollback stopped ...").
 - Test hooks (`--test-hooks`): `test_input <seed>` plays a pseudo-random pad pattern,
   `test_lag <ms>` holds remote inputs back. The smoke test's "neocode" check uses them.
 

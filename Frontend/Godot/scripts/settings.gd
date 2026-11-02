@@ -156,7 +156,7 @@ var defaults := {
 		"record_matches": false,   # record Player Match / Battle Lounge games (kept on this PC only)
 		"buffer": 4, "public_address": "",
 		"buffer_auto": false,    # host: pad buffer picked from the pings (match start + after each KO)
-		"neocode": false},       # host: NEOcode (hidden: PgUp + PgDn together in the lobby)
+		"neocode": false},       # host: NEOcode (the lobby's "Rollback ( W.I.P )" toggle)
 	# Offline codes per disc ID (every version has its own codes): "<ID>_custom" = only the ticked
 	# ones, "<ID>_enabled" = those. (Before versions: "custom" / "enabled", now RDSPAF's.)
 	"gecko": {},

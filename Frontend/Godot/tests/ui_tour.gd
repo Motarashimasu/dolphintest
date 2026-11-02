@@ -476,22 +476,9 @@ func type_into(list: Control, key: String, text: String) -> void:
 	await frames(4)
 
 
-## The hidden NEOcode switch: PgUp, then PgDn while PgUp is still held.
-func pgup_pgdn() -> void:
-	for k in [KEY_PAGEUP, KEY_PAGEDOWN]:
-		var e := InputEventKey.new()
-		e.keycode = k
-		e.physical_keycode = k
-		e.pressed = true
-		Input.parse_input_event(e)
-		await frames(2)
-	for k in [KEY_PAGEDOWN, KEY_PAGEUP]:
-		var e := InputEventKey.new()
-		e.keycode = k
-		e.physical_keycode = k
-		e.pressed = false
-		Input.parse_input_event(e)
-	await frames(4)
+## The host's "Rollback ( W.I.P )" row in the lobby.
+func rollback_toggle(lobby: Control) -> void:
+	await pick("neocode", lobby._actions)
 
 
 func stick(y: float) -> void:
@@ -707,20 +694,25 @@ func _tour() -> void:
 				return false
 		return true, 15)
 	await shot("lobby_two_players")
-	# Hidden: PgUp + PgDn switch NEOcode on (the joiner is told too).
-	await pgup_pgdn()
-	await wait_for("NEOcode switched on", func(): return lobby._neocode, 10)
-	check("NEOcode shown in the lobby info", "NEOcode" in lobby._info_right.text)
-	check("NEOcode notice in the chat", tr("NEOcode on.") in "\n".join(lobby._chat))
-	check("nothing in the lobby says rollback", not "rollback" in ("\n".join(lobby._chat) + lobby._info_right.text).to_lower())
+	# The host's "Rollback ( W.I.P )" toggle switches NEOcode on (the joiner is told too).
+	check("rollback toggle in the host's lobby", lobby._actions.row("neocode").get("label", "") == "Rollback ( W.I.P )"
+			and lobby._actions.row("neocode").get("type", "") == "toggle")
+	await rollback_toggle(lobby)
+	await wait_for("rollback switched on", func(): return lobby._neocode, 10)
+	check("rollback shown in the lobby info", tr("Rollback") in lobby._info_right.text)
+	check("rollback notice in the chat",
+			tr("Rollback on: inputs that arrive late are guessed, a wrong guess is corrected.") in "\n".join(lobby._chat))
+	check("the toggle reads on", lobby._actions.row("neocode").get("value", false) == true)
 	await shot("lobby_neocode")
 	await pick("start", lobby._actions)
 	await wait_for("match running", func(): return lobby._phase == "playing", 30)
 	await key(KEY_E)
 	check("the mode can't be switched during a match", lobby.mode == "single" and not lobby.can_switch_mode())
-	await pgup_pgdn()
-	check("NEOcode can't be switched during a match", lobby._neocode and
-			tr("NEOcode can't be switched during a match.") in "\n".join(lobby._chat))
+	check("rollback can't be switched during a match", lobby._neocode and
+			lobby._actions.row("neocode").get("disabled", false) == true)
+	lobby._set_neocode(false)
+	await frames(10)
+	check("rollback stays on while the match runs", lobby._neocode)
 	await shot("lobby_match_running")
 	await wait_for("music faded out while the match runs", func(): return Music.is_muted_for_game() and not Music.is_audible(), 5)
 
@@ -742,9 +734,9 @@ func _tour() -> void:
 	check("match started with the automatic pad buffer",
 			"\n".join(lobby._chat).contains(tr("Automatic pad buffer: %d (%s).").split(":")[0]))
 	await shot("lobby_after_match")
-	await pgup_pgdn()   # NEOcode back off (it's remembered for the next lobby)
-	await wait_for("NEOcode switched off", func(): return not lobby._neocode, 10)
-	check("NEOcode off: gone from the lobby info", not "NEOcode" in lobby._info_right.text)
+	await rollback_toggle(lobby)   # rollback back off (it's remembered for the next lobby)
+	await wait_for("rollback switched off", func(): return not lobby._neocode, 10)
+	check("rollback off: gone from the lobby info", not tr("Rollback") in lobby._info_right.text)
 	print("TOUR_EVENT joiner_leave")   # Vegeta leaves: the player_leave sound
 	await wait_for("player_leave sound when Vegeta leaves", func(): return Sfx.played.has("player_leave"), 20)
 	await back()  # B -> Leave Lobby row

@@ -1893,6 +1893,19 @@ def neocode_check(exe, work):
                   err["code"] == "not_allowed_in_netplay")
         host.send("input_display sideways")
         check("bad input_display argument rejected", host.wait_for("error")["code"] == "bad_argument")
+        # The automatic minimum buffer: both PCs' re-run speed reaches the host.
+        speed = host.wait_for("neocode_speed", lambda e: len(e["players"]) == 2, timeout=60)
+        check(f"neocode_speed: both players' re-run speed ({speed['players']}, R {speed['rollback_fields']}, "
+              f"budget {speed['budget_ms']} ms)", 1 <= speed["rollback_fields"] <= 6 and speed["budget_ms"] == 34
+              and all(float(p["ms_per_field"]) > 0 for p in speed["players"]))
+        host.send("neo_budget 150")
+        nb = host.wait_for("neo_budget")
+        check(f"neo_budget changes the rewind budget (R {nb['rollback_fields']})",
+              nb["ms"] == 150 and nb["rollback_fields"] >= speed["rollback_fields"])
+        host.send("neo_budget 5")
+        check("neo_budget out of range refused", host.wait_for("error")["code"] == "bad_argument")
+        host.send("neo_budget 34")
+        host.wait_for("neo_budget")
         seqs = {}
         for inst in (host, joiner):
             stats = [e for e in inst.history if e["event"] == "neocode" and "rollbacks" in e][-1]

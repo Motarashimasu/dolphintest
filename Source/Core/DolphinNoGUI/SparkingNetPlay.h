@@ -313,6 +313,8 @@ private:
     int buffer;
     u32 ping;     // worst player's typical ping (median of the last ~10 s)
     int jitter;
+    int rollback_fields = 0;     // NEOcode: how far a rewind may go back (the hitch budget)
+    double ms_per_field = 0;     // NEOcode: the slowest player's re-run time per field
   };
   std::optional<AutoBufferChoice> AutoBufferTarget();
   void ApplyAutoBuffer(std::string_view reason);  // host thread
@@ -320,6 +322,19 @@ private:
   std::atomic<bool> m_auto_buffer{false};
   std::atomic<int> m_buffer{-1};  // last pad buffer Dolphin reported
   std::chrono::steady_clock::time_point m_live_next{};                         // host thread
+  // NEOcode: each player's re-run speed (their "neospeed" reports; the host's own too), for the
+  // automatic minimum buffer: the slowest PC decides how far a rewind may go back.
+  struct NeoSpeed
+  {
+    double ms_per_field = 0;  // re-running one field (smoothed)
+    double load_ms = 0;       // a rewind's state load (smoothed)
+  };
+  std::mutex m_neo_mutex;
+  std::map<NetPlay::PlayerId, NeoSpeed> m_neo_speeds;   // m_neo_mutex
+  std::atomic<int> m_neo_budget_ms{34};  // the hitch a rewind may cost (host: neo_budget)
+  std::chrono::steady_clock::time_point m_neo_report_next{};  // host thread: neocode_speed event
+  void NoteNeoSpeed(NetPlay::PlayerId pid, double ms_per_field, double load_ms);
+  int NeoRollbackFields(double* ms_per_field = nullptr);
   std::optional<std::pair<int, std::chrono::steady_clock::time_point>> m_live_target;  // since when
 
   // NEOcode (Core/NeoCode.h), a hidden lobby setting: "netcode neocode|delay" (host), told to

@@ -15,6 +15,7 @@ signal crashed(info: Dictionary)
 const PREFIX := "[SPARKING] "
 const Controllers := preload("res://scripts/controllers.gd")
 const CrashLog := preload("res://scripts/crash_log.gd")
+const RollbackLog := preload("res://scripts/rollback_log.gd")
 const OUTPUT_TAIL := 200   # console lines kept per process, for crash reports
 
 
@@ -164,6 +165,9 @@ var _session: Proc
 var _queries: Array = []  # [{proc, callback, events}]
 var _helpers: Array = []  # [{proc, callback}] long-running helpers (start_helper)
 var log_lines: PackedStringArray = []  # last events, for the debug panel
+## Rollback (NEOcode) match logs (scripts/rollback_log.gd): a match played with rollback on.
+var rollback_log := RollbackLog.new()
+var _rollback_on := false     # the session's netcode, from its "netcode" events
 ## A game is booting or being played (offline or netplay): the controller belongs to the game.
 var in_game := false
 
@@ -350,6 +354,7 @@ func _process(_delta: float) -> void:
 			var data = JSON.parse_string(raw)
 			if data is Dictionary and data.has("event"):
 				_session.note(data)
+				_note_rollback(String(data["event"]), data)
 				if data["event"] != "stats":
 					_log(raw)
 				_track_game(String(data["event"]))
@@ -367,6 +372,7 @@ func _process(_delta: float) -> void:
 			_session = null
 			_disarm_boot_watch()
 			p.close()
+			rollback_log.close()
 			var code := 0
 			var was_in_game := in_game
 			in_game = false
@@ -427,6 +433,21 @@ func _report_if_unexpected(p: Proc, role: String, events: Array, was_in_game := 
 	_log("%s ended unexpectedly (%s: %s), report: %s" % [role, kind, summary, path])
 	crashed.emit({"kind": kind, "summary": summary, "report": path, "role": role, "phase": p.phase,
 		"library": missing})
+
+
+func _note_rollback(name: String, data: Dictionary) -> void:
+	match name:
+		"netcode":
+			_rollback_on = String(data.get("mode", "")) == "neocode"
+		"ready":
+			_rollback_on = false
+		"game_starting":
+			if _rollback_on:
+				rollback_log.open({"mode": _session.args[_session.args.find("--mode") + 1]
+						if "--mode" in _session.args else "any",
+					"role": "host" if "--netplay-host" in _session.args else "joiner",
+					"koth": "--koth" in _session.args})
+	rollback_log.note(name, data)
 
 
 func _log(line: String) -> void:

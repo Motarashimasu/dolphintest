@@ -769,7 +769,7 @@ bool NetPlaySession::HandleCommand(const Command& cmd)
   }
   else if (cmd.name == "netcode")
   {
-    // Hidden setting (the launcher has no visible switch for it).
+    // The lobby's "Rollback ( W.I.P )" switch (host).
     if (host_only())
     {
       if (m_game_running)
@@ -782,6 +782,22 @@ bool NetPlaySession::HandleCommand(const Command& cmd)
       }
       else
         Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+    }
+  }
+  else if (cmd.name == "neo_budget")
+  {
+    // Host, tests / tuning: the hitch a NEOcode rewind may cost (ms, 10-150; default 34). The
+    // automatic minimum buffer follows: a bigger budget = a lower buffer, longer rewinds.
+    if (host_only())
+    {
+      const int ms = std::atoi(cmd.arg.c_str());
+      if (ms < 10 || ms > 150)
+        Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      else
+      {
+        m_neo_budget_ms = ms;
+        Emit("neo_budget", Json().Add("ms", ms).Add("rollback_fields", NeoRollbackFields()));
+      }
     }
   }
   else if (cmd.name == "codes")
@@ -1002,17 +1018,59 @@ std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget
     // (NEOcode, below: its own, from the high ping)
     const size_t at = std::min(samples.size() - 1, (samples.size() * 9 + 9) / 10 - 1);
     const u32 high = samples[at];
-    // NEOcode: BT3 reads the pads 120 times a second, so a buffer step is ~8 ms. Measured in
-    // matches (50 ms ping, clashes): with the delay well short of the ping, nearly every guess of
-    // the other side's mashing is wrong (8-19 rewinds a second, each freezing the picture 24-75
-    // ms); a delay ~2 steps short of it leaves only spikes to rewind. So: (ping + jitter) / 8,
-    // minus 2 steps (well inside the rewind window).
+    // NEOcode: BT3 reads the pads 120 times a second, so a buffer step is ~8 ms; (ping + jitter)
+    // / 8 steps would leave nothing to guess (measured at 50 ms: buffer 6, a rewind every few
+    // seconds; buffer 2, 8-19 rewinds a second while mashing). The minimum buffer: that, minus
+    // what rewinds may cover, R fields (2 steps each), R being what the slowest player's PC can
+    // re-run within the hitch budget (NeoRollbackFields). Never under NEO_MIN_BUFFER.
+    int rollback_fields = 0;
+    double ms_per_field = 0;
     if (m_neocode)
-      buffer = std::clamp(static_cast<int>((high + std::max(jitter, 0) + 7) / 8) - 2, 2, 20);
+    {
+      constexpr int NEO_MIN_BUFFER = 3;
+      rollback_fields = NeoRollbackFields(&ms_per_field);
+      const int full = static_cast<int>((high + std::max(jitter, 0) + 7) / 8);
+      buffer = std::clamp(full - 2 * rollback_fields, NEO_MIN_BUFFER, 20);
+    }
     if (!worst || buffer > worst->buffer)
-      worst = AutoBufferChoice{buffer, m_neocode ? high : typical, std::max(jitter, 0)};
+      worst = AutoBufferChoice{buffer, m_neocode ? high : typical, std::max(jitter, 0),
+                               rollback_fields, ms_per_field};
   }
   return worst;
+}
+
+// NEOcode: smoothed per PC (a single slow rewind doesn't decide alone).
+void NetPlaySession::NoteNeoSpeed(NetPlay::PlayerId pid, double ms_per_field, double load_ms)
+{
+  if (ms_per_field <= 0 || ms_per_field > 500)
+    return;
+  std::lock_guard lk(m_neo_mutex);
+  NeoSpeed& sp = m_neo_speeds[pid];
+  sp.ms_per_field = sp.ms_per_field > 0 ? sp.ms_per_field * 0.7 + ms_per_field * 0.3 : ms_per_field;
+  if (load_ms > 0)
+    sp.load_ms = sp.load_ms > 0 ? sp.load_ms * 0.7 + load_ms * 0.3 : load_ms;
+}
+
+// How many fields a rewind may re-run within the hitch budget on the slowest player's PC (1-6;
+// before anyone has measured: 10 ms a field, 3 ms a load, the test PC's numbers).
+int NetPlaySession::NeoRollbackFields(double* ms_per_field)
+{
+  double per = 10.0, load = 3.0;
+  {
+    std::lock_guard lk(m_neo_mutex);
+    bool any = false;
+    for (const auto& [pid, sp] : m_neo_speeds)
+    {
+      if (sp.ms_per_field <= 0)
+        continue;
+      per = any ? std::max(per, sp.ms_per_field) : sp.ms_per_field;
+      load = any ? std::max(load, sp.load_ms) : std::max(sp.load_ms, 1.0);
+      any = true;
+    }
+  }
+  if (ms_per_field)
+    *ms_per_field = per;
+  return std::clamp(static_cast<int>((m_neo_budget_ms - load) / per), 1, 6);
 }
 
 void NetPlaySession::ApplyAutoBuffer(std::string_view reason)
@@ -1028,12 +1086,18 @@ void NetPlaySession::ApplyAutoBuffer(std::string_view reason)
   const int from = m_buffer;
   if (choice->buffer == from && reason != "match_start")
     return;
-  Emit("buffer_auto", Json()
-                          .Add("reason", reason)
-                          .Add("from", from)
-                          .Add("to", choice->buffer)
-                          .Add("ping", static_cast<int>(choice->ping))
-                          .Add("jitter", choice->jitter));
+  Json event = Json()
+                   .Add("reason", reason)
+                   .Add("from", from)
+                   .Add("to", choice->buffer)
+                   .Add("ping", static_cast<int>(choice->ping))
+                   .Add("jitter", choice->jitter);
+  if (m_neocode)
+  {
+    event.Add("rollback_fields", choice->rollback_fields)
+        .AddRaw("ms_per_field", fmt::format("{:.2f}", choice->ms_per_field));
+  }
+  Emit("buffer_auto", event);
   if (choice->buffer != from)
     m_server->AdjustPadBufferSize(static_cast<unsigned>(choice->buffer));
 }
@@ -1091,9 +1155,33 @@ void NetPlaySession::PumpAutoBuffer()
       return;
     }
   }
+  // NEOcode: what the minimum buffer is made of, every 5 s (the rollback match log).
+  if (m_neocode && now >= m_neo_report_next)
+  {
+    m_neo_report_next = now + std::chrono::seconds(5);
+    std::vector<std::string> players;
+    {
+      std::lock_guard lk(m_neo_mutex);
+      for (const auto& [pid, sp] : m_neo_speeds)
+      {
+        players.push_back(Json()
+                              .Add("pid", static_cast<int>(pid))
+                              .AddRaw("ms_per_field", fmt::format("{:.2f}", sp.ms_per_field))
+                              .AddRaw("load_ms", fmt::format("{:.2f}", sp.load_ms))
+                              .Str());
+      }
+    }
+    double per = 0;
+    const int r = NeoRollbackFields(&per);
+    Emit("neocode_speed", Json()
+                              .AddRaw("players", JsonArray(players))
+                              .Add("rollback_fields", r)
+                              .Add("budget_ms", m_neo_budget_ms.load())
+                              .AddRaw("ms_per_field", fmt::format("{:.2f}", per)));
+  }
   // During the fight too: once a second, and changed when the new value has held for 3 s (a
-  // single spike never moves it). Not with NEOcode: its rewinds depend on the delay.
-  if (m_neocode || now < m_live_next)
+  // single spike never moves it); NEOcode: 5 s (its rewinds depend on the delay).
+  if (now < m_live_next)
     return;
   m_live_next = now + std::chrono::seconds(1);
   const auto choice = AutoBufferTarget();
@@ -1107,7 +1195,7 @@ void NetPlaySession::PumpAutoBuffer()
     m_live_target = std::make_pair(choice->buffer, now);
     return;
   }
-  if (now - m_live_target->second >= std::chrono::seconds(3))
+  if (now - m_live_target->second >= std::chrono::seconds(m_neocode ? 5 : 3))
   {
     m_live_target.reset();
     ApplyAutoBuffer("live");
@@ -1456,6 +1544,10 @@ void NetPlaySession::OnMsgStartGame()
           }
           m_client->StartGame(game->GetFilePath());
           m_neocode_running = m_client->IsNeoCodeActive();
+          // Rollback is on for the players, but this one doesn't play (a Battle Lounge host
+          // waiting in line, a spectator): it just plays their confirmed inputs.
+          if (m_neocode && !m_neocode_running)
+            Emit("neocode", Json().Add("state", "watching"));
           if (m_neocode_running)
           {
             SetEmitGate([this](std::string line, std::function<void()> on_final) {
@@ -1508,7 +1600,17 @@ NeoCode::Callbacks NetPlaySession::MakeNeoCodeCallbacks()
       m_own_blocks.erase(m_own_blocks.begin());
     CompareSums();
   };
-  cb.stats = [](const NeoCode::Stats& stats) {
+  cb.stats = [this](const NeoCode::Stats& stats) {
+    // This PC's re-run speed (the longest re-run over the biggest rewind), for the host's
+    // automatic minimum buffer: its own, and sent to it.
+    if (stats.rollback_fields > 0 && stats.resim_ms > 0 && m_client)
+    {
+      const double per = stats.resim_ms / stats.rollback_fields;
+      if (m_server)
+        NoteNeoSpeed(m_client->GetLocalPlayerId(), per, stats.load_ms);
+      else
+        SendControl(fmt::format("neospeed {:.2f} {:.2f}", per, stats.load_ms));
+    }
     // R: game frames (2 fields) of the biggest re-run since the last stats.
     const int r = (stats.rollback_fields + 1) / 2;
     SetHudNeoR(r);
@@ -2079,6 +2181,11 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
     if (from != 1)
       return;
     SetLobbyCodes(body.size() > 6 ? body.substr(6) : std::string{});
+    return;
+  }
+  else if (parts[0] == "neospeed" && parts.size() == 3 && m_server)
+  {
+    NoteNeoSpeed(from, std::atof(parts[1].c_str()), std::atof(parts[2].c_str()));
     return;
   }
   else if (parts[0] == "netcode" && parts.size() == 2 && !m_server)
