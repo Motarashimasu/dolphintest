@@ -17,6 +17,7 @@ var recorder: Translation
 
 
 const CrashLog := preload("res://scripts/crash_log.gd")
+const Flags := preload("res://scripts/flags.gd")
 
 func _ready() -> void:
 	app = get_parent()
@@ -92,6 +93,9 @@ func _check_translations() -> void:
 	f.store_string(JSON.stringify(seen, "  "))
 	f.close()
 	var ignore: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/untranslated_ok.json"))["texts"]
+	# Country names come from Godot's own list (TranslationServer.get_country_name), in English.
+	for c in Flags.countries():
+		ignore.append(String(c[1]))
 	# Terminology content comes from the community doc and stays in English.
 	var term_text := FileAccess.get_file_as_string("res://data/terminology.json")
 	for code in ["es", "it", "ja"]:
@@ -1003,7 +1007,27 @@ func _tour() -> void:
 	check("the account has its picture now", Ranked.picture().contains("pic.php?id="))
 	await frames(20)
 	await shot("ranked_profile_picture")
+	# Country: the picker, typing jumps to a country, picking it saves it.
+	await pick("country", acct.list)
+	var cp: Control = top()
+	check("country picker", cp != acct and app._title.text == tr("Country") and cp.list.rows.size() > 200)
+	await key(KEY_I)
+	await key(KEY_T)
+	check("typing 'it' jumps to Italy (%s)" % cp.list.current_key(), cp.list.current_key() == "it")
+	await shot("country_picker")
+	await press("ui_accept")
+	await wait_for("Italy saved: back on the account", func(): return top() == acct and Ranked.country() == "it", 20)
+	check("the account shows it", String(acct.list.row("country").get("value", "")) == Flags.country_name("it"))
 	await back()   # Profile -> DRAGON NET
+	# The profile card on the right: picture, name, flag, ranked record.
+	var pc_menu: Control = top()
+	check("DRAGON NET menu has the profile card", pc_menu.card != null)
+	await wait_for("the card slides in", func(): return pc_menu.card.is_shown() and pc_menu.card._card.position.x < 1280, 10)
+	await frames(30)
+	check("the card: name, Italy's flag, ranked battles (%s / %s)" % [pc_menu.card._battles.text, pc_menu.card._record.text],
+			pc_menu.card._name.text == Ranked.display_name() and pc_menu.card._flag.texture != null
+			and pc_menu.card._battles.text.contains("ranked") and pc_menu.card._record.text != "")
+	await shot("player_card")
 
 	# --- Quick Match: the pool, Buffer Training while waiting, the question, the match ---------
 	await choose("Quick Match")

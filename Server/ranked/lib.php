@@ -19,7 +19,7 @@
 // (the all-time record) never resets. Banned players can't play ranked and aren't listed.
 declare(strict_types=1);
 
-const SCHEMA_VERSION = '8';
+const SCHEMA_VERSION = '9';
 const MODES = ['single', 'team', 'b2single', 'b2team'];
 const GAME_MODES = ['bt3' => ['single', 'team'], 'bt2' => ['b2single', 'b2team']];
 const MODE_LABELS = ['single' => 'Single Battle FT2', 'team' => 'Team Battle',
@@ -179,7 +179,9 @@ function migrate(PDO $db): void
               // Version 5: when a player last came online (friends' "is online" pop-ups).
               'players ADD COLUMN online_since INTEGER NOT NULL DEFAULT 0',
               // Version 6: profile pictures (account.php > picture). 0 = none, else its version.
-              'players ADD COLUMN pic INTEGER NOT NULL DEFAULT 0'] as $alter) {
+              'players ADD COLUMN pic INTEGER NOT NULL DEFAULT 0',
+              // Version 9: the country a player picked for their profile card ('' = none).
+              "players ADD COLUMN country VARCHAR(8) NOT NULL DEFAULT ''"] as $alter) {
         try {
             $db->exec("ALTER TABLE $alter");
         } catch (Throwable $e) {

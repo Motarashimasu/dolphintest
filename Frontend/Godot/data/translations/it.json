@@ -1107,5 +1107,22 @@
  "Under the health bars": "Sotto le barre della vita",
  "Where the match HUD shows the player names (Tenkaichi 3). The win counter stays\nat the top in the middle either way.": "Dove l'HUD della partita mostra i nomi (Tenkaichi 3). Il contatore delle vittorie\nresta in alto al centro in entrambi i casi.",
  "Always on": "Sempre attivo",
- "A rule of ranked and Battle Lounge matches: always on, for both players.": "Una regola delle partite classificate e di Battle Lounge: sempre attiva, per entrambi i giocatori."
+ "A rule of ranked and Battle Lounge matches: always on, for both players.": "Una regola delle partite classificate e di Battle Lounge: sempre attiva, per entrambi i giocatori.",
+ "Country": "Paese",
+ "The flag on your DRAGON NET profile card.": "La bandiera sulla tua scheda profilo DRAGON NET.",
+ "Now": "Attuale",
+ "No flag on your profile card.": "Nessuna bandiera sulla tua scheda profilo.",
+ "Show this flag on your profile card: %s.": "Mostra questa bandiera sulla tua scheda profilo: %s.",
+ "Country: %s": "Paese: %s",
+ "The flag on your DRAGON NET profile card (the DRAGON NET menu shows it).": "La bandiera sulla tua scheda profilo DRAGON NET (la mostra il menu DRAGON NET).",
+ "That country can't be picked.": "Non si può scegliere quel paese.",
+ "%d ranked battles": "%d incontri classificati",
+ "1 ranked battle": "1 incontro classificato",
+ "England": "Inghilterra",
+ "Scotland": "Scozia",
+ "Wales": "Galles",
+ "1 win": "1 vittoria",
+ "%d wins": "%d vittorie",
+ "1 loss": "1 sconfitta",
+ "%d losses": "%d sconfitte"
 }

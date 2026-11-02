@@ -108,6 +108,17 @@ guard(function () {
             $p['pic'] = $v;
             out(['ok' => true, 'picture' => player_pic($p)]);
 
+        case 'country':
+            // The profile card's flag: an ISO 3166-1 code ("it"), "gb-eng" / "gb-sct" / "gb-wls",
+            // or "" for none.
+            $p = auth();
+            $c = strtolower(trim((string)arg('country')));
+            if ($c !== '' && !preg_match('/^([a-z]{2}|gb-(eng|sct|wls))$/', $c)) {
+                fail('bad_country');
+            }
+            $db->prepare('UPDATE players SET country = ? WHERE id = ?')->execute([$c, $p['id']]);
+            out(['ok' => true, 'country' => $c]);
+
         case 'picture_remove':
             $p = auth();
             @unlink(pic_path((int)$p['id']));

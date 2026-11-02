@@ -230,6 +230,25 @@ func set_picture(img: Image) -> Dictionary:
 	return res
 
 
+## The logged-in player's country for their profile card ("it", "gb-sct"...; "" = none).
+func country() -> String:
+	return String(profile.get("player", {}).get("country", ""))
+
+
+## Picks the profile card's country ("" = none). -> {"ok", ...}; the profile is refreshed.
+func set_country(code: String) -> Dictionary:
+	var res := await api("account.php", {"action": "country", "country": code})
+	if res.get("ok", false):
+		await refresh()
+	return res
+
+
+## All-time ranked record in this game: {"wins", "losses"}.
+func lifetime() -> Dictionary:
+	var life: Dictionary = profile.get("lifetime", {})
+	return {"wins": int(life.get("wins", 0)), "losses": int(life.get("losses", 0))}
+
+
 ## The logged-in player's picture URL ("" = none).
 func picture() -> String:
 	var p = profile.get("player", {}).get("picture")
@@ -307,6 +326,7 @@ static func error_text(code: String) -> String:
 		"database_error": "The ranked server had a problem. Try again in a moment.",
 		"banned": "Your ranked profile is suspended.",
 		"bad_picture": "That picture can't be used (PNG, JPEG or WebP only).",
+		"bad_country": "That country can't be picked.",
 		"bad_picture_size": "The picture has to be cropped first.",
 		"picture_too_small": "That picture is too small (at least 32 x 32).",
 		"no_such_replay": "That replay isn't on DRAGON NET any more.",

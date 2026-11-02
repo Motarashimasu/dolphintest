@@ -18,6 +18,7 @@ signal focused(row: Dictionary)
 const Style := preload("res://scripts/ui/style.gd")
 const LinkIcon := preload("res://scripts/ui/link_icon.gd")
 const Pictures := preload("res://scripts/pictures.gd")
+const Flags := preload("res://scripts/flags.gd")
 
 var row_height := 52.0
 var row_gap := 6.0
@@ -245,8 +246,17 @@ func _rebuild() -> void:
 			pic = Pictures.Box.new()
 			root.add_child(pic)
 			pic.show_player(String(r["pic"]) if r["pic"] != null else "", String(r.get("pic_name", r.get("label", ""))))
+		# Optional country flag before the label ("flag": its code, scripts/flags.gd).
+		var flag: TextureRect = null
+		if r.has("flag") and String(r["flag"]) != "":
+			flag = TextureRect.new()
+			flag.texture = Flags.texture(String(r["flag"]))
+			flag.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			flag.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			flag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			root.add_child(flag)
 		_nodes.append({"root": root, "name": name_l, "value": value_l, "edit": edit, "icon": icon,
-				"arrows": arrows, "pic": pic})
+				"arrows": arrows, "pic": pic, "flag": flag})
 	_layout_rows()
 
 
@@ -267,6 +277,10 @@ func _layout_rows() -> void:
 			var ps := row_height - 10
 			Style.place(n.pic, 12, 5, ps, ps)
 			pic_w = ps + 8
+		if n.flag:
+			var fh := row_height * 0.5
+			Style.place(n.flag, 14 + pic_w, (row_height - fh) / 2, fh * 4.0 / 3.0, fh)
+			pic_w += fh * 4.0 / 3.0 + 10
 		Style.place(n.name, 18 + pic_w, 0, lw - 24 - pic_w, row_height)
 		Style.place(n.value, lw, 0, w - lw - (56 if n.icon else 12), row_height)
 		if not n.arrows.is_empty():

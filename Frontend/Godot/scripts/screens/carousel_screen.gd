@@ -4,12 +4,14 @@ extends "res://scripts/screens/screen.gd"
 
 const Carousel := preload("res://scripts/ui/carousel.gd")
 const RatingBumper := preload("res://scripts/ui/rating_bumper.gd")
+const PlayerCard := preload("res://scripts/ui/player_card.gd")
 
 var title := ""
 var music := ""
 var items: Array = []
 var carousel: Control
 var bumper: Control      # the ranked rating plate, for menus with a `bumper: true` item
+var card: Control        # your DRAGON NET profile card (menus with the "player_card" meta)
 var _start := 0
 
 
@@ -48,20 +50,28 @@ func on_enter() -> void:
 	if items.any(func(it): return it.get("bumper", false)):
 		bumper = RatingBumper.new()
 		add_child(bumper)
-		_update_bumper()
+	if get_meta("player_card", false):
+		card = PlayerCard.new()
+		add_child(card)
+	_update_bumper()
 
 
 func on_resume() -> void:
 	super()
 	if bumper:
 		bumper.refresh()
-		_update_bumper()
+	if card:
+		card.refresh()
+	_update_bumper()
 
 
 ## The rating plate slides in while a `bumper: true` item (Ranked Match) is selected.
 func _update_bumper() -> void:
+	var plates := bool(carousel.current().get("bumper", false))
 	if bumper:
-		bumper.set_shown(bool(carousel.current().get("bumper", false)))
+		bumper.set_shown(plates)
+	if card:   # (steps aside while the plates are out)
+		card.set_room(not (plates and bumper and bumper.is_shown()))
 
 
 func on_input(event: InputEvent) -> bool:

@@ -503,6 +503,7 @@ func _netplay_menu() -> Control:
 	var title := _netplay_title()
 	var m := _netplay_menu_items(title)
 	m.set_meta("netplay_menu", true)
+	m.set_meta("player_card", true)   # your profile card on the right (scripts/ui/player_card.gd)
 	return m
 
 

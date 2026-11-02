@@ -6,6 +6,8 @@ extends "res://scripts/screens/form_screen.gd"
 ##   (opens the browser, waits for the approval), then asks for its new username + password.
 ##   Logged in: the account, your ratings and records, Log out.
 
+const Flags := preload("res://scripts/flags.gd")
+
 var _then: Callable          # where to go once logged in (e.g. the Ranked Lobby Browser)
 var _status := ""
 var _busy := false
@@ -102,6 +104,10 @@ func build_rows() -> Array:
 	rows.append({"type": "action", "key": "picture", "label": "Profile picture",
 		"value": tr("Change") if Ranked.picture() != "" else tr("Add"),
 		"desc": tr("A picture for your account: friends and the leaderboard show it.\nPick any picture, then crop it to a square (%d x %d).") % [Pictures.SIZE, Pictures.SIZE]})
+	var country := Ranked.country()
+	rows.append({"type": "action", "key": "country", "label": "Country",
+		"value": Flags.country_name(country) if country != "" else tr("None"), "flag": country,
+		"desc": "The flag on your DRAGON NET profile card (the DRAGON NET menu shows it)."})
 	if p.get("banned", false):
 		rows.append({"type": "info", "key": "banned", "label": "Your ranked profile is suspended.",
 			"value": String(p.get("ban_reason", "")), "desc": "You can't play ranked matches until an admin lifts it."})
@@ -202,6 +208,8 @@ func on_press(key: String) -> void:
 			list.set_rows(build_rows(), "username" if Ranked.needs_account else "discord")
 		"picture":
 			_picture_menu()
+		"country":
+			app.open("country_picker")
 		"cancel":
 			Ranked.cancel_login()
 		"continue":

@@ -364,6 +364,21 @@ def picture_checks(server, check, G, V):
     _, me = call(server, "me.php", G)
     check("removed", rm.get("ok") and me["player"]["picture"] is None)
     call(server, "account.php", G, action="picture", data=b64(png(128, 128)))   # keep one for the boards
+    # The profile card's country flag.
+    _, me = call(server, "me.php", G)
+    check("no country at first", me["player"].get("country") == "")
+    _, r = call(server, "account.php", G, action="country", country="IT")
+    _, me = call(server, "me.php", G)
+    check(f"country saved (lowercase) {r}", r.get("ok") and me["player"]["country"] == "it")
+    _, r = call(server, "account.php", G, action="country", country="gb-sct")
+    check("Scotland too", r.get("ok") and r.get("country") == "gb-sct")
+    _, r = call(server, "account.php", G, action="country", country="<script>")
+    check("not a country code: refused", r.get("error") == "bad_country")
+    _, r = call(server, "account.php", action="country", country="it")
+    check("needs a login", r.get("error") == "login_required")
+    _, r = call(server, "account.php", G, action="country", country="")
+    _, me = call(server, "me.php", G)
+    check("none again", r.get("ok") and me["player"]["country"] == "")
 
 
 def admin_checks(server, check, tokens):
