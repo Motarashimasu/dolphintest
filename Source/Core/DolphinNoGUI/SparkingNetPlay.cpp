@@ -379,10 +379,11 @@ void NetPlaySession::Pump()
 
   EmitRoom();
 
-  if (m_server && m_rebroadcast_codes.exchange(false))
-    BroadcastLobbyCodes();
+  // (The mode first: joiners show the lobby options of the mode, then the list that goes with it.)
   if (m_server && m_rebroadcast_mode.exchange(false) && m_mode != "any" && m_mode != "training")
     SendControl("mode " + m_mode);  // (before the save check, whose fingerprint includes them)
+  if (m_server && m_rebroadcast_codes.exchange(false))
+    BroadcastLobbyCodes();
   if (m_server && m_rebroadcast_state.exchange(false))
     BroadcastBattleState();
   if (m_server && m_rebroadcast_save.exchange(false))
@@ -1959,16 +1960,18 @@ void NetPlaySession::EmitLobbyCodes()
     const std::vector<std::string> competitive =
         (m_ranked_lobby || m_koth) ? CompetitiveCodeNames(game->GetGameID(), game->GetRevision()) :
                                      std::vector<std::string>{};
+    const std::vector<std::string> on_now = LobbyCodesFor(*game);
     for (const std::string& n : LobbyCodeNames(game->GetGameID(), game->GetRevision()))
     {
+      // (one that's on is always shown: a joiner may get the list before the host's mode)
       const auto it = modes.find(n);
-      if (it != modes.end() && it->second != mode)
+      if (it != modes.end() && it->second != mode && std::ranges::find(on_now, n) == on_now.end())
         continue;
       available.push_back(Json::Escape(n));
       if (std::ranges::find(competitive, n) != competitive.end())
         forced.push_back(Json::Escape(n));
     }
-    for (const std::string& n : LobbyCodesFor(*game))
+    for (const std::string& n : on_now)
       on.push_back(Json::Escape(n));
   }
   Emit("lobby_codes", Json()

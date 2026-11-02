@@ -860,9 +860,17 @@ def team_rule_check(exe, dol, work, game_id):
         joiner.wait_for("lobby_codes", lambda e: e["on"] == [], timeout=20)
         host.send("codes Team Rule")
         host.wait_for("lobby_codes", lambda e: e["on"] == ["Team Rule"])
-        host.wait_for("save_data", lambda e: e.get("ready") is True, timeout=30)
-        host.send("start")
-        ga = host.wait_for("gecko_active", timeout=60)
+        # (the setup check re-runs after each switch: start once everyone has the last one)
+        ga = None
+        for _ in range(8):
+            time.sleep(2)
+            host.send("start")
+            try:
+                ga = host.wait_for("gecko_active", timeout=8)
+                break
+            except AssertionError:
+                pass
+        check("the match starts with the rule on", ga is not None)
         gj = joiner.wait_for("gecko_active", timeout=60)
         check(f"in the game: the rule runs for both {ga['codes']} / {gj['codes']}",
               "Team Rule" in ga["codes"] and "Team Rule" in gj["codes"])
