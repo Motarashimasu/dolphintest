@@ -82,6 +82,11 @@ python Tools\package_linux.py E:\SparkDol\DBZSC-linux E:\SparkDol\DBZSC-linux-21
   files share one store: states, textures and saves both builds have are uploaded once.
 - `release.json`: Linux reads `include_linux` / `exclude_linux` / `launcher_linux` when they're
   there, else defaults (the Windows ones with `*.x86_64` for `*.exe` / `*.ico`, and `exclude`).
+- `package_linux.py` leaves the optional Enhanced textures out (players get them from Options >
+  Enhanced textures; `--with-packs` puts them in, a few GB more).
+- The `.tar.gz` for the website: the Cloudflare dashboard stops at 300 MB, so upload it with
+  `python Tools\sparking_release.py upload E:\SparkDol\DBZSC-linux-210.tar.gz installers/Sparking-linux-210.tar.gz --config C:\SparkingKeys\release.json`
+  (in parts, any size) and put that name in config.php > 'downloads' > 'r2'.
 - `package_linux.py` packs exactly what a Linux update holds (so a fresh install is up to date),
   in a folder "DRAGON BALL Sparking! Collection", with the launcher and Dolphin marked executable
   and a README for players. It refuses a Windows build folder.

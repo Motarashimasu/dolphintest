@@ -250,6 +250,7 @@ class R2:
         for attempt in range(4):
             try:
                 with urllib.request.urlopen(req, timeout=600) as r:
+                    self.last_headers = dict(r.headers.items())
                     return r.status, r.read()
             except urllib.error.HTTPError as e:
                 if e.code < 500 or attempt == 3:
@@ -291,6 +292,44 @@ class R2:
                                     headers={"Content-Type": content_type})
         if status != 200:
             raise SystemExit(f"Uploading {obj} failed ({status}): {body[:300]!r}")
+
+    def put_large(self, obj: str, path: str, part_mb: int = 64) -> None:
+        """A file of any size (installers): uploaded in parts (S3 multipart), with progress. `obj`
+        is the exact key in the bucket (no update prefix)."""
+        size = os.path.getsize(path)
+        part = part_mb * 1048576
+        status, body = self.request("POST", obj, query={"uploads": ""})
+        if status != 200:
+            raise SystemExit(f"Starting the upload failed ({status}): {body[:300]!r}")
+        root = ET.fromstring(body)
+        ns = root.tag.split("}")[0] + "}" if root.tag.startswith("{") else ""
+        upload_id = root.findtext(ns + "UploadId")
+        etags = []
+        try:
+            with open(path, "rb") as f:
+                n = 0
+                while True:
+                    chunk = f.read(part)
+                    if not chunk:
+                        break
+                    n += 1
+                    status, body = self.request("PUT", obj, query={"partNumber": str(n), "uploadId": upload_id},
+                                                body=chunk, length=len(chunk))
+                    if status != 200:
+                        raise SystemExit(f"Uploading part {n} failed ({status}): {body[:300]!r}")
+                    etags.append(self.last_headers.get("ETag") or self.last_headers.get("etag"))
+                    done = min(n * part, size)
+                    print(f"  {done / 1048576:.0f} / {size / 1048576:.0f} MB", flush=True)
+            xml = "<CompleteMultipartUpload>" + "".join(
+                f"<Part><PartNumber>{i}</PartNumber><ETag>{e}</ETag></Part>" for i, e in enumerate(etags, 1)) \
+                + "</CompleteMultipartUpload>"
+            status, body = self.request("POST", obj, query={"uploadId": upload_id}, body=xml.encode(),
+                                        length=len(xml.encode()))
+            if status != 200 or b"<Error>" in body:
+                raise SystemExit(f"Finishing the upload failed ({status}): {body[:300]!r}")
+        except BaseException:
+            self.request("DELETE", obj, query={"uploadId": upload_id})   # (no half file left behind)
+            raise
 
     def get(self, obj: str) -> tuple[int, bytes]:
         return self.request("GET", self.prefix + obj)
@@ -496,6 +535,18 @@ def cmd_publish(args) -> None:
           "Launchers update on their next start.")
 
 
+def cmd_upload(args) -> None:
+    """A big file (the Linux .tar.gz, an installer) into the bucket, for the website's downloads
+    (config.php 'downloads' > 'r2'). The Cloudflare dashboard stops at 300 MB."""
+    cfg = load_config(args.config)
+    if not os.path.isfile(args.file):
+        raise SystemExit(f"No such file: {args.file}")
+    key = args.key.lstrip("/")
+    print(f"Uploading {args.file} ({os.path.getsize(args.file) / 1048576:.1f} MB) to {cfg['r2_bucket']}/{key}")
+    R2(cfg).put_large(key, args.file)
+    print(f"Done. In config.php > 'downloads': 'r2' => '{key}'")
+
+
 def cmd_prune(args) -> None:
     """Delete files/ objects no kept list needs: each platform's current list and its newest
     --keep published ones."""
@@ -564,6 +615,10 @@ def main() -> None:
     p.add_argument("--dry-run", action="store_true", help="list the files, upload nothing")
     p.add_argument("--platform", choices=sorted(PLATFORMS), default="windows",
                    help="which launchers get this build (default windows)")
+    u = sub.add_parser("upload", help="upload a big file (installer, Linux .tar.gz) for the website's downloads")
+    u.add_argument("file")
+    u.add_argument("key", help="its name in the bucket, e.g. installers/Sparking-linux-218.tar.gz")
+    u.add_argument("--config", required=True)
     r = sub.add_parser("prune", help="delete files only old builds used")
     r.add_argument("--config", required=True)
     r.add_argument("--keep", type=int, default=3, help="also keep the newest N builds' files")
@@ -573,7 +628,7 @@ def main() -> None:
     args = ap.parse_args()
     if hasattr(args, "func"):
         return args.func(args)
-    {"keygen": cmd_keygen, "publish": cmd_publish, "prune": cmd_prune,
+    {"keygen": cmd_keygen, "publish": cmd_publish, "prune": cmd_prune, "upload": cmd_upload,
      "self-test": lambda a: self_test()}[args.cmd](args)
 
 

@@ -45,6 +45,9 @@ def main() -> None:
     ap.add_argument("build")
     ap.add_argument("output")
     ap.add_argument("--config", help="release.json, for include_linux / exclude_linux / launcher_linux")
+    ap.add_argument("--with-packs", action="store_true",
+                    help="also pack the optional downloads (Enhanced textures): by default they're left "
+                         "out, players get them from Options when they want them")
     args = ap.parse_args()
     build = os.path.abspath(args.build)
     if not os.path.isdir(build):
@@ -55,6 +58,8 @@ def main() -> None:
         with open(args.config, encoding="utf-8") as f:
             cfg = json.load(f)   # (only include_linux / exclude_linux / launcher_linux are used)
     include, exclude, launcher = release.platform_settings(cfg, "linux")
+    if not args.with_packs:
+        exclude = list(exclude) + [pat for p in release.pack_settings(cfg, "linux").values() for pat in p["include"]]
     launcher = launcher or "DRAGON BALL Sparking! Collection.x86_64"
     files = []
     for root, dirs, names in os.walk(build):
