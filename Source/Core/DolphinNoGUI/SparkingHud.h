@@ -31,6 +31,12 @@ namespace Sparking
 void InitHud(bool enabled, bool health);
 void SetHudEnabled(bool enabled);
 void SetHudHealthEnabled(bool enabled);
+// Where the player names go: false = in the score bar (default), true = under each health bar
+// (Tenkaichi 3; the score bar then shows just the wins). Any thread.
+void SetHudNamesUnderBars(bool under);
+// The game's HUD sits at the screen edges (the "Widescreen HUD" code is on): the names under the
+// health bars follow it. Set at each boot from the codes that run.
+void SetHudWideHud(bool wide);
 // GameCube port of the local player (1-4; 0 = spectator / unknown); reported in round_result.
 void SetHudLocalPort(int port);
 int HudLocalPort();

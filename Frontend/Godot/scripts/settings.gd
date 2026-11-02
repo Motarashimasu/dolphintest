@@ -141,6 +141,7 @@ var defaults := {
 		"training_display": false,   # Modifications > Training Display: hitboxes + frame data offline
 		"hud": false,             # score bar offline (netplay always shows it)
 		"hud_health": true,       # health % in the corners
+		"hud_names": "score",     # player names: "score" (in the score bar) / "bars" (under the health bars)
 		"input_display": false,   # your input history (fighting-game style column) in every game
 		"input_display_other": false,     # P2's too (offline only: never in online matches)
 		"training_input_display": true,   # yours in Buffer Training (its own switch)
@@ -549,6 +550,8 @@ func common_args() -> PackedStringArray:
 	a.append_array(["--window", get_value("video", "window")])
 	a.append_array(["--aspect", get_value("options", "aspect")])
 	a.append_array(["--hud-health", "on" if get_value("options", "hud_health") else "off"])
+	if get_value("options", "hud_names") == "bars":
+		a.append_array(["--hud-names", "bars"])   # (left out by default: older Dolphins don't know it)
 	a.append_array(["--input-display", "on" if get_value("options", "input_display") else "off"])
 	a.append_array(["--input-display-other", "on" if get_value("options", "input_display_other") else "off"])
 	a.append_array(["--textures-dir", data_path("textures")])

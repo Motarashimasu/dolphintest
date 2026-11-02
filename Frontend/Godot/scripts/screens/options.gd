@@ -29,6 +29,9 @@ func build_rows() -> Array:
 			"desc": "Both fighters' health as a percentage, in the top corners."},
 		{"type": "toggle", "key": "hud", "label": "Match HUD offline", "value": Settings.get_value("options", "hud"),
 			"desc": "Round score with player names on top of the game in offline play.\nDRAGON NET matches always show it, with the connection info."},
+		{"type": "choice", "key": "hud_names", "label": "Player names", "values": ["score", "bars"],
+			"names": ["Next to the score", "Under the health bars"], "value": Settings.get_value("options", "hud_names"),
+			"desc": "Where the match HUD shows the player names (Tenkaichi 3). The win counter stays\nat the top in the middle either way."},
 		{"type": "toggle", "key": "input_display", "label": "Your input history", "value": Settings.get_value("options", "input_display"),
 			"desc": "Your inputs down the side of the game, like a fighting game's training mode:\nframes held, direction (dot = neutral), buttons. Buffer Training has its own switch."},
 		{"type": "toggle", "key": "input_display_other", "label": "P2 input history", "value": Settings.get_value("options", "input_display_other"),
@@ -133,6 +136,8 @@ func on_value(key: String, value: Variant) -> void:
 		app.choose_language(String(value), "options")
 		return
 	Settings.set_value("options", key, value)
+	if key == "hud_names" and Dolphin.is_running():
+		Dolphin.send("hud_names " + String(value))   # a game on: moves right away
 	if key == "music_volume":
 		Music.apply_volume()
 	elif key == "sfx_volume":

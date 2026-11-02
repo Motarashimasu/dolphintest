@@ -213,6 +213,7 @@ private:
   // state and the public listing follow; everyone is told ("lobby_mode").
   void SetMode(const std::string& mode);
   std::vector<std::string> LobbyCodesFor(const UICommon::GameFile& game);
+  std::string CodesMode();  // the lobby mode its codes go by (host: own; joiner: the host's)
   void BroadcastLobbyCodes();
   void EmitLobbyCodes();
   bool IsBattleStateReady();  // host: every current player verified the file

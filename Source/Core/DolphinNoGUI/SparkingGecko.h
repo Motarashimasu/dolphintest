@@ -46,6 +46,16 @@ std::string HashNetplayGeckoSetup(const std::string& game_id, u16 revision, bool
 // everyone in the lobby (never part of the default-on codes in netplay).
 std::vector<std::string> LobbyCodeNames(const std::string& game_id, std::optional<u16> revision);
 
+// [Sparking.LobbyCodeModes]: "<code> = team" (or single): a lobby option that only applies in
+// lobbies of that mode (e.g. a Team Battle rule). Codes not listed apply in every mode.
+std::map<std::string, std::string> LobbyCodeModes(const std::string& game_id,
+                                                  std::optional<u16> revision);
+
+// [Sparking.CompetitiveCodes]: lobby options that are always on (no toggle) in ranked and
+// Battle Lounge lobbies (still only in their [Sparking.LobbyCodeModes] mode).
+std::vector<std::string> CompetitiveCodeNames(const std::string& game_id,
+                                              std::optional<u16> revision);
+
 // [Sparking.Exclusive]: "<group> = Code A | Code B", codes that can't be on together.
 std::vector<std::pair<std::string, std::vector<std::string>>>
 ExclusiveCodeGroups(const std::string& game_id, std::optional<u16> revision);

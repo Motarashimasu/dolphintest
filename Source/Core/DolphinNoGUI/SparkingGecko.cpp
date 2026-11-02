@@ -64,6 +64,31 @@ std::vector<std::string> LobbyCodeNames(const std::string& game_id, std::optiona
   return SectionLines(game_id, revision, "Sparking.LobbyCodes");
 }
 
+std::map<std::string, std::string> LobbyCodeModes(const std::string& game_id,
+                                                  std::optional<u16> revision)
+{
+  std::map<std::string, std::string> modes;   // (the user ini's line replaces the Sys one)
+  for (const Common::IniFile& ini :
+       {SConfig::LoadDefaultGameIni(game_id, revision), SConfig::LoadLocalGameIni(game_id, revision)})
+  {
+    if (const Common::IniFile::Section* section = ini.GetSection("Sparking.LobbyCodeModes"))
+    {
+      for (const auto& [key, value] : section->GetValues())
+      {
+        if (std::string k = Trim(key); !k.empty())
+          modes[k] = Trim(value);
+      }
+    }
+  }
+  return modes;
+}
+
+std::vector<std::string> CompetitiveCodeNames(const std::string& game_id,
+                                              std::optional<u16> revision)
+{
+  return SectionLines(game_id, revision, "Sparking.CompetitiveCodes");
+}
+
 std::vector<std::pair<std::string, std::vector<std::string>>>
 ExclusiveCodeGroups(const std::string& game_id, std::optional<u16> revision)
 {
@@ -120,8 +145,10 @@ std::string ListGeckoCodesJson(const std::string& game_id, std::optional<u16> re
   std::vector<std::string> items;
   const std::vector<std::string> lobby = LobbyCodeNames(game_id, revision);
   const auto groups = ExclusiveCodeGroups(game_id, revision);
+  const auto modes = LobbyCodeModes(game_id, revision);
   for (const Gecko::GeckoCode& code : LoadAllCodes(game_id, revision))
   {
+    const auto mode = modes.find(code.name);
     std::string group;
     for (const auto& [g, members] : groups)
     {
@@ -142,6 +169,8 @@ std::string ListGeckoCodesJson(const std::string& game_id, std::optional<u16> re
                         .AddRaw("lines", JsonArray(lines))
                         .Add("lobby_option", std::ranges::find(lobby, code.name) != lobby.end())
                         .Add("group", group)
+                        // a rule for one netplay lobby mode (Team Battle's): online only
+                        .Add("lobby_mode", mode != modes.end() ? mode->second : std::string())
                         .Str());
   }
   return JsonArray(items);

@@ -62,6 +62,7 @@ var _ask_menu: Control = null   # ranked guest: the "start the match?" question 
 var _chat: PackedStringArray = []
 var _codes_available: Array = []   # this game's optional codes the host may switch on (Dolphin's "lobby_codes")
 var _codes_on: Array = []          # ...and the ones that are on, for everyone
+var _codes_forced: Array = []      # ...always on here (ranked / Battle Lounge rules: no toggle)
 var _battle := {}
 var _logged_buffer := -1
 var _auto_started := false    # Buffer Training starts itself once the state is ready
@@ -907,7 +908,10 @@ func _action_rows(in_game_menu: bool) -> Array:
 		for i in _codes_available.size():
 			var code := String(_codes_available[i])
 			var on := code in _codes_on
-			if host:
+			if code in _codes_forced:
+				rows.append({"type": "info", "key": "lc:%d" % i, "label": code, "value": tr("Always on"),
+					"desc": "A rule of ranked and Battle Lounge matches: always on, for both players."})
+			elif host:
 				rows.append({"type": "toggle", "key": "lc:%d" % i, "label": code, "value": on,
 					"disabled": _phase == "playing",
 					"desc": "Host option: switch it on for both players' games. Off by default."})
@@ -1166,7 +1170,7 @@ func _on_value(key: String, value: Variant) -> void:
 			Dolphin.send("buffer %d" % int(value))
 		_ when key.begins_with("lc:"):
 			var code := String(_codes_available[int(key.substr(3))])
-			var on: Array = _codes_on.duplicate()
+			var on: Array = _codes_on.filter(func(c): return not c in _codes_forced)
 			on.erase(code)
 			if value:
 				on.push_front(code)   # first: Dolphin keeps it over another of its exclusive group
@@ -1342,6 +1346,7 @@ func _on_event(name: String, data: Dictionary) -> void:
 			var was: Array = _codes_on
 			_codes_available = data.get("available", [])
 			_codes_on = data.get("on", [])
+			_codes_forced = data.get("forced", [])
 			for code in _codes_on:
 				if not code in was:
 					_system(tr("%s: on for this lobby's matches.") % code, "#9be7ff")

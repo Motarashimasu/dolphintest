@@ -15,6 +15,7 @@
 #include <fmt/format.h>
 #include <imgui.h>
 
+#include "Core/ConfigManager.h"
 #include "DolphinNoGUI/SparkingBlob.h"
 #include "DolphinNoGUI/SparkingIO.h"
 #include "DolphinNoGUI/SparkingInputDisplay.h"
@@ -40,6 +41,8 @@ struct Side
 std::mutex s_mutex;
 std::atomic<bool> s_enabled{true};         // score bar + netplay ping/buffer
 std::atomic<bool> s_health_enabled{true};  // health % in the corners
+std::atomic<bool> s_names_under{false};     // names under the health bars (else in the score bar)
+std::atomic<bool> s_wide_hud{false};        // the game's HUD is pinned to the screen edges
 std::atomic<int> s_local_port{1};
 std::array<Side, 2> s_sides;          // P1, P2
 bool s_round_live = false;            // both sides were at 100% and nobody has hit 0% since
@@ -211,6 +214,10 @@ void DrawHud()
   const ImU32 white = IM_COL32(240, 240, 245, 255);
   const ImU32 panel = IM_COL32(12, 12, 22, 120);  // score panel: see-through
 
+  // Names under the health bars (option; Tenkaichi 3's HUD): then the score bar shows just the
+  // wins, exactly where it always is.
+  const bool names_under = s_names_under && SConfig::GetInstance().GetGameID().starts_with("RDS");
+
   // Score bar, centre of the game's top HUD: "[icon] Name1  W1 | W2  Name2 [icon]" on one
   // see-through panel. The scores stay centred; names grow outwards, shrink to fit their slot and
   // get cut with "..." so the bar never reaches the health bars. Netplay: wired/Wi-Fi icons on the
@@ -239,13 +246,15 @@ void DrawHud()
     const float slot = pic.w() * 0.12f;
     std::array<std::pair<std::string, float>, 2> names;
     std::array<float, 2> name_w{};
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < 2 && !names_under; ++i)
     {
       names[i] = FitName(font, DisplayName(sides[i], i + 1), slot, name_size);
       name_w[i] = TextSize(font, names[i].second, names[i].first).x;
     }
-    const float left_w = name_gap + name_w[0] + (links[0].empty() ? 0 : icon_gap + icon);
-    const float right_w = name_gap + name_w[1] + (links[1].empty() ? 0 : icon_gap + icon);
+    const float left_w = names_under ? 0.0f :
+                                       name_gap + name_w[0] + (links[0].empty() ? 0 : icon_gap + icon);
+    const float right_w = names_under ? 0.0f :
+                                        name_gap + name_w[1] + (links[1].empty() ? 0 : icon_gap + icon);
     const float pad = h * 0.35f;
     const float x0 = c - half_center - left_w - pad, x1 = c + half_center + right_w + pad;
     dl->AddRectFilled(ImVec2(x0, row.y0), ImVec2(x1, row.y1), panel, h * 0.2f);
@@ -257,7 +266,7 @@ void DrawHud()
     dl->AddText(font, score_size, ImVec2(c - bar_w / 2, score_y), sep_col, "|");
     dl->AddText(font, score_size, ImVec2(c + bar_w / 2 + sep_gap, score_y), score_col, w2.c_str());
 
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < 2 && !names_under; ++i)
     {
       const auto& [name, size] = names[i];
       const float y = row.y0 + (h - size) / 2;
@@ -268,6 +277,34 @@ void DrawHud()
         const float icon_x =
             i == 0 ? x - icon_gap - icon / 2 : x + name_w[1] + icon_gap + icon / 2;
         DrawLinkIcon(dl, font, ImVec2(icon_x, row.y0 + h / 2), icon, links[i]);
+      }
+    }
+  }
+
+  // Names under the health bars: P1 left-aligned on the left, P2 right-aligned on the right,
+  // netplay's wired/Wi-Fi icon on the outer side. Measured on BT3's HUD stretched over the
+  // picture (PS2 HUD x 0.141-0.262 / 0.762-0.865, y 0.124-0.178); with the Widescreen HUD code
+  // each side keeps its true width (4:3 over the picture's aspect) pinned to its screen edge.
+  if (hud && names_under)
+  {
+    const float s = s_wide_hud ? std::min(1.0f, (4.0f / 3.0f) / (pic.w() / pic.h())) : 1.0f;
+    for (int i = 0; i < 2; ++i)
+    {
+      const float fx0 = i == 0 ? 0.141f * s : 1.0f - (1.0f - 0.762f) * s;
+      const float fx1 = i == 0 ? 0.262f * s : 1.0f - (1.0f - 0.865f) * s;
+      const Box box = in_pic(fx0, 0.124f, fx1, 0.178f);
+      const float icon = links[i].empty() ? 0.0f : box.h();
+      const float icon_gap = icon > 0 ? box.h() * 0.2f : 0.0f;
+      // Room to grow inwards past the measured box (long names), never past the middle third.
+      const float room = std::max(box.w(), pic.w() * 0.30f * s) - icon - icon_gap;
+      const auto [name, size] = FitName(font, DisplayName(sides[i], i + 1), room, box.h());
+      const float w = TextSize(font, size, name).x;
+      const float x = i == 0 ? box.x0 + icon + icon_gap : box.x1 - icon - icon_gap - w;
+      OutlinedText(dl, font, size, ImVec2(x, box.y0 + (box.h() - size) / 2), white, name);
+      if (icon > 0)
+      {
+        const float icon_x = i == 0 ? box.x0 + icon / 2 : box.x1 - icon / 2;
+        DrawLinkIcon(dl, font, ImVec2(icon_x, box.y0 + box.h() / 2), icon, links[i]);
       }
     }
   }
@@ -361,6 +398,17 @@ void SetHudEnabled(bool enabled)
 {
   s_enabled = enabled;
   Emit("hud", Json().Add("enabled", enabled));
+}
+
+void SetHudNamesUnderBars(bool under)
+{
+  s_names_under = under;
+  Emit("hud_names", Json().Add("under_bars", under));
+}
+
+void SetHudWideHud(bool wide)
+{
+  s_wide_hud = wide;
 }
 
 void SetHudHealthEnabled(bool enabled)

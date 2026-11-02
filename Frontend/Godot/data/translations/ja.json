@@ -1101,5 +1101,11 @@
  "Install it (Ubuntu / Debian / Mint / WSL):\nsudo apt install %s": "インストールしてください（Ubuntu / Debian / Mint / WSL）：\nsudo apt install %s",
  "Install the package that has it with your system's package manager.": "システムのパッケージマネージャーで、これを含むパッケージをインストールしてください。",
  "Dolphin is missing %s": "Dolphinに %s がありません",
- "Dolphin can't start on this system without %s.": "%s がないため、このシステムではDolphinを起動できません。"
+ "Dolphin can't start on this system without %s.": "%s がないため、このシステムではDolphinを起動できません。",
+ "Player names": "プレイヤー名",
+ "Next to the score": "スコアの横",
+ "Under the health bars": "体力ゲージの下",
+ "Where the match HUD shows the player names (Tenkaichi 3). The win counter stays\nat the top in the middle either way.": "対戦HUDでプレイヤー名を表示する場所（Tenkaichi 3）。勝利数カウンターは\nどちらの場合も上部中央のままです。",
+ "Always on": "常にオン",
+ "A rule of ranked and Battle Lounge matches: always on, for both players.": "ランクマッチとBattle Loungeのルール：両プレイヤーとも常にオンです。"
 }

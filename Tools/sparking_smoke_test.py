@@ -788,6 +788,7 @@ def main():
         lobby_check(exe, dol, work, game_id)
         discord_check(exe, dol)
         discord_presence_check(exe)
+        team_rule_check(exe, dol, work, game_id)
         crash_check(exe, dol, work)
         print("ALL PASSED")
     finally:
@@ -795,6 +796,115 @@ def main():
             if inst.proc.poll() is None:
                 inst.proc.kill()
         shutil.rmtree(work, ignore_errors=True)
+
+
+def team_rule_check(exe, dol, work, game_id):
+    """A lobby rule for one mode ([Sparking.LobbyCodeModes]: Team Battle's 3 characters): only in
+    that mode's lobbies, the Player Match host's toggle; always on ([Sparking.CompetitiveCodes]),
+    no toggle, in ranked and Battle Lounge lobbies of that mode."""
+    print("netplay: Team Battle rule (lobby option of one mode, forced in ranked / Battle Lounge)")
+    common = ["-p", "headless", "-v", "Null"]
+
+    def setup(name, port):
+        d = os.path.join(work, "tr-" + name)
+        os.makedirs(os.path.join(d, "Config"), exist_ok=True)
+        os.makedirs(os.path.join(d, "GameSettings"), exist_ok=True)
+        with open(os.path.join(d, "Config", "Dolphin.ini"), "w") as f:
+            f.write(f"[NetPlay]\nTraversalChoice = direct\nHostPort = {port}\nSyncSaves = False\n"
+                    "[Analytics]\nPermissionAsked = True\nEnabled = False\n")
+        with open(os.path.join(d, "GameSettings", f"{game_id}.ini"), "w") as f:
+            f.write("[Gecko]\n"
+                    "$Splitscreen Remover P1 [Sparking]\n04001000 00000001\n"
+                    "$Splitscreen Remover P2 [Sparking]\n04001004 00000002\n"
+                    "$Big Head [Sparking]\n04001010 00000004\n"
+                    "$Team Rule [Sparking]\n04001018 00000006\n"
+                    "[Sparking.LobbyCodes]\nBig Head\nTeam Rule\n"
+                    "[Sparking.LobbyCodeModes]\nTeam Rule = team\n"
+                    "[Sparking.CompetitiveCodes]\nTeam Rule\n")
+        nand = os.path.join(work, "tr-nand-" + name)
+        data = os.path.join(nand, "title", "00000000", "00000000", "data")
+        os.makedirs(data, exist_ok=True)
+        with open(os.path.join(data, "save.bin"), "wb") as f:
+            f.write(b"ALL-CHARACTERS-UNLOCKED" * 100)
+        return ["-u", d, "--nand", nand, "--netplay-gecko", "1=Splitscreen Remover P1",
+                "--netplay-gecko", "2=Splitscreen Remover P2"]
+
+    insts = []
+    try:
+        host = Instance("tr-host", [exe, *common, *setup("host", 26341), "--netplay-host", dol,
+                                    "--netplay-direct", "--mode", "single", "--nickname", "Goku",
+                                    "--automap", "gc"])
+        insts.append(host)
+        host.send("hello")
+        lc = host.wait_for("lobby_codes")
+        check(f"Single Battle lobby: the Team Battle rule isn't offered {lc}",
+              lc["available"] == ["Big Head"] and lc["on"] == [] and lc["forced"] == [])
+        joiner = Instance("tr-joiner", [exe, *common, *setup("joiner", 26342), "--netplay-join",
+                                        "127.0.0.1:26341", "--netplay-game", dol, "--nickname", "Vegeta"])
+        insts.append(joiner)
+        joiner.send("hello")
+        joiner.wait_for("players", lambda e: len(e["players"]) == 2, timeout=30)
+        host.send("codes Team Rule")
+        time.sleep(1)
+        check("switching it on in a Single Battle lobby does nothing",
+              [e for e in host.history if e["event"] == "lobby_codes"][-1]["on"] == [])
+        host.send("mode team")
+        lc = host.wait_for("lobby_codes", lambda e: "Team Rule" in e["available"])
+        check(f"Team Battle lobby: offered, and the host's earlier choice applies {lc}",
+              lc["on"] == ["Team Rule"] and lc["forced"] == [])
+        jl = joiner.wait_for("lobby_codes", lambda e: e["on"] == ["Team Rule"], timeout=20)
+        check(f"joiner: on for them too, shown as a toggle of the host's {jl}",
+              "Team Rule" in jl["available"] and jl["forced"] == [])
+        host.send("codes none")
+        host.wait_for("lobby_codes", lambda e: e["on"] == [])
+        joiner.wait_for("lobby_codes", lambda e: e["on"] == [], timeout=20)
+        host.send("codes Team Rule")
+        host.wait_for("lobby_codes", lambda e: e["on"] == ["Team Rule"])
+        host.wait_for("save_data", lambda e: e.get("ready") is True, timeout=30)
+        host.send("start")
+        ga = host.wait_for("gecko_active", timeout=60)
+        gj = joiner.wait_for("gecko_active", timeout=60)
+        check(f"in the game: the rule runs for both {ga['codes']} / {gj['codes']}",
+              "Team Rule" in ga["codes"] and "Team Rule" in gj["codes"])
+        host.send("stop")
+        host.wait_for("game_stopped", timeout=30)
+        host.send("mode single")
+        lc = host.wait_for("lobby_codes", lambda e: "Team Rule" not in e["available"])
+        check(f"back to Single Battle: the rule is off and not offered {lc}", lc["on"] == [])
+        for inst in insts:
+            inst.send("quit")
+            inst.wait_for("exit", timeout=20)
+        insts.clear()
+
+        for kind, flag, port in (("ranked", "--ranked", 26343), ("Battle Lounge", "--koth", 26344)):
+            h = Instance(f"tr-{flag}", [exe, *common, *setup(flag, port), "--netplay-host", dol,
+                                        "--netplay-direct", "--mode", "team", flag, "--nickname", "Goku"])
+            insts.append(h)
+            h.send("hello")
+            lc = h.wait_for("lobby_codes")
+            check(f"{kind} Team Battle: always on, no toggle {lc}",
+                  lc["on"] == ["Team Rule"] and lc["forced"] == ["Team Rule"])
+            h.send("codes none")
+            time.sleep(1)
+            check(f"{kind}: the host can't switch it off",
+                  [e for e in h.history if e["event"] == "lobby_codes"][-1]["on"] == ["Team Rule"])
+            h.send("quit")
+            h.wait_for("exit", timeout=20)
+            insts.clear()
+        h = Instance("tr-ranked-single", [exe, *common, *setup("rs", 26345), "--netplay-host", dol,
+                                          "--netplay-direct", "--mode", "single", "--ranked",
+                                          "--nickname", "Goku"])
+        insts.append(h)
+        h.send("hello")
+        lc = h.wait_for("lobby_codes")
+        check(f"ranked Single Battle: not there {lc}", lc["on"] == [] and "Team Rule" not in lc["available"])
+        h.send("quit")
+        h.wait_for("exit", timeout=20)
+        insts.clear()
+    finally:
+        for inst in insts:
+            if inst.proc.poll() is None:
+                inst.proc.kill()
 
 
 def crash_check(exe, dol, work):

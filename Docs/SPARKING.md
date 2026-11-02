@@ -122,7 +122,7 @@ Ignore any stdout line without the prefix (Dolphin's own logging).
 | `state_saved` / `state_loaded` | `slot` | Solo only |
 | `gecko_codes` | `game_id`, `codes[]` | `--list-gecko` result |
 | `gecko_active` | `port` (0 = solo), `codes[]`, `missing[]` | Codes activated for this boot |
-| `lobby_codes` | `available[]`, `on[]` | Netplay: the game's optional codes the host may switch on, and the ones on (on game change and every switch) |
+| `lobby_codes` | `available[]`, `on[]`, `forced[]` | Netplay: the game's optional codes the host may switch on (for this lobby's mode), the ones on, and the ones always on here (ranked / Battle Lounge rules: no toggle). On game change, mode change and every switch |
 | `aspect` | `mode` (`16:9`/`21:9`/`4:3`) | At every boot and after every toggle |
 | `peek` | `address`, `value` (hex) | Answer to `peek` |
 | `window` | `open`, `x`, `y`, `width`, `height`, `focused`, `minimized`, `handle` | Game window changed (Windows). `x/y/width/height` = the picture area in screen pixels; `open:false` when the window closes. See *Overlay*. |
@@ -211,6 +211,7 @@ Plain text, one per line: a command name, optionally a space and an argument.
 | `textures_cycle <Group>` | any, in game | Next option of a group (alphabetical, wraps) — what F1/F2 do |
 | `texture_path <tex1_name>` | any | Debug: which file a texture name is loaded from right now (`texture_path` event) |
 | `hud on\|off` | any | Show/hide the score bar (+ netplay ping/buffer) |
+| `hud_names bars\|score` | any | Player names under the health bars (Tenkaichi 3; the score bar keeps only the wins) or in the score bar (`--hud-names`; `hud_names` event) |
 | `hud_health on\|off` | any | Show/hide the health % in the corners |
 | `input_display on\|off\|toggle\|clear\|dump` | any | Show/hide your own input history (`input_display` event: `enabled`, `other`, `other_allowed`); `clear` empties both; `dump` sends the recorded entries as an `input_history` event (`entries` = yours, `p1`, `p2`, `shown`, `local_port`; newest first: `dir`, `c`, `dpad` in numpad notation, `buttons`, `frames`) |
 | `step_down` | Battle Lounge player | Go to the back of the line; one of the two fighting forfeits the set (the other wins it, then the line rotates as after any set). `koth_step_down` event to everyone (`name`, `forfeit`) |
@@ -529,6 +530,14 @@ come from the user's `GameSettings/<ID>.ini` (e.g. ones the frontend writes).
   Dolphin's `codes` command). They're never default-on in netplay, and every player must have the
   same definitions (the save check covers them). `[Sparking.Exclusive]`: `group = Code A | Code B`,
   codes that can't be on together (Tenkaichi 2 JP's English / Japanese Dub).
+  `[Sparking.LobbyCodeModes]`: `Code = team` (or `single`): a lobby option that only exists in
+  lobbies of that mode (offered, applied and fingerprinted only there; a mode switch takes it on
+  or off for everyone). Such codes are online only: the launcher's offline code list hides them.
+  `[Sparking.CompetitiveCodes]`: lobby options that are always on, with no toggle, in ranked and
+  Battle Lounge lobbies (of their mode). The host sends the joiners the resulting list.
+  Tenkaichi 3 PAL: `Team Battle: Up To 3 Characters` (Tools/gecko/team_cap.py) is both: the
+  Player Match host's toggle in Team Battle lobbies, always on in ranked / Battle Lounge Team
+  Battle. Test on one PC: `Tools/test_team_lobby.bat on|off|ranked|lounge` (in the game folder).
 - **Solo:** launch with one `--gecko "<name>"` per enabled code (or `--no-gecko`). Dolphin
   activates exactly those for that run; the game's ini is never edited.
 - **Netplay:** everyone runs the game's default-on codes (`[Gecko_Enabled]` in the Sys + user

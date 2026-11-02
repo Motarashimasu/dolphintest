@@ -416,6 +416,16 @@ void HandleGameCommand(const Command& cmd, std::unique_ptr<Platform>& platform)
     return;
   }
 
+  if (cmd.name == "hud_names")  // "hud_names bars|score": names under the health bars or not
+  {
+    if (cmd.arg != "bars" && cmd.arg != "score")
+    {
+      Emit("error", Json().Add("code", "bad_argument").Add("command", cmd.name));
+      return;
+    }
+    SetHudNamesUnderBars(cmd.arg == "bars");
+    return;
+  }
   if (cmd.name == "hud" || cmd.name == "hud_health")  // "hud on|off", "hud_health on|off"
   {
     if (cmd.arg != "on" && cmd.arg != "off")
@@ -979,6 +989,13 @@ void AddCommandLineOptions(optparse::OptionParser& parser)
       .choices({"on", "off"})
       .set_default("on")
       .help("Sparking mode: temporary in-game HUD (score bar, netplay ping) drawn by Dolphin");
+  parser.add_option("--hud-names")
+      .dest("hud_names")
+      .action("store")
+      .choices({"score", "bars"})
+      .set_default("score")
+      .help("Sparking mode: player names in the score bar (default) or under the health bars "
+            "(Tenkaichi 3)");
   parser.add_option("--hud-health")
       .dest("hud_health")
       .action("store")
@@ -1268,6 +1285,8 @@ void InitFromOptions(const optparse::Values& options)
     }
     InitHud(std::string_view(static_cast<const char*>(options.get("hud"))) != "off",
             std::string_view(static_cast<const char*>(options.get("hud_health"))) != "off");
+    if (std::string_view(static_cast<const char*>(options.get("hud_names"))) == "bars")
+      SetHudNamesUnderBars(true);
     InitInputDisplay(
         std::string_view(static_cast<const char*>(options.get("input_display"))) == "on",
         std::string_view(static_cast<const char*>(options.get("input_display_other"))) == "on");
@@ -1380,6 +1399,9 @@ void BeforeSoloBoot(const optparse::Values& options, std::unique_ptr<Platform>& 
     if (std::ranges::find(missing, n) == missing.end())
       ar_active.push_back(Json::Escape(n));
   }
+  SetHudWideHud(std::ranges::any_of(names, [](const std::string& n) {
+    return n.starts_with("Widescreen HUD");
+  }));
   Emit("gecko_active", Json()
                            .Add("port", 0)
                            .AddRaw("codes", JsonArray(active))

@@ -1270,6 +1270,9 @@ void NetPlaySession::BootGame(const std::string& filename,
     }
     for (const auto& n : missing)
       miss.push_back(Json::Escape(n));
+    SetHudWideHud(std::ranges::any_of(m_active_gecko, [](const std::string& n) {
+      return n.starts_with("Widescreen HUD");
+    }));
     Emit("gecko_active", Json()
                              .Add("port", port)
                              .AddRaw("codes", JsonArray(active))
@@ -1884,12 +1887,39 @@ void NetPlaySession::SetLobbyCodes(const std::string& list)
   EmitLobbyCodes();
 }
 
+// The lobby's mode for its codes: the host's own; a joiner's, the host's (its "mode" message).
+std::string NetPlaySession::CodesMode()
+{
+  std::lock_guard lk(m_mode_mutex);
+  return m_server ? m_mode : m_seen_mode;
+}
+
 std::vector<std::string> NetPlaySession::LobbyCodesFor(const UICommon::GameFile& game)
 {
   std::vector<std::string> on;
   {
     std::lock_guard lk(m_game_mutex);
     on = m_lobby_codes;
+  }
+  if (m_server)
+  {
+    // Ranked and Battle Lounge: the competitive rules are always on ([Sparking.CompetitiveCodes]).
+    if (m_ranked_lobby || m_koth)
+    {
+      for (std::string& n : CompetitiveCodeNames(game.GetGameID(), game.GetRevision()))
+      {
+        if (std::ranges::find(on, n) == on.end())
+          on.push_back(std::move(n));
+      }
+    }
+    // A rule for one mode ([Sparking.LobbyCodeModes], e.g. Team Battle's) only in that mode. The
+    // host decides; joiners take the list it sends (BroadcastLobbyCodes), whatever mode they saw.
+    const auto modes = LobbyCodeModes(game.GetGameID(), game.GetRevision());
+    const std::string mode = CodesMode();
+    std::erase_if(on, [&](const std::string& n) {
+      const auto it = modes.find(n);
+      return it != modes.end() && it->second != mode;
+    });
   }
   // Only this game's lobby options, and never two of an exclusive group (the first one wins).
   const std::vector<std::string> allowed = LobbyCodeNames(game.GetGameID(), game.GetRevision());
@@ -1901,7 +1931,14 @@ std::vector<std::string> NetPlaySession::LobbyCodesFor(const UICommon::GameFile&
 
 void NetPlaySession::BroadcastLobbyCodes()
 {
+  // What the joiners' games run: the host's choice plus the forced rules, for this mode.
   std::string list;
+  if (const auto game = CurrentGame())
+  {
+    for (const std::string& n : LobbyCodesFor(*game))
+      list += (list.empty() ? "" : "|") + n;
+  }
+  else
   {
     std::lock_guard lk(m_game_mutex);
     for (const std::string& n : m_lobby_codes)
@@ -1912,16 +1949,32 @@ void NetPlaySession::BroadcastLobbyCodes()
 
 void NetPlaySession::EmitLobbyCodes()
 {
-  // available: this game's lobby options; on: the ones switched on (that this game has).
-  std::vector<std::string> available, on;
+  // available: this game's lobby options for the lobby's mode; on: the ones switched on;
+  // forced: the ones always on here (ranked / Battle Lounge), which the host can't switch off.
+  std::vector<std::string> available, on, forced;
   if (const auto game = CurrentGame())
   {
+    const auto modes = LobbyCodeModes(game->GetGameID(), game->GetRevision());
+    const std::string mode = CodesMode();
+    const std::vector<std::string> competitive =
+        (m_ranked_lobby || m_koth) ? CompetitiveCodeNames(game->GetGameID(), game->GetRevision()) :
+                                     std::vector<std::string>{};
     for (const std::string& n : LobbyCodeNames(game->GetGameID(), game->GetRevision()))
+    {
+      const auto it = modes.find(n);
+      if (it != modes.end() && it->second != mode)
+        continue;
       available.push_back(Json::Escape(n));
+      if (std::ranges::find(competitive, n) != competitive.end())
+        forced.push_back(Json::Escape(n));
+    }
     for (const std::string& n : LobbyCodesFor(*game))
       on.push_back(Json::Escape(n));
   }
-  Emit("lobby_codes", Json().AddRaw("available", JsonArray(available)).AddRaw("on", JsonArray(on)));
+  Emit("lobby_codes", Json()
+                          .AddRaw("available", JsonArray(available))
+                          .AddRaw("on", JsonArray(on))
+                          .AddRaw("forced", JsonArray(forced)));
 }
 
 void NetPlaySession::SetMode(const std::string& mode)
@@ -1944,6 +1997,11 @@ void NetPlaySession::SetMode(const std::string& mode)
   }
   m_rebroadcast_mode = true;
   Emit("lobby_mode", Json().Add("mode", m_mode));
+  // Rules for one mode (Team Battle's) come and go with it: everyone gets the new list and
+  // checks their setup again.
+  m_rebroadcast_codes = true;
+  m_rebroadcast_save = true;
+  EmitLobbyCodes();
 }
 
 void NetPlaySession::BroadcastBattleState()
@@ -2007,7 +2065,10 @@ void NetPlaySession::HandleControlMessage(NetPlay::PlayerId from, const std::str
       m_seen_mode = parts[1];
     }
     if (changed)
+    {
       Emit("lobby_mode", Json().Add("mode", parts[1]));
+      EmitLobbyCodes();   // (the options shown follow the mode)
+    }
     return;
   }
   else if (parts[0] == "codes" && !m_server)
