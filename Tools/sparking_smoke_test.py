@@ -874,6 +874,7 @@ def team_rule_check(exe, dol, work, game_id):
         gj = joiner.wait_for("gecko_active", timeout=60)
         check(f"in the game: the rule runs for both {ga['codes']} / {gj['codes']}",
               "Team Rule" in ga["codes"] and "Team Rule" in gj["codes"])
+        host.seen("game_started", timeout=40)   # (stop once it runs: a stop during boot can hang, separate issue)
         host.send("stop")
         host.wait_for("game_stopped", timeout=30)
         host.send("mode single")
