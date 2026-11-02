@@ -1110,7 +1110,7 @@ void NetPlaySession::StartAutoTicker()
     while (m_ticking)
     {
       std::this_thread::sleep_for(std::chrono::milliseconds(250));
-      if (m_ticking && (m_auto_buffer || m_koth))
+      if (m_ticking && (m_auto_buffer || m_koth || m_neocode))
       {
         Core::QueueHostJob([this, alive](Core::System&) {
           if (!*alive)
@@ -1132,30 +1132,11 @@ void NetPlaySession::StopAutoTicker()
 
 void NetPlaySession::PumpAutoBuffer()
 {
-  if (!m_server || !m_auto_buffer || !m_game_running)
+  if (!m_server || !m_game_running)
     return;
   const auto now = std::chrono::steady_clock::now();
-  const int results = HudResultCount();
-  if (results != m_seen_results)
-  {
-    // A KO was just counted: decide a moment later (the KO animation is playing), and only
-    // within the next 20 s, before the next round starts.
-    m_seen_results = results;
-    m_auto_due = now + std::chrono::seconds(1);
-    m_auto_deadline = now + std::chrono::seconds(20);
-  }
-  if (m_auto_due && now >= *m_auto_due)
-  {
-    const bool too_late = HudRoundLive() || now > *m_auto_deadline;
-    m_auto_due.reset();
-    if (!too_late)
-    {
-      ApplyAutoBuffer("between_rounds");
-      m_live_target.reset();
-      return;
-    }
-  }
-  // NEOcode: what the minimum buffer is made of, every 5 s (the rollback match log).
+  // NEOcode: what the minimum buffer is made of, every 5 s (the rollback match log;
+  // with a fixed buffer too).
   if (m_neocode && now >= m_neo_report_next)
   {
     m_neo_report_next = now + std::chrono::seconds(5);
@@ -1178,6 +1159,28 @@ void NetPlaySession::PumpAutoBuffer()
                               .Add("rollback_fields", r)
                               .Add("budget_ms", m_neo_budget_ms.load())
                               .AddRaw("ms_per_field", fmt::format("{:.2f}", per)));
+  }
+  if (!m_auto_buffer)
+    return;
+  const int results = HudResultCount();
+  if (results != m_seen_results)
+  {
+    // A KO was just counted: decide a moment later (the KO animation is playing), and only
+    // within the next 20 s, before the next round starts.
+    m_seen_results = results;
+    m_auto_due = now + std::chrono::seconds(1);
+    m_auto_deadline = now + std::chrono::seconds(20);
+  }
+  if (m_auto_due && now >= *m_auto_due)
+  {
+    const bool too_late = HudRoundLive() || now > *m_auto_deadline;
+    m_auto_due.reset();
+    if (!too_late)
+    {
+      ApplyAutoBuffer("between_rounds");
+      m_live_target.reset();
+      return;
+    }
   }
   // During the fight too: once a second, and changed when the new value has held for 3 s (a
   // single spike never moves it); NEOcode: 5 s (its rewinds depend on the delay).
