@@ -1131,5 +1131,7 @@
  "Battle HUD offline": "HUD di combattimento offline",
  "The game's own battle HUD (life bars, timer, gauges) in offline play.\nOff hides it (Tenkaichi 3 PAL). DRAGON NET matches always show it.": "L'HUD di combattimento del gioco (barre della vita, timer, indicatori) offline.\nDisattivato lo nasconde (Tenkaichi 3 PAL). Le partite DRAGON NET lo mostrano sempre.",
  "Your DRAGON NET username: the name other players see in every match.": "Il tuo nome utente DRAGON NET: il nome che gli altri vedono in ogni partita.",
- "The name other players see. Log in to DRAGON NET to play under your username.": "Il nome che vedono gli altri. Accedi a DRAGON NET per giocare con il tuo nome utente."
+ "The name other players see. Log in to DRAGON NET to play under your username.": "Il nome che vedono gli altri. Accedi a DRAGON NET per giocare con il tuo nome utente.",
+ "%s is in your room but not in your ranked lobby on DRAGON NET. They need to be logged in to DRAGON NET and join from Ranked Match (Ranked Lobbies or Find a Ranked Match). If they did, their PC can't reach the ranked server right now.": "%s è nella tua stanza ma non nella tua lobby classificata su DRAGON NET. Deve accedere a DRAGON NET ed entrare da Partita classificata (Stanze classificate o Trova una partita classificata). Se l'ha già fatto, il suo PC non riesce a raggiungere il server classificato in questo momento.",
+ "Couldn't keep your ranked seat: %s": "Impossibile mantenere il tuo posto in classificata: %s"
 }

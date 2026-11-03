@@ -76,6 +76,7 @@ var ranked := false
 var ranked_lobby := 0         # the lobby's id on the ranked server (host: once listed)
 var _ranked := {}             # last lobby status from the ranked server
 var _ranked_busy := false
+var _seat_warned := false     # ranked guest: told once that the seat couldn't be taken back
 var _reported := false        # this match's result already sent
 var _announced := -1          # ranked match id whose result was already shown
 ## Ranked: this lobby's set is over (a match counted). One set per lobby: no more matches here;
@@ -225,6 +226,18 @@ func _ranked_tick() -> void:
 	if not is_inside_tree() or not res.get("ok", false) or not res.has("lobby"):
 		return
 	_ranked = res["lobby"]
+	# Guest: the seat lapsed (no status call got through for 45 s: a slow or dropped connection,
+	# the PC asleep): take it back, or the host's Start Match is refused ("no_opponent").
+	if _role != "host" and _ranked.get("guest") == null and not _ranked.get("set_done", false) \
+			and not (_ranked.get("match") is Dictionary):
+		var again := await Ranked.api("lobby.php", {"action": "join", "lobby": ranked_lobby})
+		if not is_inside_tree():
+			return
+		if again.get("ok", false) and again.has("lobby"):
+			_ranked = again["lobby"]
+		elif not _seat_warned:
+			_seat_warned = true
+			_system(tr("Couldn't keep your ranked seat: %s") % Ranked.error_text(String(again.get("error", ""))), "#e8663d")
 	for key in ["match", "last_match"]:
 		if _ranked.get(key) is Dictionary and int(_ranked[key].get("id", 0)) > _match_id:
 			_match_id = int(_ranked[key]["id"])
@@ -1148,8 +1161,13 @@ func _on_start_answered(data: Dictionary) -> void:
 	var res := await Ranked.api("match.php", {"action": "start", "lobby": ranked_lobby})
 	if not is_inside_tree():
 		return
+	var other := _other_player_name()
 	if res.get("ok", false):
 		Dolphin.send("start")
+	elif String(res.get("error", "")) == "no_opponent" and other != "?":
+		# They're in the room but don't hold the ranked seat: joined some other way (room code,
+		# Direct IP, an invite), or their launcher can't reach the ranked server.
+		_system(tr("%s is in your room but not in your ranked lobby on DRAGON NET. They need to be logged in to DRAGON NET and join from Ranked Match (Ranked Lobbies or Find a Ranked Match). If they did, their PC can't reach the ranked server right now.") % other, "#e8663d")
 	else:
 		_system(Ranked.error_text(String(res.get("error", ""))), "#e8663d")
 
