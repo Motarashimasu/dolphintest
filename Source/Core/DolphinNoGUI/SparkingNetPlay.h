@@ -464,6 +464,9 @@ private:
 
   std::string m_last_room_json;
   std::chrono::steady_clock::time_point m_last_player_emit{};
+  // NEOcode: this PC's re-run speed, smoothed (the rewind cap). CPU thread (stats callback).
+  double m_neo_local_per = 0;
+  double m_neo_local_load = 0;
 };
 
 }  // namespace Sparking

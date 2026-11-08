@@ -17,7 +17,9 @@
 //    state, the frontend's game-side state: watches, HUD), with each pad's poll index;
 //  - a wrong guess rewinds to the latest saved field before it and re-runs to the present;
 //  - guessing stops (the game waits, as in delay netplay) once the oldest unconfirmed input is
-//    MAX_ROLLBACK_FIELDS old, so a rewind never has to go further back than what's saved;
+//    the rewind cap old (SetMaxRewind, at most MAX_ROLLBACK_FIELDS): a rewind never has to go
+//    further back than what's saved, nor re-run more fields than this PC can without a long
+//    freeze (a short wait for a very late input is less visible than a long re-run);
 //  - a field is final once every input before it is confirmed. The frontend holds back what the
 //    game "did" (events, results) until it's final, and drops it when a rewind takes it back;
 //  - every CHECKSUM_FIELDS fields the memory's checksum is taken, and passed to the frontend once
@@ -36,6 +38,7 @@
 namespace NeoCode
 {
 constexpr int MAX_ROLLBACK_FIELDS = 12;  // 6 BT3 frames, 200 ms
+constexpr int DEFAULT_MAX_REWIND = 6;    // the rewind cap until this PC's speed is measured
 constexpr int START_FIELDS = 60;          // fields after the start before guessing begins
 constexpr u64 CHECKSUM_FIELDS = 120;
 constexpr u32 CHECKSUM_BLOCK = 0x10000;  // 64 KiB: the pieces a checksum mismatch is narrowed to
@@ -56,6 +59,7 @@ struct Stats
   u64 wrong_guesses = 0;
   u64 queued = 0;               // most inputs any pad has received and not played yet
   u64 saves_skipped = 0;        // re-run fields not saved (nothing could rewind to them)
+  int max_rewind = 0;           // the rewind cap now (fields)
 };
 
 struct Callbacks
@@ -82,6 +86,9 @@ void Start(std::function<void()> drain, Callbacks callbacks);
 // MEM1 bytes ({physical offset, size}) the sync checksum leaves out besides the Gecko code area:
 // what the per-port codes write (each player runs only their own port's). Before Start.
 void SetChecksumSkip(std::vector<std::pair<u32, u32>> ranges);
+// The deepest rewind allowed (fields, 2..MAX_ROLLBACK_FIELDS): past it the game waits for the
+// late input instead of guessing on. Any thread; Start resets it to DEFAULT_MAX_REWIND.
+void SetMaxRewind(int fields);
 void Stop();
 bool IsActive();
 

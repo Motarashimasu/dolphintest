@@ -448,6 +448,10 @@ a match, the rewind length "R n" (also on the HUD bar). The engine is still call
   value is applied once it has held for 5 s. `neo_budget <ms>` (host, 10-150) changes the budget
   (emits `neo_budget`). E.g. 150 ms ping, 10 ms jitter, a PC re-running a field in 8 ms:
   full 20, R 3, buffer 14.
+- Rewind cap (each PC its own): the deepest rewind allowed, `max_rewind` in the stats (fields).
+  Past it the game waits for the late input instead of guessing on: as many fields as this PC
+  re-runs, plus a load, within 90 ms (`(90 - load_ms) / ms_per_field`, 3-12; 6 until measured).
+  A short wait shows less than a long re-run (the first logs: 5-7 field rewinds froze 100-380 ms).
 - Rollback match logs (launcher): every match played with rollback on writes
   `SparkingData/logs/rollback_<date>_<time>.jsonl`: a header (mode, role, Battle Lounge, the PC),
   then the NEOcode stats, `neocode_speed`, buffer choices, checksum checks / diffs, rounds, and

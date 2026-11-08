@@ -1643,6 +1643,16 @@ NeoCode::Callbacks NetPlaySession::MakeNeoCodeCallbacks()
     if (stats.rollback_fields > 0 && stats.resim_ms > 0 && m_client)
     {
       const double per = stats.resim_ms / stats.rollback_fields;
+      // The rewind cap: as many fields as this PC re-runs (plus the load) within
+      // NEO_MAX_FREEZE_MS; a later input makes the game wait for it instead. Logs: rewinds of
+      // 5-7 fields froze 100-380 ms on a PC re-running a field in 15-33 ms.
+      constexpr double NEO_MAX_FREEZE_MS = 90;
+      m_neo_local_per = m_neo_local_per > 0 ? m_neo_local_per * 0.7 + per * 0.3 : per;
+      if (stats.load_ms > 0)
+        m_neo_local_load = m_neo_local_load > 0 ? m_neo_local_load * 0.7 + stats.load_ms * 0.3 :
+                                                  stats.load_ms;
+      NeoCode::SetMaxRewind(std::max(
+          3, static_cast<int>((NEO_MAX_FREEZE_MS - m_neo_local_load) / m_neo_local_per)));
       if (m_server)
         NoteNeoSpeed(m_client->GetLocalPlayerId(), per, stats.load_ms);
       else
@@ -1663,6 +1673,7 @@ NeoCode::Callbacks NetPlaySession::MakeNeoCodeCallbacks()
                         .Add("wrong_guesses", static_cast<int64_t>(stats.wrong_guesses))
                         .Add("queued", static_cast<int64_t>(stats.queued))
                         .Add("saves_skipped", static_cast<int64_t>(stats.saves_skipped))
+                        .Add("max_rewind", stats.max_rewind)
                         .AddRaw("save_ms", fmt::format("{:.2f}", stats.save_ms))
                         .AddRaw("load_ms", fmt::format("{:.2f}", stats.load_ms))
                         .AddRaw("resim_ms", fmt::format("{:.2f}", stats.resim_ms)));

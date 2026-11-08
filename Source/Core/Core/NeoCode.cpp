@@ -78,6 +78,7 @@ std::array<GCPadStatus, 4> s_last{};
 std::array<u64, 4> s_wrong{};      // first poll whose guess was wrong (NONE)
 u64 s_field = 0;
 bool s_armed = false;   // saving: guesses allowed
+std::atomic<int> s_max_rewind{DEFAULT_MAX_REWIND};
 bool s_broken = false;  // a save / rewind failed: delay netplay from here on
 bool s_resim = false;
 bool s_finish_resim = false;
@@ -135,7 +136,8 @@ bool CanGuess(int pad)
     return false;
   // The oldest input still missing: a rewind for it must not go past what's saved.
   const u64 behind = s_field - FieldOfPoll(pad, s_confirmed[pad]);
-  return FieldOfPoll(pad, s_confirmed[pad]) != 0 && behind < MAX_ROLLBACK_FIELDS;
+  return FieldOfPoll(pad, s_confirmed[pad]) != 0 &&
+         behind < static_cast<u64>(s_max_rewind.load(std::memory_order_relaxed));
 }
 
 void AtThisField(void (*job)(Core::System&))
@@ -241,6 +243,7 @@ void EmitStats()
   s_stats.save_ms = s_saves ? s_save_total / s_saves : 0;
   s_stats.load_ms = s_loads ? s_load_total / s_loads : 0;
   s_stats.guessing = s_armed && !s_broken;
+  s_stats.max_rewind = s_max_rewind;
   s_stats.queued = 0;
   for (int pad = 0; pad < 4; ++pad)
     s_stats.queued = std::max(s_stats.queued, Queued(pad));
@@ -471,8 +474,14 @@ void OnField()
 }
 }  // namespace
 
+void SetMaxRewind(int fields)
+{
+  s_max_rewind = std::clamp(fields, 2, MAX_ROLLBACK_FIELDS);
+}
+
 void Start(std::function<void()> drain, Callbacks callbacks)
 {
+  s_max_rewind = DEFAULT_MAX_REWIND;
   for (int p = 0; p < 4; ++p)
   {
     s_log[p].clear();

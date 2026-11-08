@@ -1898,6 +1898,8 @@ def neocode_check(exe, work):
         host.wait_for("players", lambda e: e.get("in_game"), timeout=10)
         joiner.wait_for("players", lambda e: e.get("in_game"), timeout=10)
         check("ping / jitter reported during the match", True)
+        caps = [e["max_rewind"] for e in host.history if e["event"] == "neocode" and "max_rewind" in e]
+        check(f"rewind cap reported and in range ({sorted(set(caps))})", caps and all(3 <= c <= 12 for c in caps))
         # The automatic minimum buffer: both PCs' re-run speed reaches the host.
         speed = host.wait_for("neocode_speed", lambda e: len(e["players"]) == 2, timeout=60)
         check(f"neocode_speed: both players' re-run speed ({speed['players']}, R {speed['rollback_fields']}, "
