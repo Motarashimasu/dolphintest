@@ -60,9 +60,10 @@ std::string MakeLobbyName(const std::string& mode, const std::string& link,
 std::optional<std::vector<LobbyInfo>> ListLobbies(std::string* error)
 {
   NetPlayIndex index;
-  // Same build only (the version string is never shown, it only filters), no private lobbies.
+  // Builds that can play together only (Common::GetNetPlayVersionStr: never shown, it only
+  // filters), no private lobbies.
   const auto sessions =
-      index.List({{"version", Common::GetScmDescStr()}, {"password", "0"}});
+      index.List({{"version", Common::GetNetPlayVersionStr()}, {"password", "0"}});
   if (!sessions)
   {
     if (error)

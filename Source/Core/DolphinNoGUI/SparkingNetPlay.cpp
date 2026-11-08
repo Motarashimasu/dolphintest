@@ -1855,6 +1855,11 @@ void NetPlaySession::OnConnectionError(const std::string& message)
     Emit("error", Json().Add("code", "game_running"));
     return;
   }
+  if (message == "The server and client's NetPlay versions are incompatible.")
+  {
+    Emit("error", Json().Add("code", "version_mismatch"));
+    return;
+  }
   Emit("error", Json().Add("code", "connection_error").Add("message", message));
 }
 

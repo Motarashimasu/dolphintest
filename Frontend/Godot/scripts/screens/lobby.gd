@@ -25,6 +25,7 @@ const ERRORS := {
 	"start_rejected": "The match couldn't start.",
 	"connect_failed": "Couldn't connect to the lobby.",
 	"connection_error": "Connection error.",
+	"version_mismatch": "The host's game is a different version: both players need the latest update.",
 	"traversal_error": "Room code server error.",
 	"game_not_found": "Your game file wasn't found. Was it moved?",
 	"invalid_game": "The game file can't be used.",

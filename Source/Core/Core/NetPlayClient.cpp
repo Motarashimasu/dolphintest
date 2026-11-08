@@ -243,7 +243,7 @@ bool NetPlayClient::Connect()
 
   // send connect message
   sf::Packet packet;
-  packet << Common::GetScmRevGitStr();
+  packet << Common::GetNetPlayVersionStr();
   packet << Common::GetNetplayDolphinVer();
   packet << m_player_name;
   Send(packet);

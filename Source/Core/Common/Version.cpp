@@ -53,6 +53,12 @@ const std::string& GetScmDescStr()
   return scm_desc_str;
 }
 
+const std::string& GetNetPlayVersionStr()
+{
+  static const std::string version = "sparking-netplay-2";
+  return version;
+}
+
 const std::string& GetScmBranchStr()
 {
   static const std::string scm_branch_str = SCM_BRANCH_STR;

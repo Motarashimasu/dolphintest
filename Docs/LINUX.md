@@ -70,6 +70,14 @@ The `.tar.gz` from the artifact can be unpacked on Windows with `tar -xzf file.t
 Windows 10/11) or 7-Zip. Windows drops Linux's "executable" mark on the way: that's fine, the
 package script and the launcher's updater put it back.
 
+### Playing with Windows players
+
+Netplay only checks `Common::GetNetPlayVersionStr()` (Source/Core/Common/Version.cpp), not the git
+revision, so the Linux build from GitHub Actions and your Windows build play together even though
+they were built on different machines (before, any difference in the commit, or a "-dirty" local
+build, refused the connection and hid each other's lobbies). Bump that string when a change means
+older builds can't play with newer ones, and publish Windows and Linux together then.
+
 ### Publish (automatic updates) and package (new players)
 
 ```

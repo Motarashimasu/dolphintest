@@ -1133,5 +1133,6 @@
  "Your DRAGON NET username: the name other players see in every match.": "Tu nombre de usuario de DRAGON NET: el nombre que ven los demás en todas las partidas.",
  "The name other players see. Log in to DRAGON NET to play under your username.": "El nombre que ven los demás. Inicia sesión en DRAGON NET para jugar con tu nombre de usuario.",
  "%s is in your room but not in your ranked lobby on DRAGON NET. They need to be logged in to DRAGON NET and join from Ranked Match (Ranked Lobbies or Find a Ranked Match). If they did, their PC can't reach the ranked server right now.": "%s está en tu sala pero no en tu sala clasificatoria de DRAGON NET. Debe iniciar sesión en DRAGON NET y unirse desde Combate clasificatorio (Salas clasificatorias o Buscar combate clasificatorio). Si ya lo hizo, su PC no puede conectar con el servidor clasificatorio ahora mismo.",
- "Couldn't keep your ranked seat: %s": "No se pudo mantener tu plaza clasificatoria: %s"
+ "Couldn't keep your ranked seat: %s": "No se pudo mantener tu plaza clasificatoria: %s",
+ "The host's game is a different version: both players need the latest update.": "El juego del anfitrión es de otra versión: los dos jugadores necesitan la última actualización."
 }

@@ -176,7 +176,7 @@ bool NetPlayIndex::Add(const NetPlaySession& session)
                   fmt::arg("password", session.has_password), fmt::arg("method", session.method),
                   fmt::arg("server_id", session.server_id), fmt::arg("in_game", session.in_game),
                   fmt::arg("port", session.port), fmt::arg("player_count", session.player_count),
-                  fmt::arg("version", Common::GetScmDescStr())),
+                  fmt::arg("version", Common::GetNetPlayVersionStr())),
       {{"X-Is-Dolphin", "1"}}, Common::HttpRequest::AllowedReturnCodes::All);
   if (!response.has_value())
   {

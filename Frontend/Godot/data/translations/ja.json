@@ -1133,5 +1133,6 @@
  "Your DRAGON NET username: the name other players see in every match.": "DRAGON NETのユーザー名：すべての対戦で他のプレイヤーに表示される名前です。",
  "The name other players see. Log in to DRAGON NET to play under your username.": "他のプレイヤーに表示される名前です。DRAGON NETにログインするとユーザー名でプレイします。",
  "%s is in your room but not in your ranked lobby on DRAGON NET. They need to be logged in to DRAGON NET and join from Ranked Match (Ranked Lobbies or Find a Ranked Match). If they did, their PC can't reach the ranked server right now.": "%s はルームにいますが、DRAGON NET のランクロビーには入っていません。DRAGON NET にログインし、ランクマッチ（ランクロビー または ランクマッチを探す）から参加する必要があります。そうしている場合は、相手の PC が今ランクサーバーに接続できません。",
- "Couldn't keep your ranked seat: %s": "ランクの席を確保できませんでした：%s"
+ "Couldn't keep your ranked seat: %s": "ランクの席を確保できませんでした：%s",
+ "The host's game is a different version: both players need the latest update.": "ホストのゲームのバージョンが異なります。両方のプレイヤーが最新のアップデートを適用する必要があります。"
 }

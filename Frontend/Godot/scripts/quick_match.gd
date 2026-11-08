@@ -237,7 +237,7 @@ func _on_helper_event(e: Dictionary, for_match: int) -> void:
 					_refresh_menu()
 		"error":
 			var code := String(e.get("code", ""))
-			if code in ["connect_failed", "traversal_error", "connection_error", "listen_failed", "lobby_full", "bad_address"]:
+			if code in ["connect_failed", "traversal_error", "connection_error", "version_mismatch", "listen_failed", "lobby_full", "bad_address"]:
 				Ranked.api("quick.php", {"action": "fail", "match": match_id, "reason": code})
 		"process_exited":
 			if state in ["connecting", "asking", "waiting", "starting"]:
