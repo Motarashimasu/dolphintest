@@ -1006,10 +1006,17 @@ std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget
         playing.insert(pid);
     }
   }
+  // This instance's own entry is ~0 ms (it's the host): it says nothing about the wait for the
+  // others' inputs. Without a measured opponent there's nothing to go on: keep the buffer.
+  const NetPlay::PlayerId self = m_client ? m_client->GetLocalPlayerId() : 0;
+  // Battle Lounge with the host not playing: the two players' inputs go through the host, so
+  // each waits for the other's ping AND its own (the two highest add up).
+  const bool relayed = m_client && playing.size() >= 2 && !playing.contains(self);
+  std::vector<std::pair<u32, int>> relay;  // {high, jitter} of each player, for `relayed`
   std::optional<AutoBufferChoice> worst;
   for (auto& [pid, samples] : all)
   {
-    if (samples.size() < 3 || (!playing.empty() && !playing.contains(pid)))
+    if (samples.size() < 3 || pid == self || (!playing.empty() && !playing.contains(pid)))
       continue;
     const int jitter = QualityOf(pid, samples.back()).jitter_ms;
     std::ranges::sort(samples);
@@ -1023,6 +1030,11 @@ std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget
     // seconds; buffer 2, 8-19 rewinds a second while mashing). The minimum buffer: that, minus
     // what rewinds may cover, R fields (2 steps each), R being what the slowest player's PC can
     // re-run within the hitch budget (NeoRollbackFields). Never under NEO_MIN_BUFFER.
+    if (relayed)
+    {
+      relay.emplace_back(m_neocode ? high : typical, std::max(jitter, 0));
+      continue;
+    }
     int rollback_fields = 0;
     double ms_per_field = 0;
     if (m_neocode)
@@ -1035,6 +1047,21 @@ std::optional<NetPlaySession::AutoBufferChoice> NetPlaySession::AutoBufferTarget
     if (!worst || buffer > worst->buffer)
       worst = AutoBufferChoice{buffer, m_neocode ? high : typical, std::max(jitter, 0),
                                rollback_fields, ms_per_field};
+  }
+  if (relayed && relay.size() >= 2)
+  {
+    std::ranges::sort(relay, std::greater<>());
+    const u32 ping = relay[0].first + relay[1].first;
+    const int jitter = relay[0].second + relay[1].second;
+    int rollback_fields = 0;
+    double ms_per_field = 0;
+    int buffer = std::clamp(static_cast<int>((ping + 11) / 12), 1, 20);
+    if (m_neocode)
+    {
+      rollback_fields = NeoRollbackFields(&ms_per_field);
+      buffer = std::clamp(static_cast<int>((ping + jitter + 7) / 8) - 2 * rollback_fields, 3, 20);
+    }
+    worst = AutoBufferChoice{buffer, ping, jitter, rollback_fields, ms_per_field};
   }
   return worst;
 }
@@ -1110,13 +1137,21 @@ void NetPlaySession::StartAutoTicker()
     while (m_ticking)
     {
       std::this_thread::sleep_for(std::chrono::milliseconds(250));
-      if (m_ticking && (m_auto_buffer || m_koth || m_neocode))
+      if (m_ticking)
       {
         Core::QueueHostJob([this, alive](Core::System&) {
           if (!*alive)
             return;
           PumpAutoBuffer();
           PumpKoth();
+          // The lobby loop (and its once-a-second player list) doesn't run during a match: the
+          // players' ping / jitter for the launcher (rollback match logs).
+          const auto now = std::chrono::steady_clock::now();
+          if (m_game_running && m_client && now - m_last_player_emit > std::chrono::seconds(1))
+          {
+            EmitPlayers();
+            m_last_player_emit = now;
+          }
         });
       }
     }
@@ -1253,8 +1288,7 @@ void NetPlaySession::BootGame(const std::string& filename,
     m_index->SetInGame(true);
   m_got_stop_request = false;
   m_game_running = true;
-  if (m_server)
-    StartAutoTicker();
+  StartAutoTicker();   // (joiners too: the player list during the match)
   m_pending_boot = BootParameters::GenerateFromFile(
       filename, boot_session_data ? std::move(*boot_session_data) : BootSessionData());
 

@@ -1894,6 +1894,10 @@ def neocode_check(exe, work):
                   err["code"] == "not_allowed_in_netplay")
         host.send("input_display sideways")
         check("bad input_display argument rejected", host.wait_for("error")["code"] == "bad_argument")
+        # The player list (ping / jitter) keeps coming during the match (rollback match logs).
+        host.wait_for("players", lambda e: e.get("in_game"), timeout=10)
+        joiner.wait_for("players", lambda e: e.get("in_game"), timeout=10)
+        check("ping / jitter reported during the match", True)
         # The automatic minimum buffer: both PCs' re-run speed reaches the host.
         speed = host.wait_for("neocode_speed", lambda e: len(e["players"]) == 2, timeout=60)
         check(f"neocode_speed: both players' re-run speed ({speed['players']}, R {speed['rollback_fields']}, "
