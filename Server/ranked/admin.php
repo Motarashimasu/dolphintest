@@ -9,6 +9,7 @@
 //   Board: the website's message board (board.php): pin, lock, delete topics; delete posts.
 //   Support: the website's support messages (support.php): answer (the player sees it there when
 //            logged in), close, reopen. Downloads: how often each was clicked.
+//   Website: the website's background (a picture or a color, how dark the veil over it is).
 //   Log: every admin action.
 require __DIR__ . '/lib.php';
 
@@ -35,7 +36,7 @@ function page(string $title, string $body, bool $nav = true): never
         }
     }
     $links = $nav ? "<nav><a href='$self?p=players'>Players</a><a href='$self?p=matches'>Matches</a>"
-        . "<a href='$self?p=seasons'>Seasons</a><a href='$self?p=messages'>Messages</a><a href='$self?p=replays'>Replays</a><a href='$self?p=board'>Board</a><a href='$self?p=support'>Support</a><a href='$self?p=log'>Log</a>"
+        . "<a href='$self?p=seasons'>Seasons</a><a href='$self?p=messages'>Messages</a><a href='$self?p=replays'>Replays</a><a href='$self?p=board'>Board</a><a href='$self?p=support'>Support</a><a href='$self?p=website'>Website</a><a href='$self?p=log'>Log</a>"
         . "<form method=post class=inline><input type=hidden name=csrf value='" . $h($_SESSION['csrf'] ?? '') . "'>"
         . "<button name=a value=logout>Sign out</button></form></nav>" : '';
     $flash = '';
@@ -117,6 +118,53 @@ try {
             return (string)($st->fetchColumn() ?: "#$id");
         };
         switch ($_POST['a'] ?? '') {
+            case 'site_look':
+                $look = site_look();
+                $color = strtolower(trim((string)($_POST['color'] ?? '')));
+                if (preg_match('/^#[0-9a-f]{6}$/', $color)) {
+                    $look['color'] = $color;
+                }
+                $look['darken'] = max(0, min(90, (int)($_POST['darken'] ?? $look['darken'])));
+                $look['fixed'] = !empty($_POST['fixed']);
+                $up = $_FILES['bg'] ?? null;
+                $msg = 'Website look saved.';
+                if (is_array($up) && ($up['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                    if ($up['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($up['tmp_name'])) {
+                        back('p=website', 'The picture didn\'t arrive (too big for the server? Its limit: '
+                            . ini_get('upload_max_filesize') . ').');
+                    }
+                    $info = @getimagesize($up['tmp_name']);
+                    $ext = $info ? (SITE_BG_TYPES[$info[2]] ?? '') : '';
+                    if ($ext === '' || filesize($up['tmp_name']) > SITE_BG_MAX) {
+                        back('p=website', 'The background has to be a JPG, PNG or WebP picture of 8 MB at most.');
+                    }
+                    foreach (SITE_BG_TYPES as $e) {
+                        @unlink(pic_dir() . "/site_bg.$e");
+                    }
+                    if (!move_uploaded_file($up['tmp_name'], pic_dir() . "/site_bg.$ext")) {
+                        back('p=website', 'The picture couldn\'t be saved on the server.');
+                    }
+                    $look['bg'] = "site_bg.$ext";
+                    $look['v'] = (int)$look['v'] + 1;
+                    $msg = "New background: {$info[0]} x {$info[1]}.";
+                }
+                if (!site_look_save($look)) {
+                    back('p=website', 'The settings couldn\'t be saved on the server.');
+                }
+                admin_log('site_look', "color {$look['color']}, darken {$look['darken']}%, " . ($look['fixed'] ? 'fixed' : 'scrolls')
+                    . ($look['bg'] !== '' ? ", picture v{$look['v']}" : ', no picture'));
+                back('p=website', $msg);
+
+            case 'site_bg_remove':
+                $look = site_look();
+                foreach (SITE_BG_TYPES as $e) {
+                    @unlink(pic_dir() . "/site_bg.$e");
+                }
+                $look['bg'] = '';
+                site_look_save($look);
+                admin_log('site_look', 'background picture removed');
+                back('p=website', 'Background picture removed: the website uses the color.');
+
             case 'logout':
                 $_SESSION = [];
                 session_destroy();
@@ -314,6 +362,26 @@ try {
     };
 
     switch ($p) {
+        case 'website':
+            $look = site_look();
+            $pic = $look['bg'] !== ''
+                ? "<p><img src='sitebg.php?v={$look['v']}' alt='' style='max-width:360px;max-height:200px;border:2px solid var(--line);border-radius:8px'></p>"
+                    . "<form method=post class=inline>$csrf<button class=plain name=a value=site_bg_remove>Remove the picture</button></form>"
+                : '<p class=muted>No picture: the website uses the color below.</p>';
+            $checked = $look['fixed'] ? ' checked' : '';
+            $body = "<h2>Background</h2><div class=box>$pic"
+                . "<form method=post enctype='multipart/form-data'>$csrf"
+                . "<div class=row>New picture <input type=file name=bg accept='image/jpeg,image/png,image/webp'>"
+                . "<span class=muted>JPG, PNG or WebP, 8 MB at most; wide pictures (1920 x 1080 or more) look best.</span></div>"
+                . "<div class=row>Color <input type=color name=color value='{$look['color']}'>"
+                . "<span class=muted>behind the picture, and the whole background when there's none.</span></div>"
+                . "<div class=row>Darken the picture <input type=number name=darken min=0 max=90 value={$look['darken']}> %"
+                . "<span class=muted>a dark veil over it so the text stays readable (0 = none).</span></div>"
+                . "<div class=row><label><input type=checkbox name=fixed value=1$checked> The picture stays put while scrolling</label></div>"
+                . "<div class=row><button name=a value=site_look>Save</button> <a href='index.php' target=_blank>Open the website</a></div>"
+                . '</form></div>';
+            page('Website', $body);
+
         case 'player':
             $id = (int)($_GET['id'] ?? 0);
             $st = $db->prepare('SELECT * FROM players WHERE id = ?');

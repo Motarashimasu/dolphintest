@@ -886,3 +886,37 @@ function presign(array $r2, string $object, int $seconds, ?int $at = null, strin
     $sig = hash_hmac('sha256', $to_sign, $k);
     return $parts['scheme'] . '://' . $host . $path . '?' . $qs . '&X-Amz-Signature=' . $sig;
 }
+
+// ---- The website's look (admin.php > Website): its background. Kept next to the profile
+// pictures (pic_dir, not reachable from the web): site_look.json and site_bg.<jpg|png|webp>.
+
+const SITE_BG_MAX = 8 * 1024 * 1024;   // an uploaded background: 8 MB at most
+const SITE_BG_TYPES = [IMAGETYPE_JPEG => 'jpg', IMAGETYPE_PNG => 'png', IMAGETYPE_WEBP => 'webp'];
+
+/** The website's look: color (#rrggbb), darken (0-90, % of black over the picture so text stays
+ *  readable), fixed (the picture stays put while scrolling), bg (its file name, '' = none),
+ *  v (changes with every new picture: the browser fetches it again). */
+function site_look(): array
+{
+    $look = ['color' => '#0d2530', 'darken' => 55, 'fixed' => true, 'bg' => '', 'v' => 0];
+    $file = pic_dir() . '/site_look.json';
+    $saved = is_file($file) ? json_decode((string)@file_get_contents($file), true) : null;
+    if (is_array($saved)) {
+        if (preg_match('/^#[0-9a-f]{6}$/i', (string)($saved['color'] ?? ''))) {
+            $look['color'] = strtolower((string)$saved['color']);
+        }
+        $look['darken'] = max(0, min(90, (int)($saved['darken'] ?? $look['darken'])));
+        $look['fixed'] = (bool)($saved['fixed'] ?? true);
+        $bg = (string)($saved['bg'] ?? '');
+        if (preg_match('/^site_bg\.(jpg|png|webp)$/', $bg) && is_file(pic_dir() . "/$bg")) {
+            $look['bg'] = $bg;
+        }
+        $look['v'] = (int)($saved['v'] ?? 0);
+    }
+    return $look;
+}
+
+function site_look_save(array $look): bool
+{
+    return file_put_contents(pic_dir() . '/site_look.json', json_encode($look, JSON_PRETTY_PRINT), LOCK_EX) !== false;
+}

@@ -33,6 +33,9 @@ https://tecshideout.ct.ws/sparking/admin.php and sign in with it.
            while it's on (1-30 days) get it too. See how many closed it; Switch off stops it.
   (a player's page also has Remove picture for their profile picture)
   Replays  the shared replays (newest first, size, downloads); Delete removes one
+  Website  the website's background: upload a picture (JPG / PNG / WebP, 8 MB at most), its
+           color, how dark the veil over the picture is (so text stays readable), whether it
+           stays put while scrolling; Remove the picture goes back to the color
   Log      every admin action, with what changed
 Leave admin_key empty to switch the panel off.
 
@@ -54,6 +57,8 @@ What's in here
   account.php      DRAGON NET accounts: register / login (username + password) / claim,
                    profile picture (128 x 128; stored in pics/, closed to browsers)
   pic.php          shows a profile picture
+  sitebg.php       shows the website's background picture (admin.php > Website)
+  fonts/           the titles' font, Lilita One (SIL Open Font License: LilitaOne-OFL.txt)
   social.php       friends (requests, who's online) and the admin's messages
   replays.php      shared replays: upload in pieces / search / download / delete. The files
                    go to replay_files/ (made by itself, closed to browsers). Optional limits in

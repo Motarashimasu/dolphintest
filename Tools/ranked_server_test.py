@@ -610,7 +610,7 @@ def site_checks(server, check):
     c2, _, h2 = nget("download.php?i=2")
     check("site: a download that isn't set goes home", c2 == 303)
     code, lb, _ = get("index.php?mode=all&region=global")   # (all-time: the admin test began a new season)
-    check("site: the launcher's leaderboard link still works", code == 200 and "<h1>Leaderboard</h1>" in lb and "player.php?id=" in lb)
+    check("site: the launcher's leaderboard link still works", code == 200 and 'data-text="Leaderboard"' in lb and "player.php?id=" in lb)
 
     goku = account_name("goku")
     code, pg, _ = get("player.php?name=" + urllib.parse.quote(goku))
@@ -937,7 +937,7 @@ def main():
         check("bad mode refused", bad.get("error") == "bad_mode")
         with urllib.request.urlopen(server.url + "index.php?mode=team&region=EU", timeout=10) as r:
             html = r.read().decode()
-        check("leaderboard web page", "<h1>Leaderboard</h1>" in html and "Goku" in html and "1016" in html)
+        check("leaderboard web page", 'data-text="Leaderboard"' in html and "Goku" in html and "1016" in html)
 
         # Host closes; the lobby disappears.
         call(server, "lobby.php", G, action="close", lobby=lob)

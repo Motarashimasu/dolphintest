@@ -139,24 +139,35 @@ function site_page(string $title, string $active, string $body, string $wide = '
         unset($_SESSION['flash']);
     }
     $title_tag = h($title === SITE_NAME ? $title : "$title · DRAGON NET");
+    $body = game_titles($body);
+    $logo = game_titles('<span class=logo-t>DRAGON NET</span>', 'span', 'logo-t');
+    $bg = site_background_css();
     echo <<<HTML
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>$title_tag</title><style>
 :root{--bg:#0d2530;--panel:#143b4a;--panel2:#10303d;--line:#2b6577;--edge:#6fc3d6;--gold:#f2b531;--orange:#ff8a1f;
 --text:#fff;--muted:#a9cbd6;--bad:#e8663d;--good:#3fbf6b;--blue:#3fa9f5}
-*{box-sizing:border-box}html{background:var(--bg)}body{margin:0;color:var(--text);font:16px/1.5 Tahoma,Verdana,sans-serif;
-background:radial-gradient(ellipse at 50% -10%,#1d5a6e 0%,var(--bg) 60%) no-repeat}
+@font-face{font-family:'Lilita One';src:url(fonts/LilitaOne-Regular.ttf) format('truetype');font-display:swap}
+*{box-sizing:border-box}html{ $bg}body{margin:0;color:var(--text);font:16px/1.5 Tahoma,Verdana,sans-serif}
 a{color:#7fd0ff}a:hover{color:#b8e6ff}
 header{border-bottom:3px solid var(--edge);background:rgba(8,26,34,.85)}
 .bar{max-width:1080px;margin:0 auto;padding:10px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-.logo{font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;font-size:24px;letter-spacing:.5px;color:var(--orange);
-text-shadow:2px 2px 0 #6b1d0b;text-decoration:none;margin-right:auto}
+.logo{font-size:26px;text-decoration:none;margin-right:auto;line-height:1.3;padding:2px 4px}
 nav{display:flex;gap:4px;flex-wrap:wrap}nav a{color:#fff;text-decoration:none;padding:6px 12px;border-radius:8px;border:2px solid transparent}
 nav a:hover{border-color:var(--line)}nav a.on{background:var(--panel);border-color:var(--edge)}
 .me{display:flex;gap:8px;align-items:center;margin:0}a.me{color:#111;background:var(--gold);padding:6px 14px;border-radius:8px;text-decoration:none;font-weight:bold}
 main{max-width:1080px;margin:0 auto;padding:22px 16px 60px}$wide
-h1{font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;font-weight:normal;letter-spacing:1px;color:var(--orange);
-text-shadow:3px 3px 0 #6b1d0b;font-size:40px;line-height:1.1;margin:6px 0 14px}
+h1{font-size:44px;line-height:1.2;margin:6px 0 14px;font-weight:normal}
+/* Titles as in the launcher (look/menu_look.tres "Title"): the letters a gradient from orange
+   (top) to red, a dark red edge, a light rim around it, a soft shadow below. Two copies of the
+   text (data-text) behind the letters draw the edge and the rim. */
+.tt{position:relative;display:inline-block;isolation:isolate;font-family:'Lilita One',Impact,sans-serif;font-weight:normal;
+letter-spacing:.02em;padding:0 .14em;color:#fd2a24}
+.tt::before,.tt::after{content:attr(data-text);position:absolute;inset:0;padding:inherit;white-space:pre-line}
+.tt::before{color:#fdecd6;-webkit-text-stroke:.34em #fdecd6;filter:drop-shadow(0 .06em 0 rgba(0,0,0,.35))}
+.tt::after{color:#631c12;-webkit-text-stroke:.19em #631c12}
+.tf{position:relative;z-index:1;background:linear-gradient(180deg,#fcb630 22%,#fd2a24 82%);
+-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 h2{color:var(--gold);font-size:20px;margin:26px 0 10px}h3{margin:0 0 6px;font-size:18px}
 .box{background:var(--panel);border:3px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
 .muted{color:var(--muted)}.small{font-size:14px}.err{color:var(--bad)}.ok{color:var(--good)}
@@ -180,13 +191,41 @@ a.pl{color:#fff;text-decoration:none;font-weight:bold}a.pl:hover{color:var(--gol
 .pages span{border-color:var(--edge);background:var(--panel)}
 footer{max-width:1080px;margin:0 auto;padding:0 16px 40px;color:var(--muted);font-size:13px}
 @media (max-width:640px){h1{font-size:32px}th,td{padding:7px 8px}.hide-s{display:none}}
-</style></head><body><header><div class=bar><a class=logo href="index.php">DRAGON NET</a><nav>$nav</nav>$me</div></header>
+</style></head><body><header><div class=bar><a class=logo href="index.php">$logo</a><nav>$nav</nav>$me</div></header>
 <main>$flash$body</main>
 <footer>DRAGON BALL Sparking! Collection PC is a fan project, not affiliated with Bandai Namco, Spike Chunsoft or
 Toei Animation. Play with your own copy of the game. DRAGON BALL and Budokai Tenkaichi belong to their owners.</footer>
 </body></html>
 HTML;
     exit;
+}
+
+/** Every <h1> in `$html` (or `$tag` elements with class `$class`) in the launcher's title look:
+ *  the text in a span.tt that carries a plain copy of itself (data-text) for the edge and rim. */
+function game_titles(string $html, string $tag = 'h1', string $class = ''): string
+{
+    $cls = $class !== '' ? '[^>]*class=' . preg_quote($class, '~') . '[^>]*' : '[^>]*';
+    return preg_replace_callback("~<$tag($cls)>(.*?)</$tag>~s", function ($m) use ($tag) {
+        $inner = $m[2];
+        // The copy: the text only (line breaks kept), as an attribute.
+        $plain = preg_replace('~<br\s*/?>~i', "\n", $inner);
+        $plain = html_entity_decode(strip_tags($plain), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $attr = str_replace("\n", '&#10;', h($plain));
+        return "<$tag{$m[1]}><span class=tt data-text=\"$attr\"><span class=tf>$inner</span></span></$tag>";
+    }, $html) ?? $html;
+}
+
+/** The page background (admin.php > Website): the picture under a dark veil, else the color. */
+function site_background_css(): string
+{
+    $look = site_look();
+    $c = $look['color'];
+    if ($look['bg'] === '') {
+        return "background:radial-gradient(ellipse at 50% -10%,color-mix(in srgb,$c,#6fc3d6 22%) 0%,$c 60%) no-repeat,$c";
+    }
+    $a = round($look['darken'] / 100, 2);
+    $fixed = $look['fixed'] ? ' fixed' : '';
+    return "background:linear-gradient(rgba(0,0,0,$a),rgba(0,0,0,$a))$fixed,url('sitebg.php?v={$look['v']}') center/cover no-repeat$fixed,$c";
 }
 
 /** Page links for a list: `$base` + "page=N". */
