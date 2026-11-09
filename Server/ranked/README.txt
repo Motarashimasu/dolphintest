@@ -58,7 +58,6 @@ What's in here
                    profile picture (128 x 128; stored in pics/, closed to browsers)
   pic.php          shows a profile picture
   sitebg.php       shows the website's background picture (admin.php > Website)
-  fonts/           the titles' font, Lilita One (SIL Open Font License: LilitaOne-OFL.txt)
   social.php       friends (requests, who's online) and the admin's messages
   replays.php      shared replays: upload in pieces / search / download / delete. The files
                    go to replay_files/ (made by itself, closed to browsers). Optional limits in

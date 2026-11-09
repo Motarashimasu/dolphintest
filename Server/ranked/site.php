@@ -147,7 +147,6 @@ function site_page(string $title, string $active, string $body, string $wide = '
 <title>$title_tag</title><style>
 :root{--bg:#0d2530;--panel:#143b4a;--panel2:#10303d;--line:#2b6577;--edge:#6fc3d6;--gold:#f2b531;--orange:#ff8a1f;
 --text:#fff;--muted:#a9cbd6;--bad:#e8663d;--good:#3fbf6b;--blue:#3fa9f5}
-@font-face{font-family:'Lilita One';src:url(fonts/LilitaOne-Regular.ttf) format('truetype');font-display:swap}
 *{box-sizing:border-box}html{ $bg}body{margin:0;color:var(--text);font:16px/1.5 Tahoma,Verdana,sans-serif}
 a{color:#7fd0ff}a:hover{color:#b8e6ff}
 header{border-bottom:3px solid var(--edge);background:rgba(8,26,34,.85)}
@@ -158,14 +157,14 @@ nav a:hover{border-color:var(--line)}nav a.on{background:var(--panel);border-col
 .me{display:flex;gap:8px;align-items:center;margin:0}a.me{color:#111;background:var(--gold);padding:6px 14px;border-radius:8px;text-decoration:none;font-weight:bold}
 main{max-width:1080px;margin:0 auto;padding:22px 16px 60px}$wide
 h1{font-size:44px;line-height:1.2;margin:6px 0 14px;font-weight:normal}
-/* Titles as in the launcher (look/menu_look.tres "Title"): the letters a gradient from orange
+/* Titles in Impact with the launcher's title look (look/menu_look.tres "Title"): the letters a gradient from orange
    (top) to red, a dark red edge, a light rim around it, a soft shadow below. Two copies of the
    text (data-text) behind the letters draw the edge and the rim. */
-.tt{position:relative;display:inline-block;isolation:isolate;font-family:'Lilita One',Impact,sans-serif;font-weight:normal;
-letter-spacing:.02em;padding:0 .14em;color:#fd2a24}
+.tt{position:relative;display:inline-block;isolation:isolate;font-family:Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;font-weight:normal;
+letter-spacing:.03em;padding:0 .14em;color:#fd2a24}
 .tt::before,.tt::after{content:attr(data-text);position:absolute;inset:0;padding:inherit;white-space:pre-line}
-.tt::before{color:#fdecd6;-webkit-text-stroke:.34em #fdecd6;filter:drop-shadow(0 .06em 0 rgba(0,0,0,.35))}
-.tt::after{color:#631c12;-webkit-text-stroke:.19em #631c12}
+.tt::before{color:#fdecd6;-webkit-text-stroke:.28em #fdecd6;filter:drop-shadow(0 .06em 0 rgba(0,0,0,.35))}
+.tt::after{color:#631c12;-webkit-text-stroke:.16em #631c12}
 .tf{position:relative;z-index:1;background:linear-gradient(180deg,#fcb630 22%,#fd2a24 82%);
 -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 h2{color:var(--gold);font-size:20px;margin:26px 0 10px}h3{margin:0 0 6px;font-size:18px}
