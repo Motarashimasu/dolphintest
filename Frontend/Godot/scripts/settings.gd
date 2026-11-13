@@ -121,6 +121,7 @@ var defaults := {
 		# only syncs these in its "strict" mode, which DRAGON NET doesn't use). Dolphin's defaults.
 		"vsync": false,
 		"antialiasing": "off",           # ANTIALIASING
+		"fxaa": false,                   # FXAA: Dolphin's post-processing shader (Sys/Shaders/FXAA.glsl)
 		"anisotropy": -1,                # -1 = the game's own, 0..4 = 1x..16x
 		"texture_filtering": 0,          # 0 default, 1 nearest, 2 linear
 		"output_resampling": 0,          # OUTPUT_RESAMPLING
@@ -174,7 +175,9 @@ var defaults := {
 	# Per game: "<game>_preset" = auto, keep, or a preset name (scripts/controllers.gd); "" = not
 	# chosen yet. ("preset": the one choice before per-game ones, now Tenkaichi 3's.)
 	# "gcpad_game": whose mapping GCPadNew.ini's [GCPad1] holds now (scripts/controllers.gd).
-	"controller": {"preset": "auto", "bt3_preset": "", "bt2_preset": "", "gcpad_game": ""},
+	"controller": {"preset": "auto", "bt3_preset": "", "bt2_preset": "", "gcpad_game": "",
+		# Player 2 (offline): on / off, preset per game ("" = same as Player 1), controller ("" = Auto)
+		"p2": false, "bt3_p2_preset": "", "bt2_p2_preset": "", "p2_device": ""},
 	# Game copies: "<game>_<version>" = disc image path, "<game>_offline" = the version Play
 	# Offline uses, "<game>_netplay" = the version last picked for DRAGON NET.
 	"games": {},
@@ -591,6 +594,7 @@ func video_args() -> PackedStringArray:
 		"Graphics.Hardware.VSync=" + b.call("vsync"),
 		"Graphics.Settings.MSAA=%d" % samples,
 		"Graphics.Settings.SSAA=" + ("True" if aa.begins_with("ssaa") else "False"),
+		"Graphics.Enhancements.PostProcessingShader=" + ("FXAA" if get_value("video", "fxaa") else ""),
 		"Graphics.Enhancements.MaxAnisotropy=%d" % int(get_value("video", "anisotropy")),
 		"Graphics.Enhancements.ForceTextureFiltering=%d" % int(get_value("video", "texture_filtering")),
 		"Graphics.Enhancements.OutputResampling=%d" % int(get_value("video", "output_resampling")),
@@ -662,6 +666,9 @@ func solo_args(training_display := true) -> PackedStringArray:
 	# Score bar offline only if the player wants it.
 	a.append_array(["--hud", "on" if get_value("options", "hud") else "off"])
 	a.append_array(["--sparking", "--nand", data_path("saves/solo"), "--state-dir", data_path("states")])
+	# Controller Setup > Player 2: a second controller in port 2 (its mapping: Controllers.apply_p2).
+	if get_value("controller", "p2"):
+		a.append_array(["--local-players", "2"])
 	# Options > Battle HUD off (Tenkaichi 3 PAL, offline only): its code on top of the others.
 	var extra: Array = []
 	if not get_value("options", "battle_hud") and battle_hud_available():

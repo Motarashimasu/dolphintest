@@ -1134,5 +1134,19 @@
  "The name other players see. Log in to DRAGON NET to play under your username.": "他のプレイヤーに表示される名前です。DRAGON NETにログインするとユーザー名でプレイします。",
  "%s is in your room but not in your ranked lobby on DRAGON NET. They need to be logged in to DRAGON NET and join from Ranked Match (Ranked Lobbies or Find a Ranked Match). If they did, their PC can't reach the ranked server right now.": "%s はルームにいますが、DRAGON NET のランクロビーには入っていません。DRAGON NET にログインし、ランクマッチ（ランクロビー または ランクマッチを探す）から参加する必要があります。そうしている場合は、相手の PC が今ランクサーバーに接続できません。",
  "Couldn't keep your ranked seat: %s": "ランクの席を確保できませんでした：%s",
- "The host's game is a different version: both players need the latest update.": "ホストのゲームのバージョンが異なります。両方のプレイヤーが最新のアップデートを適用する必要があります。"
+ "The host's game is a different version: both players need the latest update.": "ホストのゲームのバージョンが異なります。両方のプレイヤーが最新のアップデートを適用する必要があります。",
+ "FXAA": "FXAA",
+ "Smooths jagged edges on the finished picture: very light, a little softer.\nWorks on top of the anti-aliasing above. Only your screen.": "完成した映像のギザギザを滑らかにします：とても軽く、少し柔らかくなります。\n上のアンチエイリアスと併用できます。自分の画面だけに影響します。",
+ "Player 2": "プレイヤー2",
+ "A second controller for a friend on the same PC (offline only:\nonline, each player uses their own PC).": "同じPCで友達が使う2台目のコントローラー（オフラインのみ：\nオンラインでは各プレイヤーが自分のPCを使います）。",
+ "Same as Player 1": "プレイヤー1と同じ",
+ "Player 2 preset": "プレイヤー2のプリセット",
+ "Player 2's buttons: one of the presets, or the same as Player 1's.": "プレイヤー2のボタン：プリセットのどれか、またはプレイヤー1と同じもの。",
+ "Player 2 controller": "プレイヤー2のコントローラー",
+ "Auto": "自動",
+ "%s (not connected)": "%s（未接続）",
+ "Auto: the same kind as Player 1's, the next one (2nd Xbox pad, 2nd PlayStation pad...).\nPick one if Player 2 uses a different controller.": "自動：プレイヤー1と同じ種類の次のコントローラー（2台目のXbox、2台目のPlayStation…）。\nプレイヤー2が別のコントローラーを使う場合は選んでください。",
+ "Looking for controllers...": "コントローラーを探しています...",
+ "Player 2: on (offline)": "プレイヤー2：オン（オフライン）",
+ "Player 2: off": "プレイヤー2：オフ"
 }

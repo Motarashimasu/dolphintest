@@ -1134,5 +1134,19 @@
  "The name other players see. Log in to DRAGON NET to play under your username.": "El nombre que ven los demás. Inicia sesión en DRAGON NET para jugar con tu nombre de usuario.",
  "%s is in your room but not in your ranked lobby on DRAGON NET. They need to be logged in to DRAGON NET and join from Ranked Match (Ranked Lobbies or Find a Ranked Match). If they did, their PC can't reach the ranked server right now.": "%s está en tu sala pero no en tu sala clasificatoria de DRAGON NET. Debe iniciar sesión en DRAGON NET y unirse desde Combate clasificatorio (Salas clasificatorias o Buscar combate clasificatorio). Si ya lo hizo, su PC no puede conectar con el servidor clasificatorio ahora mismo.",
  "Couldn't keep your ranked seat: %s": "No se pudo mantener tu plaza clasificatoria: %s",
- "The host's game is a different version: both players need the latest update.": "El juego del anfitrión es de otra versión: los dos jugadores necesitan la última actualización."
+ "The host's game is a different version: both players need the latest update.": "El juego del anfitrión es de otra versión: los dos jugadores necesitan la última actualización.",
+ "FXAA": "FXAA",
+ "Smooths jagged edges on the finished picture: very light, a little softer.\nWorks on top of the anti-aliasing above. Only your screen.": "Suaviza los bordes dentados en la imagen final: muy ligero, algo más suave.\nFunciona junto al antialiasing de arriba. Solo tu pantalla.",
+ "Player 2": "Jugador 2",
+ "A second controller for a friend on the same PC (offline only:\nonline, each player uses their own PC).": "Un segundo mando para un amigo en el mismo PC (solo sin conexión:\nen línea, cada jugador usa su propio PC).",
+ "Same as Player 1": "Igual que el Jugador 1",
+ "Player 2 preset": "Preajuste del Jugador 2",
+ "Player 2's buttons: one of the presets, or the same as Player 1's.": "Los botones del Jugador 2: uno de los preajustes, o los mismos que el Jugador 1.",
+ "Player 2 controller": "Mando del Jugador 2",
+ "Auto": "Auto",
+ "%s (not connected)": "%s (no conectado)",
+ "Auto: the same kind as Player 1's, the next one (2nd Xbox pad, 2nd PlayStation pad...).\nPick one if Player 2 uses a different controller.": "Auto: del mismo tipo que el del Jugador 1, el siguiente (2.º mando Xbox, 2.º mando PlayStation...).\nElige uno si el Jugador 2 usa otro mando.",
+ "Looking for controllers...": "Buscando mandos...",
+ "Player 2: on (offline)": "Jugador 2: activado (sin conexión)",
+ "Player 2: off": "Jugador 2: desactivado"
 }

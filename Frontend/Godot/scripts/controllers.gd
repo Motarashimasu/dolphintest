@@ -275,3 +275,100 @@ static func summary(preset: Dictionary) -> String:
 		if v != "":
 			parts.append("%s: %s" % [b, v.replace("`", "")])
 	return ",  ".join(parts)
+
+
+# ---- Player 2 (offline only): a second controller in GameCube port 2, [GCPad2] in GCPadNew.ini.
+# Its own preset choice per game (or the same as Player 1's) and its own controller: a Dolphin
+# device string ("XInput/1/Gamepad"), or Auto = Player 1's controller type, next one along
+# ("XInput/0/Gamepad" -> "XInput/1/Gamepad"). In netplay every player has one pad, [GCPad1].
+
+const SAME := "same"   # Player 2: Player 1's preset
+
+
+static func p2_on() -> bool:
+	return bool(Settings.get_value("controller", "p2"))
+
+
+static func set_p2_on(on: bool) -> void:
+	Settings.set_value("controller", "p2", on)
+
+
+static func p2_choice() -> String:
+	var c := String(Settings.get_value("controller", game() + "_p2_preset"))
+	return c if c != "" else SAME
+
+
+static func set_p2_choice(value: String) -> void:
+	Settings.set_value("controller", game() + "_p2_preset", value)
+
+
+## Player 2's controller: a Dolphin device string, or "" (Auto).
+static func p2_device() -> String:
+	return String(Settings.get_value("controller", "p2_device"))
+
+
+static func set_p2_device(device: String) -> void:
+	Settings.set_value("controller", "p2_device", device)
+
+
+## Player 2's mapping: the chosen preset's buttons (Player 1's own when "Same", or when that
+## preset is gone), on Player 2's controller.
+static func p2_keys() -> Array:
+	var keys := p2_keys_base()
+	var device := p2_device()
+	if device == "":
+		device = next_device(_value(keys, "Device"))
+	var out: Array = []
+	var has_device := false
+	for kv in keys:
+		if kv[0] == "Device":
+			out.append(["Device", device])
+			has_device = true
+		else:
+			out.append(kv)
+	if not has_device and device != "":
+		out.push_front(["Device", device])
+	return out
+
+
+## Player 2's preset buttons, on the preset's own controller (before Player 2's device goes in).
+static func p2_keys_base() -> Array:
+	var base: Dictionary = {} if p2_choice() == SAME else find(p2_choice())
+	var keys: Array = base.get("keys", []) if not base.is_empty() else []
+	if keys.is_empty():
+		var p1 := selected()
+		keys = p1.get("keys", []) if not p1.is_empty() else current_keys()
+	return keys
+
+
+## The same kind of controller, next one along: "XInput/0/Gamepad" -> "XInput/1/Gamepad".
+## The keyboard stays the keyboard (two players on one keyboard need two presets).
+static func next_device(device: String) -> String:
+	var parts := device.split("/")
+	if parts.size() < 3 or not parts[1].is_valid_int() or "Keyboard" in device:
+		return device
+	parts[1] = str(int(parts[1]) + 1)
+	return "/".join(parts)
+
+
+## Writes [GCPad2] (other sections kept). Before every offline launch while Player 2 is on.
+static func apply_p2() -> bool:
+	var keys := p2_keys()
+	if keys.is_empty():
+		return false
+	var path := gcpad_path()
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var ini := parse_ini(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else {}
+	ini["GCPad2"] = keys
+	var sections := {}
+	for s in ["GCPad1", "GCPad2", "GCPad3", "GCPad4"]:
+		if ini.has(s):
+			sections[s] = ini[s]
+	for s in ini:
+		if not sections.has(s):
+			sections[s] = ini[s]
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string(write_ini(sections))
+	return true

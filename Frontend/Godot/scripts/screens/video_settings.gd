@@ -43,6 +43,7 @@ func build_rows() -> Array:
 			"values": Settings.ANTIALIASING, "names": Settings.ANTIALIASING_NAMES,
 			"value": Settings.get_value("video", "antialiasing"),
 			"desc": "Smooths jagged edges. MSAA is lighter; SSAA is sharper but much heavier.\nOnly your screen: it can't desync an online match."},
+		_toggle("fxaa", "FXAA", "Smooths jagged edges on the finished picture: very light, a little softer.\nWorks on top of the anti-aliasing above. Only your screen."),
 		{"type": "choice", "key": "anisotropy", "label": "Anisotropic filtering",
 			"values": Settings.ANISOTROPY, "names": Settings.ANISOTROPY_NAMES,
 			"value": Settings.get_value("video", "anisotropy"),

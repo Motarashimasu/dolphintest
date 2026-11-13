@@ -1436,6 +1436,30 @@ func _tour() -> void:
 			and app.top() == pads and pads.Controllers.user_dir().ends_with("controllers/bt3"))
 	await wait_for("helper Dolphin stopped", func():
 		return Dolphin._helpers.all(func(h): return h["proc"] == Presence._helper), 10)
+	# Player 2 (offline): a second controller in port 2, [GCPad2].
+	check("Player 2 off at first, no extra rows", not pads.Controllers.p2_on() and pads.list.row("p2_preset").is_empty())
+	await pick("p2", pads.list)
+	check("Player 2 on: preset and controller rows", pads.Controllers.p2_on()
+			and not pads.list.row("p2_preset").is_empty() and not pads.list.row("p2_device").is_empty())
+	await wait_for("Dolphin's controller list for Player 2", func(): return pads._helper != null, 10)
+	pads._on_helper({"event": "devices", "devices": [{"name": "XInput/0/Gamepad", "source": "XInput", "title": "Gamepad"},
+		{"name": "SDL/0/DualSense Wireless Controller", "source": "SDL", "title": "DualSense Wireless Controller"}]})
+	await frames(5)
+	check("Player 2's controllers: Auto + Dolphin's list", pads.list.row("p2_device")["values"]
+			== ["", "XInput/0/Gamepad", "SDL/0/DualSense Wireless Controller"])
+	check("Auto: Player 1's kind, the next one", pads.Controllers.next_device("XInput/0/Gamepad") == "XInput/1/Gamepad"
+			and pads.Controllers.next_device("DInput/0/Keyboard Mouse") == "DInput/0/Keyboard Mouse")
+	check("offline launches get port 2", "--local-players" in Settings.solo_args())
+	pads.on_value("p2_device", "SDL/0/DualSense Wireless Controller")
+	pads.Controllers.apply_p2()
+	var gc2: Dictionary = pads.Controllers.parse_ini(FileAccess.get_file_as_string(pads.Controllers.gcpad_path()))
+	check("[GCPad2]: Player 1's buttons on Player 2's controller", ["Device", "SDL/0/DualSense Wireless Controller"] in gc2.get("GCPad2", [])
+			and ["Buttons/A", "`Button X`"] in gc2.get("GCPad2", []) and ["Buttons/A", "`Button X`"] in gc2.get("GCPad1", []))
+	await shot("controller_setup_p2")
+	await pick("p2", pads.list)
+	check("Player 2 off: no port 2, helper stopped", not pads.Controllers.p2_on() and pads._helper == null
+			and not "--local-players" in Settings.solo_args())
+	pads.Controllers.set_p2_device("")
 	# Budokai Tenkaichi 2: its own presets (not Tenkaichi 3's) and its own choice.
 	Settings.use_game("bt2")
 	var bt2_names: Array = pads.Controllers.list().map(func(p): return p["name"])
@@ -1545,6 +1569,11 @@ func _tour() -> void:
 			and "Graphics.Enhancements.ForceTrueColor=True" in va and "Graphics.Hardware.VSync=False" in va
 			and "Graphics.Settings.ShaderCompilationMode=0" in va)
 	check("and every game launch gets them", " ".join(Settings.common_args()).contains("Graphics.Settings.MSAA=1"))
+	check("FXAA off at first", "Graphics.Enhancements.PostProcessingShader=" in va
+			and not "PostProcessingShader=FXAA" in va)
+	top().on_value("fxaa", true)
+	check("FXAA on reaches Dolphin", "Graphics.Enhancements.PostProcessingShader=FXAA" in " ".join(Settings.video_args()))
+	top().on_value("fxaa", false)
 	top().on_value("antialiasing", "ssaa4")
 	top().on_value("anisotropy", 4)
 	top().on_value("vsync", true)

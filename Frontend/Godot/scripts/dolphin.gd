@@ -236,6 +236,9 @@ func launch(args: PackedStringArray) -> bool:
 		return false
 	# The chosen controller preset goes into GCPadNew.ini before every game.
 	Controllers.apply_selected()
+	# Player 2's controller in port 2 (offline games with Player 2 on: settings.solo_args).
+	if Controllers.p2_on() and "--local-players" in args and not "--replay" in args:
+		Controllers.apply_p2()
 	# Dolphin reports the frame rate every second while a game runs: the boot watchdog's sign
 	# that the game really started.
 	if not "--stats-interval" in args:
